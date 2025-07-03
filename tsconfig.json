@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "isolatedModules": true,
+    "target": "es2017",
+    "module": "esnext",
+    "moduleResolution": "node",
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "strict": true,
+    "lib": ["es2017", "dom", "dom.iterable"],
+    "noEmit": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitAny": false,
+    "skipLibCheck": true,
+  },
+	"include": [
+    "./src/**/*.ts",
+    "./src/**/*.d.ts",
+		"./src/global.d.ts"
+  ],
+}

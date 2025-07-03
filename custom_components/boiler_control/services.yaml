@@ -1,0 +1,49 @@
+# Describes the services for the Boiler Control integration
+start_timer:
+  name: Start Timer
+  description: Starts a countdown timer for the boiler. The associated switch is turned on.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: The config entry ID of the boiler control sensor.
+      required: true
+      selector:
+        text:
+    duration:
+      name: Duration
+      description: The duration of the timer in minutes.
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 1000
+          unit_of_measurement: "minutes"
+
+cancel_timer:
+  name: Cancel Timer
+  description: Cancels an active countdown timer.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: The config entry ID of the boiler control sensor.
+      required: true
+      selector:
+        text:
+
+update_switch_entity:
+  name: Update Switch Entity
+  description: Tells the sensor which switch entity to monitor for runtime calculation.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: The config entry ID of the boiler control sensor.
+      required: true
+      selector:
+        text:
+    switch_entity_id:
+      name: Switch Entity
+      description: The entity ID of the switch to monitor (e.g., switch.my_boiler).
+      required: true
+      selector:
+        entity:
+          domain: switch
