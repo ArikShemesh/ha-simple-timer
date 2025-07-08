@@ -4,6 +4,8 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
+import homeassistant.helpers.config_validation as cv
+from homeassistant.components.switch import DOMAIN as SWITCH_DOMAIN # Import switch domain
 from .const import DOMAIN
 
 class BoilerControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -12,22 +14,46 @@ class BoilerControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input=None):
         """
-        Handle the initial user step.
-        This integration is now "zero-config". It doesn't ask the user for any
-        information, like a switch entity. It simply creates a single instance
-        for the sensor. The switch is selected later in the Lovelace card.
+        Handle the initial user step to configure the integration instance.
+        This step now asks for a name for the instance and the associated switch entity.
         """
-        # Abort if an instance of the integration is already configured.
-        if self._async_current_entries():
-            return self.async_abort(reason="single_instance_allowed")
+        errors = {}
 
-        # Create the config entry directly with no data.
-        # The title will be "Boiler Control" as seen in the Integrations page.
-        return self.async_create_entry(
-            title="Boiler Control",
-            data={}
+        if user_input is not None:
+            # Create the config entry with the provided name and switch entity ID.
+            return self.async_create_entry(
+                title=user_input["name"],
+                data={
+                    "name": user_input["name"],
+                    "switch_entity_id": user_input["switch_entity_id"]
+                }
+            )
+
+        # Get all switch entities from Home Assistant to populate the dropdown
+        all_switches = []
+        if self.hass:
+            # Use self.hass.states.async_entity_ids(SWITCH_DOMAIN) for a more robust way
+            # to get all switch entity IDs.
+            all_switches = sorted(self.hass.states.async_entity_ids(SWITCH_DOMAIN))
+            
+            if not all_switches:
+                errors["base"] = "no_switches_found" # Custom error if no switches exist
+
+        # Define the schema for the user input form
+        data_schema = vol.Schema({
+            vol.Required("name", default="Boiler Control"): str,
+            vol.Required("switch_entity_id"): vol.In(all_switches)
+        })
+
+        # Show the form to the user
+        return self.async_show_form(
+            step_id="user",
+            data_schema=data_schema,
+            errors=errors,
+            description_placeholders={"example_name": "Main Boiler"}
         )
 
     async def async_step_init(self, user_input=None):
         """Handle a flow initiated by the user."""
         return await self.async_step_user(user_input)
+

@@ -20,31 +20,61 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
     SERVICE_CANCEL_TIMER_SCHEMA = vol.Schema({
         vol.Required("entry_id"): cv.string,
     })
-    # **NEW**: Schema for the service that tells the sensor which switch to monitor
+    # Schema for the service that tells the sensor which switch to monitor
     SERVICE_UPDATE_SWITCH_SCHEMA = vol.Schema({
         vol.Required("entry_id"): cv.string,
         vol.Required("switch_entity_id"): cv.string,
     })
 
     async def start_timer(call: ServiceCall):
+        """Handle the service call to start the boiler timer."""
         entry_id = call.data["entry_id"]
-        sensor = hass.data[DOMAIN].get(entry_id, {}).get("sensor")
+        duration = call.data["duration"]
+        
+        # Find the sensor by entry_id
+        sensor = None
+        for stored_entry_id, entry_data in hass.data[DOMAIN].items():
+            if stored_entry_id == entry_id and "sensor" in entry_data:
+                sensor = entry_data["sensor"]
+                break
+        
         if sensor:
-            await sensor.async_start_timer(call.data["duration"])
+            await sensor.async_start_timer(duration)
+        else:
+            raise ValueError(f"No boiler control sensor found for entry_id: {entry_id}")
 
     async def cancel_timer(call: ServiceCall):
+        """Handle the service call to cancel the boiler timer."""
         entry_id = call.data["entry_id"]
-        sensor = hass.data[DOMAIN].get(entry_id, {}).get("sensor")
+        
+        # Find the sensor by entry_id
+        sensor = None
+        for stored_entry_id, entry_data in hass.data[DOMAIN].items():
+            if stored_entry_id == entry_id and "sensor" in entry_data:
+                sensor = entry_data["sensor"]
+                break
+        
         if sensor:
             await sensor.async_cancel_timer()
+        else:
+            raise ValueError(f"No boiler control sensor found for entry_id: {entry_id}")
 
     async def update_switch_entity(call: ServiceCall):
         """Handle the service call to update the switch entity for the sensor."""
         entry_id = call.data["entry_id"]
         switch_entity_id = call.data["switch_entity_id"]
-        sensor = hass.data[DOMAIN].get(entry_id, {}).get("sensor")
+        
+        # Find the sensor by entry_id
+        sensor = None
+        for stored_entry_id, entry_data in hass.data[DOMAIN].items():
+            if stored_entry_id == entry_id and "sensor" in entry_data:
+                sensor = entry_data["sensor"]
+                break
+        
         if sensor:
             await sensor.async_update_switch_entity(switch_entity_id)
+        else:
+            raise ValueError(f"No boiler control sensor found for entry_id: {entry_id}")
 
     # Register all three services
     hass.services.async_register(
@@ -62,7 +92,7 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up a single Boiler Control config entry."""
-    hass.data[DOMAIN][entry.entry_id] = {}
+    hass.data[DOMAIN][entry.entry_id] = {"sensor": None} # Initialize with None
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 

@@ -47,3 +47,4 @@ update_switch_entity:
       selector:
         entity:
           domain: switch
+

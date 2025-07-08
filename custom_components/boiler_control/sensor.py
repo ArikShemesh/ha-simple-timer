@@ -3,21 +3,22 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import timedelta
-from typing import Any
+from datetime import datetime, timedelta
+from typing import Any, Dict
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
 from homeassistant.const import (
     STATE_ON,
     UnitOfTime,
 )
-from homeassistant.core import HomeAssistant, callback, Event
+from homeassistant.core import HomeAssistant, callback, Event, State
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_time_change,
+    async_call_later,
+    async_track_point_in_utc_time,
 )
-# **FIX**: Import RestoreEntity, the correct class for restoring full entity state.
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
@@ -26,306 +27,675 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
+# Attributes for the sensor state
 ATTR_TIMER_STATE = "timer_state"
 ATTR_TIMER_FINISHES_AT = "timer_finishes_at"
 ATTR_TIMER_DURATION = "timer_duration"
+ATTR_TIMER_REMAINING = "timer_remaining"
 ATTR_WATCHDOG_MESSAGE = "watchdog_message"
 ATTR_SWITCH_ENTITY_ID = "switch_entity_id"
 ATTR_LAST_ON_TIMESTAMP = "last_on_timestamp"
-
-
-STORAGE_VERSION = 1
-STORAGE_KEY_FORMAT = f"{DOMAIN}_{{}}"
+ATTR_INSTANCE_TITLE = "instance_title"
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities) -> None:
     """Create a BoilerRuntimeSensor for this config entry."""
+    _LOGGER.debug("Boiler Control: Setting up entry for %s", entry.entry_id)
     async_add_entities(
         [BoilerRuntimeSensor(hass, entry)]
     )
 
-# **FIX**: Inherit from both SensorEntity and RestoreEntity.
 class BoilerRuntimeSensor(SensorEntity, RestoreEntity):
     """The sensor entity for Boiler Control."""
     _attr_has_entity_name = False
-    _attr_name = "Daily Runtime"
     _attr_icon = "mdi:counter"
     _attr_native_unit_of_measurement = UnitOfTime.SECONDS
 
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        entry: ConfigEntry,
-    ) -> None:
+    STORAGE_VERSION = 1
+    STORAGE_KEY_FORMAT = f"{DOMAIN}_{{}}"
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry):
         """Initialize the sensor."""
         self.hass = hass
+        self._entry = entry
         self._entry_id = entry.entry_id
-        self._attr_unique_id = f"{entry.entry_id}_daily_runtime"
-        self._attr_suggested_object_id = f"{entry.title.lower().replace(' ', '_')}_daily_runtime"
+        self._instance_title = entry.data.get("name", "Boiler")  # Changed from "instance_title" to "name"
+        self._switch_entity_id = entry.data.get("switch_entity_id")
         
-        self._state: float = 0.0
-        self._switch_entity_id: str | None = None
-        self._last_on_timestamp: dt_util.dt | None = None
-        self._timer_task: asyncio.Task | None = None
+        # UPDATED: Include part of entry_id in the sensor name to ensure unique entity IDs
+        entry_id_short = self._entry_id[:8]  # First 8 characters of entry_id
+        self._attr_name = f"{self._instance_title} Runtime ({entry_id_short})"
+        self._attr_unique_id = f"boiler_runtime_{self._entry_id}"
+        self._attr_device_class = SensorDeviceClass.DURATION
+        self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
+        self._attr_icon = "mdi:timer"
+        
+        _LOGGER.info(f"Boiler Control: Creating sensor with unique name: '{self._attr_name}' for entry_id: {self._entry_id}")
+        
+        # State tracking
+        self._state = 0.0
+        self._last_on_timestamp = None
+        self._accumulation_task = None
+        self._state_listener_disposer = None
+        self._stop_event_received = False
+        
+        # Timer functionality
         self._timer_state = "idle"
-        self._timer_finishes_at: dt_util.dt | None = None
+        self._timer_finishes_at = None
         self._timer_duration = 0
-        self._watchdog_message: str | None = None
-        self._state_listener: callback | None = None
-        self._midnight_listener: callback | None = None
-        self._store = Store(
-            hass, STORAGE_VERSION, STORAGE_KEY_FORMAT.format(self._entry_id)
-        )
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, self._entry_id)},
-            "name": entry.title,
-            "manufacturer": "Boiler Control Project",
-            "model": "Boiler Control System",
-        }
+        self._timer_unsub = None
+        self._watchdog_message = None
+        self._timer_update_task = None
+        
+        # Storage for timer persistence
+        self._store = Store(hass, self.STORAGE_VERSION, self.STORAGE_KEY_FORMAT.format(self._entry_id))
+        
+        # Generate unique session ID
+        import secrets
+        self._session_id = secrets.token_urlsafe(20)
+        
+        _LOGGER.debug(f"Boiler Control: [{self._session_id}] Sensor initialized for {self._entry_id}")
 
     @property
     def native_value(self) -> float:
-        """Return the state of the sensor."""
+        """Return the current daily runtime in seconds."""
         return self._state
+
+    def _calculate_timer_remaining(self) -> int:
+        """Calculate remaining time in seconds for active timer."""
+        if self._timer_state == "active" and self._timer_finishes_at:
+            now = dt_util.utcnow()
+            remaining = (self._timer_finishes_at - now).total_seconds()
+            return max(0, int(remaining))
+        return 0
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return the state attributes for the card and for restoring state."""
+        timer_remaining = self._calculate_timer_remaining()
+        
         return {
             ATTR_TIMER_STATE: self._timer_state,
-            ATTR_TIMER_FINISHES_AT: self._timer_finishes_at,
+            ATTR_TIMER_FINISHES_AT: self._timer_finishes_at.isoformat() if self._timer_finishes_at else None,
             ATTR_TIMER_DURATION: self._timer_duration,
+            ATTR_TIMER_REMAINING: timer_remaining,
             ATTR_WATCHDOG_MESSAGE: self._watchdog_message,
             "entry_id": self._entry_id,
             ATTR_SWITCH_ENTITY_ID: self._switch_entity_id,
             ATTR_LAST_ON_TIMESTAMP: self._last_on_timestamp.isoformat() if self._last_on_timestamp else None,
+            ATTR_INSTANCE_TITLE: self._instance_title,
+            "session_id": self._session_id,
         }
 
-    async def async_update_switch_entity(self, switch_entity_id: str):
-        """Service call handler to set which switch this sensor should monitor."""
-        _LOGGER.info("Boiler Control: Service call to update tracked switch to: %s", switch_entity_id)
-
-        if self._switch_entity_id == switch_entity_id and self._state_listener is not None:
-            return
-
-        self._switch_entity_id = switch_entity_id
-        
-        if self._state_listener:
-            self._state_listener()
-            self._state_listener = None
-
-        if switch_entity_id:
-            self._state_listener = async_track_state_change_event(
-                self.hass, switch_entity_id, self._handle_switch_change
-            )
-            current_switch_state = self.hass.states.get(switch_entity_id)
-            if current_switch_state and current_switch_state.state == STATE_ON and not self._last_on_timestamp:
-                _LOGGER.info("Boiler Control: Switch %s is already ON. Starting timer from now.", switch_entity_id)
-                self._last_on_timestamp = dt_util.utcnow()
-        
-        self.async_write_ha_state()
-
-    @callback
-    def _handle_switch_change(self, event: Event) -> None:
-        """The core logic to calculate runtime based on the switch's state."""
-        from_state = event.data.get("old_state")
-        to_state = event.data.get("new_state")
-
-        _LOGGER.info(
-            "Boiler Control: Handling switch change for %s. From: %s, To: %s",
-            self._switch_entity_id,
-            from_state.state if from_state else "None",
-            to_state.state if to_state else "None",
-        )
-
-        if not from_state or not to_state:
-            return
-
-        if to_state.state == STATE_ON and from_state.state != STATE_ON:
-            _LOGGER.info("Boiler Control: Switch turned ON. Recording timestamp.")
-            self._last_on_timestamp = dt_util.utcnow()
-        
-        elif to_state.state != STATE_ON and from_state.state == STATE_ON:
-            if self._last_on_timestamp:
-                duration = (dt_util.utcnow() - self._last_on_timestamp).total_seconds()
-                self._state += duration
-                _LOGGER.info(
-                    "Boiler Control: Switch %s turned OFF. Added %.2f seconds. New total: %.2f",
-                    self._switch_entity_id,
-                    duration,
-                    self._state,
-                )
-            else:
-                _LOGGER.warning(
-                    "Boiler Control: Switch %s turned OFF, but no 'last_on_timestamp' was found.",
-                    self._switch_entity_id
-                )
-            self._last_on_timestamp = None
-        
-        self.async_write_ha_state()
-
-    async def async_start_timer(self, duration_minutes: int) -> None:
-        """Start/restart a countdown."""
-        _LOGGER.info("Boiler Control: async_start_timer called with duration: %s minutes", duration_minutes)
-        if self._watchdog_message:
-            self._watchdog_message = None
-        
-        if self._timer_task:
-            self._timer_task.cancel()
-        self._timer_duration = duration_minutes
-        self._timer_state = "active"
-        self._timer_finishes_at = dt_util.utcnow() + timedelta(minutes=duration_minutes)
-        await self._store.async_save(
-            {"finishes_at": self._timer_finishes_at.isoformat(), "duration": duration_minutes}
-        )
-        self.async_write_ha_state()
-        self._timer_task = self.hass.async_create_task(
-            self._async_timer_finished()
-        )
-
-    async def async_cancel_timer(self) -> None:
-        """Stop the countdown."""
-        if self._timer_state == "idle":
-            return
-
-        current = asyncio.current_task()
-        if self._timer_task and self._timer_task is not current:
-            self._timer_task.cancel()
-        
-        self._timer_task = None
-        self._timer_state = "idle"
-        self._timer_finishes_at = None
-        self._timer_duration = 0
-        
-        try:
-            await self._store.async_remove()
-        except Exception:
-            _LOGGER.warning("Could not remove persisted timer data on cancel.")
-        
-        self.async_write_ha_state()
-
-    async def _async_timer_finished(self) -> None:
-        """When the timer completes, turn off the switch and clean up the state."""
-        _LOGGER.info("Boiler Control: Timer task started. Checking finish time.")
-        try:
-            if self._timer_finishes_at:
-                delay = (self._timer_finishes_at - dt_util.utcnow()).total_seconds()
-                _LOGGER.info("Boiler Control: Calculated timer delay is %.2f seconds.", delay)
-                if delay > 0:
-                    await asyncio.sleep(delay)
-            
-            _LOGGER.info("Boiler Control: Timer sleep finished.")
-
-            if self._switch_entity_id:
-                _LOGGER.info(
-                    "Boiler Control: Timer finished. Turning off switch %s.", self._switch_entity_id
-                )
-                await self.hass.services.async_call(
-                    "switch", "turn_off", {"entity_id": self._switch_entity_id}
-                )
-            else:
-                _LOGGER.warning("Boiler Control: Timer finished, but no switch entity ID is set. Cannot turn off switch.")
-            
-            await self.async_cancel_timer()
-        except asyncio.CancelledError:
-            _LOGGER.info("Boiler Control: Timer task was cancelled manually.")
-            await self.async_cancel_timer()
-        except Exception as e:
-            _LOGGER.error("Boiler Control: Unexpected error in _async_timer_finished: %s", e)
-            await self.async_cancel_timer()
-
-    async def async_added_to_hass(self) -> None:
-        """Run when entity is added and on Home Assistant startup."""
+    async def async_added_to_hass(self):
+        """Called when entity is added to hass."""
         await super().async_added_to_hass()
+        
+        # Store this sensor instance so services can find it
+        if DOMAIN not in self.hass.data:
+            self.hass.data[DOMAIN] = {}
+        if self._entry_id not in self.hass.data[DOMAIN]:
+            self.hass.data[DOMAIN][self._entry_id] = {}
         self.hass.data[DOMAIN][self._entry_id]["sensor"] = self
         
-        # **FIX**: Use the state object provided by RestoreEntity.
+        # Listen for Home Assistant shutdown events - use multiple signals to catch shutdown early
+        self.hass.bus.async_listen_once("homeassistant_stop", self._handle_ha_shutdown)
+        self.hass.bus.async_listen_once("homeassistant_final_write", self._handle_ha_shutdown)
+        
+        _LOGGER.debug(f"Boiler Control: [{self._session_id}] Sensor stored in hass.data for entry_id: {self._entry_id}")
+        
+        # Restore state
         last_state = await self.async_get_last_state()
-        
-        if last_state and last_state.state not in ("unknown", "unavailable"):
-            _LOGGER.info("Boiler Control: Restoring state. Last state was: %s", last_state.state)
-            
-            if dt_util.as_local(last_state.last_updated).date() < dt_util.as_local(dt_util.utcnow()).date():
-                _LOGGER.info("Boiler Control: Missed midnight reset detected. Resetting daily runtime.")
+        if last_state is not None:
+            try:
+                self._state = float(last_state.state)
+                attrs = last_state.attributes
+                
+                # Restore timer state
+                self._timer_state = attrs.get(ATTR_TIMER_STATE, "idle")
+                self._timer_duration = attrs.get(ATTR_TIMER_DURATION, 0)
+                self._watchdog_message = attrs.get(ATTR_WATCHDOG_MESSAGE)
+                
+                # Restore timer finish time
+                if attrs.get(ATTR_TIMER_FINISHES_AT):
+                    self._timer_finishes_at = datetime.fromisoformat(attrs[ATTR_TIMER_FINISHES_AT])
+                
+                # Restore last on timestamp
+                if attrs.get(ATTR_LAST_ON_TIMESTAMP):
+                    self._last_on_timestamp = datetime.fromisoformat(attrs[ATTR_LAST_ON_TIMESTAMP])
+                
+                _LOGGER.debug(f"Boiler Control: [{self._session_id}] Restored state: {self._state}s, timer: {self._timer_state}")
+                
+            except (ValueError, TypeError) as e:
+                _LOGGER.warning(f"Boiler Control: [{self._session_id}] Could not restore state: {e}")
                 self._state = 0.0
-                self._last_on_timestamp = None
-            else:
-                try:
-                    self._state = float(last_state.state)
-                    last_on_iso = last_state.attributes.get(ATTR_LAST_ON_TIMESTAMP)
-                    if last_on_iso:
-                        self._last_on_timestamp = dt_util.parse_datetime(last_on_iso)
-                except (ValueError, TypeError):
-                    self._state = 0.0
-                    self._last_on_timestamp = None
-
-            self._switch_entity_id = last_state.attributes.get(ATTR_SWITCH_ENTITY_ID)
-            self._watchdog_message = last_state.attributes.get(ATTR_WATCHDOG_MESSAGE)
         
-        self._midnight_listener = async_track_time_change(
-            self.hass, self._reset_at_midnight, hour=0, minute=0, second=0
-        )
+        # Setup switch listener
+        await self._async_setup_switch_listener()
         
-        if self._switch_entity_id:
-            await self.async_update_switch_entity(self._switch_entity_id)
+        # Setup midnight reset
+        async_track_time_change(self.hass, self._reset_at_midnight, hour=0, minute=0, second=0)
+        
+        # Restore timer if it was active - schedule without blocking
+        if self._timer_state == "active" and self._timer_finishes_at:
+            self.hass.async_create_task(self._restore_active_timer())
+        
+        # Start accumulation if switch is currently on
+        if self._is_switch_on() and not self._last_on_timestamp:
+            self._last_on_timestamp = dt_util.utcnow()
+            # Schedule accumulation start without blocking
+            self.hass.async_create_task(self._start_realtime_accumulation())
+        elif self._is_switch_on() and self._last_on_timestamp:
+            # Resume accumulation after restart - schedule it without blocking
+            self.hass.async_create_task(self._delayed_start_accumulation())
 
-        if self._last_on_timestamp:
-            current_switch_state = self.hass.states.get(self._switch_entity_id)
-            if current_switch_state and current_switch_state.state == STATE_ON:
-                offline_duration = (dt_util.utcnow() - self._last_on_timestamp).total_seconds()
-                if offline_duration > 0:
-                    self._state += offline_duration
-                    _LOGGER.info(
-                        "Boiler Control: Restored state was ON. Added %.2f seconds for offline duration.",
-                        offline_duration,
-                    )
-                    self.async_write_ha_state()
+    def _schedule_accumulation_start(self):
+        """Schedule accumulation start outside of startup context."""
+        if not self._stop_event_received:
+            # Use asyncio.create_task instead of hass.async_create_task to avoid HA tracking
+            import asyncio
+            self._accumulation_task = asyncio.create_task(self._async_accumulate_runtime())
+    
+    def _schedule_delayed_accumulation_start(self):
+        """Schedule delayed accumulation start outside of startup context.""" 
+        if not self._stop_event_received:
+            import asyncio
+            asyncio.create_task(self._delayed_start_accumulation())
+            
+    def _schedule_timer_restoration(self):
+        """Schedule timer restoration outside of startup context."""
+        if not self._stop_event_received:
+            import asyncio
+            asyncio.create_task(self._restore_active_timer())
 
-        await self._restore_timer_on_startup()
+    async def _delayed_start_accumulation(self):
+        """Start accumulation with a short delay to ensure HA startup is complete."""
+        await asyncio.sleep(0.5)  # Reduced from 2 seconds to 0.5 seconds
+        
+        if self._is_switch_on() and self._last_on_timestamp and not self._stop_event_received:
+            _LOGGER.debug(f"Boiler Control: [{self._session_id}] Starting delayed accumulation after restart")
+            await self._start_realtime_accumulation()
 
-    async def async_will_remove_from_hass(self) -> None:
-        """Run when entity is removed."""
-        self.hass.data[DOMAIN].pop(self._entry_id, None)
-        if self._state_listener:
-            self._state_listener()
-        if self._midnight_listener:
-            self._midnight_listener()
-        if self._timer_task:
-            self._timer_task.cancel()
-
-    async def _restore_timer_on_startup(self) -> None:
-        """If a timer was active before restart, mark it as interrupted."""
-        stored = await self._store.async_load()
-        if stored:
-            self._watchdog_message = (
-                f"{dt_util.now().strftime('%d/%m/%Y %H:%M')} Warning: Boiler timer was "
-                "interrupted by a Home Assistant restart. Manual intervention may be required."
+    async def _restore_active_timer(self):
+        """Restore an active timer after restart."""
+        now = dt_util.utcnow()
+        
+        if self._timer_finishes_at and self._timer_finishes_at > now:
+            # Timer is still active, reschedule it
+            self._timer_unsub = async_track_point_in_utc_time(
+                self.hass, self._async_timer_finished, self._timer_finishes_at
             )
+            _LOGGER.info(f"Boiler Control: [{self._session_id}] Restored active timer, finishing at {self._timer_finishes_at}")
+            
+            # Start timer update task for real-time countdown
+            await self._start_timer_update_task()
+            
+            # Load persisted timer data
+            try:
+                data = await self._store.async_load()
+                if data:
+                    self._timer_duration = data.get("duration", self._timer_duration)
+                    _LOGGER.debug(f"Boiler Control: [{self._session_id}] Loaded timer duration: {self._timer_duration}")
+            except Exception as e:
+                _LOGGER.warning(f"Boiler Control: [{self._session_id}] Could not load timer data: {e}")
+                
+        else:
+            # Timer has expired, clean up
+            _LOGGER.info(f"Boiler Control: [{self._session_id}] Timer expired during restart, cleaning up")
             self._timer_state = "idle"
             self._timer_finishes_at = None
             self._timer_duration = 0
             try:
                 await self._store.async_remove()
             except Exception:
-                _LOGGER.warning("Could not remove persisted timer data on cancel.")
-            self.async_write_ha_state()
+                pass
+
+    async def _start_timer_update_task(self):
+        """Start a task to update timer attributes every second."""
+        if self._timer_update_task and not self._timer_update_task.done():
+            return  # Task already running
+        
+        # Use asyncio.create_task to avoid HA tracking
+        import asyncio
+        self._timer_update_task = asyncio.create_task(self._timer_update_loop())
+
+    async def _stop_timer_update_task(self):
+        """Stop the timer update task."""
+        if self._timer_update_task and not self._timer_update_task.done():
+            self._timer_update_task.cancel()
+            try:
+                await self._timer_update_task
+            except asyncio.CancelledError:
+                pass
+            self._timer_update_task = None
+
+    async def _timer_update_loop(self):
+        """Update timer attributes every second while timer is active."""
+        try:
+            while self._timer_state == "active" and self._timer_finishes_at and not self._stop_event_received:
+                remaining = self._calculate_timer_remaining()
+                if remaining <= 0:
+                    break
+                
+                # Update the state to trigger frontend refresh
+                self.async_write_ha_state()
+                
+                # Use smaller sleep intervals to be more responsive to cancellation
+                for _ in range(10):  # Sleep for 0.1s x 10 = 1s total
+                    if self._stop_event_received:
+                        return
+                    await asyncio.sleep(0.1)
+                
+        except asyncio.CancelledError:
+            _LOGGER.debug(f"Boiler Control: [{self._session_id}] Timer update task cancelled")
+            raise
+        except Exception as e:
+            _LOGGER.error(f"Boiler Control: [{self._session_id}] Error in timer update loop: {e}")
+
+    async def _async_setup_switch_listener(self) -> None:
+        """Sets up the state change listener for the tracked switch."""
+        # Dispose of any existing listener first to ensure a clean setup
+        if self._state_listener_disposer:
+            _LOGGER.debug("Boiler Control: [%s] Disposing existing switch state listener.", self._entry_id)
+            self._state_listener_disposer()
+            self._state_listener_disposer = None
+
+        if self._switch_entity_id:
+            _LOGGER.info("Boiler Control: [%s] Registering new state listener for switch: %s", self._entry_id, self._switch_entity_id)
+            self._state_listener_disposer = async_track_state_change_event(
+                self.hass, self._switch_entity_id, self._handle_switch_change_event
+            )
+            _LOGGER.debug("Boiler Control: [%s] New state listener registered. Disposer: %s", self._entry_id, self._state_listener_disposer)
+        else:
+            _LOGGER.warning("Boiler Control: [%s] Cannot set up switch listener: _switch_entity_id is None.", self._entry_id)
+
+    async def async_update_switch_entity(self, switch_entity_id: str):
+        """Service call handler to set which switch this sensor should monitor."""
+        _LOGGER.info("Boiler Control: [%s] Service call to update tracked switch to: %s", self._entry_id, switch_entity_id)
+
+        # Only update if the switch_entity_id has actually changed
+        if self._switch_entity_id != switch_entity_id:
+            self._switch_entity_id = switch_entity_id
+            await self._async_setup_switch_listener() # Re-setup listener if ID changes
+        else:
+            _LOGGER.debug("Boiler Control: [%s] Switch entity %s is the same, no need to re-register listener.", self._entry_id, switch_entity_id)
+        
+        current_switch_state = self.hass.states.get(self._switch_entity_id) if self._switch_entity_id else None
+        _LOGGER.debug("Boiler Control: [%s] Current switch state on async_update_switch_entity: %s (last_on_timestamp: %s)", self._entry_id, current_switch_state.state if current_switch_state else 'N/A', self._last_on_timestamp)
+        if current_switch_state and current_switch_state.state == STATE_ON:
+            if not self._last_on_timestamp:
+                self._last_on_timestamp = dt_util.utcnow()
+                _LOGGER.info("Boiler Control: [%s] Switch %s is ON after async_update_switch_entity, setting _last_on_timestamp to now.", self._entry_id, switch_entity_id)
+            await self._start_realtime_accumulation()
+        else:
+            await self._stop_realtime_accumulation()
+
+        self.async_write_ha_state()
+
+    @callback
+    def _handle_switch_change_event(self, event: Event) -> None:
+        """Handle switch state change event using the new event API."""
+        if self._stop_event_received:
+            return  # Don't process events during shutdown
+            
+        entity_id = event.data.get("entity_id")
+        old_state = event.data.get("old_state")
+        new_state = event.data.get("new_state")
+        
+        _LOGGER.debug("Boiler Control: [%s] Event handler called for %s. Old: %s, New: %s", 
+                     self._entry_id, entity_id, 
+                     old_state.state if old_state else 'None', 
+                     new_state.state if new_state else 'None')
+        
+        if entity_id != self._switch_entity_id:
+            _LOGGER.warning("Boiler Control: [%s] Mismatch: Listener for %s received event for %s. Ignoring.", 
+                           self._entry_id, self._switch_entity_id, entity_id)
+            return
+
+        # Call the core logic
+        self._handle_switch_change(event)
+
+    @callback
+    def _handle_switch_change_with_states(self, entity_id: str, old_state: State | None, new_state: State | None):
+        """Wrapper for backward compatibility - DEPRECATED."""
+        if self._stop_event_received:
+            return  # Don't process events during shutdown
+            
+        _LOGGER.debug("Boiler Control: [%s] Wrapper _handle_switch_change_with_states called for %s. Old: %s, New: %s", self._entry_id, entity_id, old_state.state if old_state else 'None', new_state.state if new_state else 'None')
+        if entity_id != self._switch_entity_id:
+            _LOGGER.warning("Boiler Control: [%s] Mismatch: Listener for %s received event for %s. Ignoring.", self._entry_id, self._switch_entity_id, entity_id)
+            return
+
+        # Create a mock Event object that _handle_switch_change expects
+        mock_event = type('Event', (object,), {'data': {
+            "entity_id": entity_id,
+            "old_state": old_state,
+            "new_state": new_state,
+        }})()
+        self._handle_switch_change(mock_event)
+
+    @callback
+    def _handle_switch_change(self, event: Event) -> None:
+        """The core logic to calculate runtime based on the switch's state."""
+        if self._stop_event_received:
+            return  # Don't process events during shutdown
+            
+        _LOGGER.info("Boiler Control: [%s] === _handle_switch_change CORE LOGIC CALLED === for %s", self._entry_id, self._switch_entity_id)
+        _LOGGER.debug("Boiler Control: [%s] Full event data: %s", self._entry_id, event.data)
+        
+        from_state = event.data.get("old_state")
+        to_state = event.data.get("new_state")
+        now = dt_util.utcnow()
+
+        _LOGGER.info(
+            "Boiler Control: [%s] Switch %s state change. From: %s, To: %s at %s. Current _last_on_timestamp: %s",
+            self._entry_id,
+            self._switch_entity_id,
+            from_state.state if from_state else "None",
+            to_state.state if to_state else "None",
+            now.isoformat(),
+            self._last_on_timestamp
+        )
+
+        if not to_state:
+            _LOGGER.warning("Boiler Control: [%s] Missing new_state data in switch change event for %s. Cannot process.", self._entry_id, self._switch_entity_id)
+            return
+
+        if to_state.state == STATE_ON and (not from_state or from_state.state != STATE_ON):
+            _LOGGER.info("Boiler Control: [%s] DETECTED ON TRANSITION for %s. Setting timestamp and starting accumulation.", self._entry_id, self._switch_entity_id)
+            self._last_on_timestamp = now
+            self.hass.async_create_task(self._start_realtime_accumulation())
+        
+        elif to_state.state != STATE_ON and from_state and from_state.state == STATE_ON:
+            _LOGGER.info("Boiler Control: [%s] DETECTED OFF TRANSITION for %s. Stopping accumulation.", self._entry_id, self._switch_entity_id)
+            self.hass.async_create_task(self._stop_realtime_accumulation())
+            self._last_on_timestamp = None
+        
+        else:
+            _LOGGER.debug("Boiler Control: [%s] State change for %s was not a clear ON/OFF transition. No action taken.", self._entry_id, self._switch_entity_id)
+        
+        self.async_write_ha_state()
+
+    async def _start_realtime_accumulation(self) -> None:
+        if self._stop_event_received:
+            return
+            
+        _LOGGER.debug("Boiler Control: [%s] Attempting to start accumulation task. Task status: %s", self._entry_id, self._accumulation_task.done() if self._accumulation_task else 'None')
+
+        if self._accumulation_task and not self._accumulation_task.done():
+            _LOGGER.debug("Boiler Control: [%s] Real-time accumulation task already running, not restarting.", self._entry_id)
+            return
+
+        if not self._last_on_timestamp:
+            current_switch_state = self.hass.states.get(self._switch_entity_id) if self._switch_entity_id else None
+            if current_switch_state and current_switch_state.state == STATE_ON:
+                self._last_on_timestamp = dt_util.utcnow()
+                _LOGGER.warning("Boiler Control: [%s] _last_on_timestamp was None but switch is ON. Setting now to start accumulation.", self._entry_id)
+            else:
+                _LOGGER.warning("Boiler Control: [%s] Cannot start accumulation. Switch not ON or _switch_entity_id missing. No timestamp set.", self._entry_id)
+                return
+
+        _LOGGER.info("Boiler Control: [%s] Creating new real-time accumulation task.", self._entry_id)
+        # Use asyncio.create_task to avoid HA tracking
+        import asyncio
+        self._accumulation_task = asyncio.create_task(self._async_accumulate_runtime())
+
+    async def _stop_realtime_accumulation(self) -> None:
+        if self._accumulation_task:
+            _LOGGER.info("Boiler Control: [%s] Stopping real-time accumulation task.", self._entry_id)
+            self._accumulation_task.cancel()
+            try:
+                # Await the task directly after cancelling.
+                # The task's own finally block will execute.
+                await self._accumulation_task
+                _LOGGER.debug("Boiler Control: [%s] Accumulation task finished gracefully.", self._entry_id)
+            except asyncio.CancelledError:
+                _LOGGER.debug("Boiler Control: [%s] Accumulation task was already cancelled or finished.", self._entry_id)
+            except Exception as e:
+                _LOGGER.error("Boiler Control: [%s] Error while waiting for accumulation task to stop: %s", self._entry_id, e)
+            finally:
+                self._accumulation_task = None
+        else:
+            _LOGGER.debug("Boiler Control: [%s] _stop_realtime_accumulation called but no task running.", self._entry_id)
+
+    async def _async_accumulate_runtime(self) -> None:
+        _LOGGER.debug("Boiler Control: [%s] _async_accumulate_runtime task started loop.", self._entry_id)
+        try:
+            while not self._stop_event_received:
+                if not self._switch_entity_id:
+                    _LOGGER.warning("Boiler Control: [%s] No switch entity ID in accumulation task loop. Exiting.", self._entry_id)
+                    break
+                
+                current_switch_state = self.hass.states.get(self._switch_entity_id)
+
+                if current_switch_state and current_switch_state.state == STATE_ON and self._last_on_timestamp:
+                    self._state += 1.0
+                    self.async_write_ha_state()
+                    _LOGGER.debug("Boiler Control: [%s] Accumulated 1s. New state: %.0f. Written to HA.", self._entry_id, self._state)
+                    
+                    # Use smaller sleep intervals to be more responsive to cancellation
+                    for _ in range(10):  # Sleep for 0.1s x 10 = 1s total
+                        if self._stop_event_received:
+                            return
+                        await asyncio.sleep(0.1)
+                    
+                    # Check for cancellation after sleeping
+                    if asyncio.current_task().cancelled():
+                        _LOGGER.debug("Boiler Control: [%s] Accumulation task detected cancellation after sleep. Breaking loop.", self._entry_id)
+                        break
+                else:
+                    _LOGGER.debug("Boiler Control: [%s] Accumulation condition not met (Switch not ON or timestamp missing). Exiting loop.", self._entry_id)
+                    break
+
+        except asyncio.CancelledError:
+            _LOGGER.info("Boiler Control: [%s] Real-time accumulation task received cancellation signal. Exiting loop.", self._entry_id)
+            raise
+        except Exception as e:
+            _LOGGER.error("Boiler Control: [%s] Error in accumulation task: %s", self._entry_id, e)
+        finally:
+            _LOGGER.debug("Boiler Control: [%s] _async_accumulate_runtime task finally block executed.", self._entry_id)
+
+    async def async_start_timer(self, duration_minutes: int) -> None:
+        """Starts a countdown timer for the boiler and turns on the switch."""
+        _LOGGER.info("Boiler Control: [%s] async_start_timer called with duration: %s minutes", self._entry_id, duration_minutes)
+
+        if self._watchdog_message:
+            self._watchdog_message = None
+        
+        # Cancel any existing timer listener first
+        if self._timer_unsub:
+            _LOGGER.debug("Boiler Control: [%s] Unsubscribing existing timer listener.", self._entry_id)
+            self._timer_unsub()
+            self._timer_unsub = None
+        
+        # Stop any existing timer update task
+        await self._stop_timer_update_task()
+        
+        self._timer_duration = duration_minutes
+        self._timer_state = "active"
+        self._timer_finishes_at = dt_util.utcnow() + timedelta(minutes=duration_minutes)
+        
+        await self._store.async_save(
+            {"finishes_at": self._timer_finishes_at.isoformat(), "duration": duration_minutes}
+        )
+        
+        # Start the timer update task for real-time countdown
+        await self._start_timer_update_task()
+        
+        # Ensure the switch listener is set up
+        await self._async_setup_switch_listener()
+
+        # Turn on the switch if not already on
+        current_switch_state = self.hass.states.get(self._switch_entity_id) if self._switch_entity_id else None
+        if not current_switch_state or current_switch_state.state != STATE_ON:
+            _LOGGER.info("Boiler Control: [%s] Turning on switch %s for timer.", self._entry_id, self._switch_entity_id)
+            await self.hass.services.async_call(
+                "switch", "turn_on", {"entity_id": self._switch_entity_id}, blocking=True
+            )
+            # Give HA a moment to process the switch turn_on service call,
+            # which should trigger _handle_switch_change and start accumulation.
+            await asyncio.sleep(0.1) # Short sleep to allow state propagation
+
+        # Check if _last_on_timestamp is set after switch is turned on
+        if not self._last_on_timestamp and self._is_switch_on():
+            self._last_on_timestamp = dt_util.utcnow()
+            _LOGGER.info("Boiler Control: [%s] Timer started and switch is ON, setting _last_on_timestamp.", self._entry_id)
+        
+        # Start accumulation if the switch is ON
+        if self._is_switch_on():
+            await self._start_realtime_accumulation()
+        else:
+            _LOGGER.warning("Boiler Control: [%s] Switch not ON after timer start service call, accumulation might not begin.", self._entry_id)
+
+        # Schedule the _async_timer_finished callback using async_track_point_in_utc_time
+        if self._timer_finishes_at:
+            self._timer_unsub = async_track_point_in_utc_time(
+                self.hass, self._async_timer_finished, self._timer_finishes_at
+            )
+            _LOGGER.debug("Boiler Control: [%s] Timer scheduled with async_track_point_in_utc_time to finish at %s", self._entry_id, self._timer_finishes_at.isoformat())
+        else:
+            _LOGGER.error("Boiler Control: [%s] Cannot schedule timer: _timer_finishes_at is None.", self._entry_id)
+        
+        # Update state immediately to reflect timer status
+        self.async_write_ha_state()
+
+    async def async_cancel_timer(self) -> None:
+        """Cancels an active countdown timer."""
+        _LOGGER.info("Boiler Control: [%s] async_cancel_timer called.", self._entry_id)
+        if self._timer_state == "idle":
+            _LOGGER.debug("Boiler Control: [%s] Timer already idle, no action needed on cancel.", self._entry_id)
+            return
+
+        # Unsubscribe the scheduled timer callback
+        if self._timer_unsub:
+            _LOGGER.debug("Boiler Control: [%s] Unsubscribing timer listener on cancel.", self._entry_id)
+            self._timer_unsub()
+            self._timer_unsub = None
+        
+        # Stop timer update task
+        await self._stop_timer_update_task()
+        
+        self._timer_state = "idle"
+        self._timer_finishes_at = None
+        self._timer_duration = 0
+        
+        try:
+            await self._store.async_remove()
+            _LOGGER.debug("Boiler Control: [%s] Persisted timer data removed on cancel.", self._entry_id)
+        except Exception as e:
+            _LOGGER.warning("Boiler Control: [%s] Could not remove persisted timer data on cancel: %s", self._entry_id, e)
+        
+        # Turn off the switch if it's currently on, as cancellation implies stopping heating.
+        # This will trigger _handle_switch_change and stop accumulation.
+        current_switch_state = self.hass.states.get(self._switch_entity_id) if self._switch_entity_id else None
+        if current_switch_state and current_switch_state.state == STATE_ON:
+            _LOGGER.info("Boiler Control: [%s] Turning off switch %s on timer cancellation.", self._entry_id, self._switch_entity_id)
+            await self.hass.services.async_call(
+                "switch", "turn_off", {"entity_id": self._switch_entity_id}, blocking=True
+            )
+        else:
+            # If switch is already off, just stop accumulation task if it's somehow running
+            await self._stop_realtime_accumulation()
+        
+        self.async_write_ha_state()
+
+    @callback
+    async def _async_timer_finished(self, now: dt_util.dt | None = None) -> None:
+        """Callback executed when the scheduled timer finishes.
+        This method is designed to be idempotent.
+        """
+        # The 'now' argument is passed by async_track_point_in_utc_time, but we don't strictly need it.
+        _LOGGER.info("Boiler Control: [%s] _async_timer_finished callback triggered.", self._entry_id)
+
+        # Check if timer state is still active. This makes the handler idempotent.
+        # If the timer was manually cancelled, _timer_state would be 'idle'.
+        if self._timer_state != "active":
+            _LOGGER.debug("Boiler Control: [%s] _async_timer_finished called but timer is not active. Ignoring.", self._entry_id)
+            return
+
+        if self._switch_entity_id:
+            _LOGGER.info(
+                "Boiler Control: [%s] Timer finished. Turning off switch %s.", self._entry_id, self._switch_entity_id
+            )
+            await self.hass.services.async_call(
+                "switch", "turn_off", {"entity_id": self._switch_entity_id}, blocking=True
+            )
+        else:
+            _LOGGER.warning("Boiler Control: [%s] Timer finished, but no switch entity ID is set. Cannot turn off switch.", self._entry_id)
+        
+        # Call async_cancel_timer to clean up the timer state and storage.
+        # This also ensures accumulation stops if switch turns off.
+        await self.async_cancel_timer()
+
+    def _is_switch_on(self) -> bool:
+        """Helper to check if the tracked switch is currently ON."""
+        if self._switch_entity_id:
+            switch_state = self.hass.states.get(self._switch_entity_id)
+            return switch_state is not None and switch_state.state == STATE_ON
+        return False
 
     @callback
     def _reset_at_midnight(self, now) -> None:
-        """Reset the counter at midnight."""
-        _LOGGER.info("Boiler daily runtime reset at midnight. Current state: %s", self._state)
-        if self._switch_entity_id and self._last_on_timestamp:
-             current_switch_state = self.hass.states.get(self._switch_entity_id)
-             if current_switch_state and current_switch_state.state == STATE_ON:
-                duration = (dt_util.utcnow() - self._last_on_timestamp).total_seconds()
-                self._state += duration
-                _LOGGER.info("Boiler Control: Adding final %.2f seconds before midnight reset.", duration)
-
-        self._state = 0
-        self._last_on_timestamp = None
+        """Resets the daily runtime counter at midnight."""
+        _LOGGER.info("Boiler Control: [%s] Daily runtime reset at midnight. Current state: %s", self._entry_id, self._state)
         
+        self._state = 0.0
+        self._last_on_timestamp = None
+
         if self._switch_entity_id:
             current_switch_state = self.hass.states.get(self._switch_entity_id)
             if current_switch_state and current_switch_state.state == STATE_ON:
                 self._last_on_timestamp = dt_util.utcnow()
+                self.hass.async_create_task(self._start_realtime_accumulation())
+            else:
+                self.hass.async_create_task(self._stop_realtime_accumulation())
         
         self.async_write_ha_state()
+
+    @callback
+    def _handle_ha_shutdown(self, event: Event) -> None:
+        """Handle Home Assistant shutdown event to gracefully shutdown tasks."""
+        _LOGGER.info("Boiler Control: [%s] Home Assistant shutdown event received, cancelling tasks immediately.", self._entry_id)
+        self._stop_event_received = True
+        
+        # Cancel tasks immediately and aggressively
+        if self._accumulation_task and not self._accumulation_task.done():
+            _LOGGER.debug("Boiler Control: [%s] Cancelling accumulation task due to shutdown.", self._entry_id)
+            self._accumulation_task.cancel()
+            
+        if self._timer_update_task and not self._timer_update_task.done():
+            _LOGGER.debug("Boiler Control: [%s] Cancelling timer update task due to shutdown.", self._entry_id)
+            self._timer_update_task.cancel()
+
+    async def async_will_remove_from_hass(self):
+        """Called when entity will be removed from hass."""
+        self._stop_event_received = True
+        
+        # Remove from hass.data
+        if (DOMAIN in self.hass.data and 
+            self._entry_id in self.hass.data[DOMAIN] and
+            "sensor" in self.hass.data[DOMAIN][self._entry_id]):
+            del self.hass.data[DOMAIN][self._entry_id]["sensor"]
+            _LOGGER.debug(f"Boiler Control: [{self._session_id}] Sensor removed from hass.data for entry_id: {self._entry_id}")
+        
+        # Cancel the accumulation task
+        if self._accumulation_task and not self._accumulation_task.done():
+            self._accumulation_task.cancel()
+            try:
+                await self._accumulation_task
+            except asyncio.CancelledError:
+                pass
+        
+        # Cancel timer update task
+        await self._stop_timer_update_task()
+        
+        # Cancel timer if active
+        if self._timer_unsub:
+            self._timer_unsub()
+            self._timer_unsub = None
+        
+        # Dispose state listener
+        if self._state_listener_disposer:
+            self._state_listener_disposer()
+            self._state_listener_disposer = None
+        
+        await super().async_will_remove_from_hass()

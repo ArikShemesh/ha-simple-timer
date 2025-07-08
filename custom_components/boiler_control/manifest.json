@@ -1,11 +1,12 @@
 {
   "domain": "boiler_control",
   "name": "Boiler Control",
-  "version": "2.1.0",
-  "documentation": "",
-  "issue_tracker": "",
+  "version": "1.0.0",
+  "documentation": "https://github.com/ArikShemesh/ha-boiler-control",
+  "issue_tracker": "https://github.com/ArikShemesh/ha-boiler-control/issues",
   "codeowners": [],
   "config_flow": true,
   "iot_class": "local_push",
+	"icon": "mdi:radiator",
   "loggers": ["custom_components.boiler_control"]
 }
