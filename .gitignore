@@ -123,3 +123,7 @@ package-lock.json
 Thumbs.db
 /*.docx
 /*.bat
+/*.pdf
+/*.html
+/*.bak
+/notepad session

@@ -21,9 +21,9 @@ const serveOptions = {
 
 export default [
   {
-    input: "src/boiler-card.ts",
+    input: "src/timer-card.ts",
     output: {
-      file: 'dist/boiler-card.js',
+      file: 'dist/timer-card.js',
       format: "es",
       inlineDynamicImports: true,
       sourcemap: !isProduction,

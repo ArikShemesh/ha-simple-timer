@@ -1,19 +1,19 @@
-// boiler-card.ts
+// timer-card.ts
 
 import { LitElement, html, css } from 'lit';
 
-// Ensure HomeAssistant and BoilerCardConfig are recognized from global.d.ts
+// Ensure HomeAssistant and TimerCardConfig are recognized from global.d.ts
 
-const DOMAIN = "boiler_control";
-const CARD_VERSION = "3.6.0";
+const DOMAIN = "simple_timer";
+const CARD_VERSION = "1.0.0";
 
 console.info(
-  `%c BOILER-CARD %c v${CARD_VERSION} `,
+  `%c TIMER-CARD %c v${CARD_VERSION} `,
   'color: orange; font-weight: bold; background: black',
   'color: white; font-weight: bold; background: dimgray',
 );
 
-class BoilerCard extends LitElement {
+class TimerCard extends LitElement {
   static get properties() {
     return {
       hass: { type: Object },
@@ -26,7 +26,7 @@ class BoilerCard extends LitElement {
   }
 
   hass?: HomeAssistant;
-  _config?: BoilerCardConfig;
+  _config?: TimerCardConfig;
 
   _countdownInterval: number | null = null;
   _liveRuntimeSeconds: number = 0;
@@ -42,43 +42,43 @@ class BoilerCard extends LitElement {
   _effectiveSensorEntity: string | null = null;
 
   static async getConfigElement(): Promise<HTMLElement> {
-    await import("./boiler-card-editor.js");
-    return document.createElement("boiler-card-editor");
+    await import("./timer-card-editor.js");
+    return document.createElement("timer-card-editor");
   }
 
-  static getStubConfig(hass: HomeAssistant): BoilerCardConfig {
-    console.log("BoilerCard: Generating stub config with hass object:", hass);
+  static getStubConfig(hass: HomeAssistant): TimerCardConfig {
+    console.log("TimerCard: Generating stub config with hass object:", hass);
     let initialInstanceId: string | null = null;
 
-    // Find the first boiler control sensor and use its entry_id
+    // Find the first timer control sensor and use its entry_id
     for (const entityId of Object.keys(hass.states)) {
         const state = hass.states[entityId];
         if (entityId.startsWith("sensor.") && 
             typeof state.attributes.entry_id === 'string' && 
             typeof state.attributes.switch_entity_id === 'string') {
             initialInstanceId = state.attributes.entry_id; // Use entry_id, not entity_id
-            console.info(`BoilerCard: getStubConfig auto-selected first instance: '${initialInstanceId}' from sensor '${entityId}'`);
+            console.info(`TimerCard: getStubConfig auto-selected first instance: '${initialInstanceId}' from sensor '${entityId}'`);
             break;
         }
     }
 
     return {
-      type: "custom:boiler-card",
-      boiler_instance_id: initialInstanceId, // This will now be explicitly set
+      type: "custom:timer-card",
+      timer_instance_id: initialInstanceId, // This will now be explicitly set
       timer_buttons: [15, 30, 60, 90, 120, 150],
-      card_title: "Boiler Control"
+      card_title: "Simple Timer"
     };
   }
 
-  setConfig(cfg: BoilerCardConfig): void {
+  setConfig(cfg: TimerCardConfig): void {
     this._config = {
-      type: cfg.type || "custom:boiler-card",
+      type: cfg.type || "custom:timer-card",
       timer_buttons: Array.isArray(cfg.timer_buttons) ? [...cfg.timer_buttons] : [15, 30, 60, 90, 120, 150],
       card_title: cfg.card_title || null
     };
 
-    if (cfg.boiler_instance_id) {
-        this._config.boiler_instance_id = cfg.boiler_instance_id;
+    if (cfg.timer_instance_id) {
+        this._config.timer_instance_id = cfg.timer_instance_id;
     }
     if (cfg.entity) {
         this._config.entity = cfg.entity;
@@ -119,7 +119,7 @@ class BoilerCard extends LitElement {
     this._effectiveSwitchEntity = null;
     this._effectiveSensorEntity = null;
     this._entitiesLoaded = false;
-    console.log(`BoilerCard: setConfig completed. Configured instance ID: ${this._config.boiler_instance_id}`);
+    console.log(`TimerCard: setConfig completed. Configured instance ID: ${this._config.timer_instance_id}`);
   }
 
   _determineEffectiveEntities(): void {
@@ -132,8 +132,8 @@ class BoilerCard extends LitElement {
         return;
     }
 
-    if (this._config?.boiler_instance_id) {
-        const targetEntryId = this._config.boiler_instance_id;
+    if (this._config?.timer_instance_id) {
+        const targetEntryId = this._config.timer_instance_id;
         const allSensors = Object.keys(this.hass.states).filter(entityId => entityId.startsWith('sensor.'));
         const instanceSensor = allSensors.find(entityId => {
             const state = this.hass!.states[entityId];
@@ -149,10 +149,10 @@ class BoilerCard extends LitElement {
             if (currentSwitch && this.hass.states[currentSwitch]) {
                 entitiesAreValid = true;
             } else {
-                console.warn(`BoilerCard: Configured instance '${targetEntryId}' sensor '${currentSensor}' links to missing or invalid switch '${currentSwitch}'.`);
+                console.warn(`TimerCard: Configured instance '${targetEntryId}' sensor '${currentSensor}' links to missing or invalid switch '${currentSwitch}'.`);
             }
         } else {
-            console.warn(`BoilerCard: Configured boiler_instance_id '${targetEntryId}' does not have a corresponding boiler_control sensor found.`);
+            console.warn(`TimerCard: Configured timer_instance_id '${targetEntryId}' does not have a corresponding simple_timer sensor found.`);
         }
     }
 
@@ -163,12 +163,12 @@ class BoilerCard extends LitElement {
             currentSwitch = sensorState.attributes.switch_entity_id as string | null;
             if (currentSwitch && this.hass.states[currentSwitch]) {
                 entitiesAreValid = true;
-                console.info(`BoilerCard: Using manually configured sensor_entity: Sensor '${currentSensor}', Switch '${currentSwitch}'.`);
+                console.info(`TimerCard: Using manually configured sensor_entity: Sensor '${currentSensor}', Switch '${currentSwitch}'.`);
             } else {
-                console.warn(`BoilerCard: Manually configured sensor '${currentSensor}' links to missing or invalid switch '${currentSwitch}'.`);
+                console.warn(`TimerCard: Manually configured sensor '${currentSensor}' links to missing or invalid switch '${currentSwitch}'.`);
             }
         } else {
-            console.warn(`BoilerCard: Manually configured sensor_entity '${this._config.sensor_entity}' not found or missing required attributes.`);
+            console.warn(`TimerCard: Manually configured sensor_entity '${this._config.sensor_entity}' not found or missing required attributes.`);
         }
     }
 
@@ -185,12 +185,12 @@ class BoilerCard extends LitElement {
             currentSwitch = sensorState.attributes.switch_entity_id as string | null;
             if (currentSwitch && this.hass.states[currentSwitch]) {
                 entitiesAreValid = true;
-                console.info(`BoilerCard: Auto-detected first instance: Sensor '${currentSensor}', Switch '${currentSwitch}'.`);
+                console.info(`TimerCard: Auto-detected first instance: Sensor '${currentSensor}', Switch '${currentSwitch}'.`);
             } else {
-                console.warn(`BoilerCard: Auto-detected sensor '${currentSensor}' links to missing or invalid switch '${currentSwitch}'.`);
+                console.warn(`TimerCard: Auto-detected sensor '${currentSensor}' links to missing or invalid switch '${currentSwitch}'.`);
             }
         } else {
-            console.info(`BoilerCard: No boiler_control sensor found for auto-detection.`);
+            console.info(`TimerCard: No simple_timer sensor found for auto-detection.`);
         }
     }
 
@@ -205,7 +205,7 @@ class BoilerCard extends LitElement {
 
   _getEntryId(): string | null {
     if (!this._effectiveSensorEntity || !this.hass || !this.hass.states) {
-      console.error("Boiler-card: _getEntryId called without a valid effective sensor entity.");
+      console.error("Timer-card: _getEntryId called without a valid effective sensor entity.");
       return null;
     }
     const sensor = this.hass.states[this._effectiveSensorEntity];
@@ -224,75 +224,79 @@ class BoilerCard extends LitElement {
     const domain = serviceParts[0];
     const service = serviceParts.slice(1).join('.');
 
-    this.hass.callService(domain, service, { message: message });
+    this.hass.callService(domain, service, { message: message })
+      .catch(error => {
+        console.warn("Timer-card: Notification failed:", error);
+      });
   }
 
   _startTimer(minutes: number): void {
     if (!this._entitiesLoaded || !this.hass || !this.hass.callService) {
-        console.error("Boiler-card: Cannot start timer. Entities not loaded or callService unavailable.");
+        console.error("Timer-card: Cannot start timer. Entities not loaded or callService unavailable.");
         return;
     }
     const entryId = this._getEntryId();
-    if (!entryId) { console.error("Boiler-card: Entry ID not found for starting timer."); return; }
+    if (!entryId) { console.error("Timer-card: Entry ID not found for starting timer."); return; }
     
     const switchId = this._effectiveSwitchEntity!;
 
-    this.hass.callService("switch", "turn_on", { entity_id: switchId })
+    this.hass.callService("homeassistant", "turn_on", { entity_id: switchId })
       .then(() => {
         this.hass!.callService(DOMAIN, "start_timer", { entry_id: entryId, duration: minutes });
-        this._sendNotification(`Boiler was turned on for ${minutes} minutes`);
+        this._sendNotification(`Timer was turned on for ${minutes} minutes`);
       })
       .catch(error => {
-        console.error("Boiler-card: Error turning on switch or starting timer:", error);
+        console.error("Timer-card: Error turning on switch or starting timer:", error);
       });
     this._notificationSentForCurrentCycle = false;
   }
 
   _cancelTimer(): void {
     if (!this._entitiesLoaded || !this.hass || !this.hass.callService) {
-        console.error("Boiler-card: Cannot cancel timer. Entities not loaded or callService unavailable.");
+        console.error("Timer-card: Cannot cancel timer. Entities not loaded or callService unavailable.");
         return;
     }
     const entryId = this._getEntryId();
-    if (!entryId) { console.error("Boiler-card: Entry ID not found for cancelling timer."); return; }
+    if (!entryId) { console.error("Timer-card: Entry ID not found for cancelling timer."); return; }
 
     const switchId = this._effectiveSwitchEntity!;
 
-    this.hass.callService("switch", "turn_off", { entity_id: switchId })
+    this.hass.callService("homeassistant", "turn_off", { entity_id: switchId })
       .then(() => {
         this.hass!.callService(DOMAIN, "cancel_timer", { entry_id: entryId });
-        this._sendBoilerFinishedNotification();
+        this._sendTimerFinishedNotification();
       })
       .catch(error => {
-        console.error("Boiler-card: Error turning off switch or cancelling timer:", error);
+        console.error("Timer-card: Error turning off switch or cancelling timer:", error);
       });
     this._notificationSentForCurrentCycle = false;
   }
 	
   _togglePower(): void {
     if (!this._entitiesLoaded || !this.hass || !this.hass.states || !this.hass.callService) {
-        console.error("Boiler-card: Cannot toggle power. Entities not loaded or services unavailable.");
+        console.error("Timer-card: Cannot toggle power. Entities not loaded or services unavailable.");
         return;
     }
     const switchId = this._effectiveSwitchEntity!;
 
-    const boilerSwitch = this.hass.states[switchId];
-    if (!boilerSwitch) {
-        console.warn(`Boiler-card: Boiler switch entity '${switchId}' not found during toggle.`);
+    const timerSwitch = this.hass.states[switchId];
+    if (!timerSwitch) {
+        console.warn(`Timer-card: Switch entity '${switchId}' not found during toggle.`);
         return;
     }
 
-    if (boilerSwitch.state === 'on') {
+    if (timerSwitch.state === 'on') {
       this._cancelTimer();
-      console.log(`Boiler-card: Manually turning off boiler switch: ${switchId}`);
+      console.log(`Timer-card: Manually turning off switch: ${switchId}`);
     } else {
-      this.hass.callService("switch", "turn_on", { entity_id: switchId })
+      // Use generic HA service instead of domain-specific
+      this.hass.callService("homeassistant", "turn_on", { entity_id: switchId })
         .then(() => {
-            this._sendNotification("Boiler started");
-            console.log(`Boiler-card: Manually turning on boiler switch: ${switchId}`);
+            this._sendNotification("Timer started");
+            console.log(`Timer-card: Manually turning on switch: ${switchId}`);
         })
         .catch(error => {
-            console.error("Boiler-card: Error manually turning on switch:", error);
+            console.error("Timer-card: Error manually turning on switch:", error);
         });
       this._notificationSentForCurrentCycle = false;
     }
@@ -300,7 +304,7 @@ class BoilerCard extends LitElement {
 
   _showMoreInfo(): void {
     if (!this._entitiesLoaded || !this.hass) {
-        console.error("Boiler-card: Cannot show more info. Entities not loaded.");
+        console.error("Timer-card: Cannot show more info. Entities not loaded.");
         return;
     }
     const sensorId = this._effectiveSensorEntity!;
@@ -358,7 +362,7 @@ class BoilerCard extends LitElement {
     if (!this._countdownInterval) {
         const rawFinish = sensor.attributes.timer_finishes_at;
         if (rawFinish === undefined) {
-            console.warn("Boiler-card: timer_finishes_at is undefined for active timer. Stopping countdown.");
+            console.warn("Timer-card: timer_finishes_at is undefined for active timer. Stopping countdown.");
             this._stopCountdown();
             return;
         }
@@ -380,7 +384,7 @@ class BoilerCard extends LitElement {
                   const minutes = totalMinutes % 60;
                   const formattedDailyUsage = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
                   
-                  this._sendNotification(`Boiler was turned off - daily usage ${formattedDailyUsage} (hh:mm)`);
+                  this._sendNotification(`Timer was turned off - daily usage ${formattedDailyUsage} (hh:mm)`);
                   this._notificationSentForCurrentCycle = true;
               }
           }
@@ -398,7 +402,7 @@ class BoilerCard extends LitElement {
     this._timeRemaining = null;
   }
 
-  _sendBoilerFinishedNotification(): void {
+  _sendTimerFinishedNotification(): void {
     if (!this._entitiesLoaded || !this.hass || !this.hass.states) return;
 
     const sensor = this.hass!.states[this._effectiveSensorEntity!];
@@ -410,7 +414,7 @@ class BoilerCard extends LitElement {
     const minutes = totalMinutes % 60;
     const formattedDailyUsage = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
     
-    this._sendNotification(`Boiler finished – daily usage ${formattedDailyUsage} (hh:mm)`);
+    this._sendNotification(`Timer finished – daily usage ${formattedDailyUsage} (hh:mm)`);
   }
   
   render() {
@@ -421,35 +425,35 @@ class BoilerCard extends LitElement {
         message = "Home Assistant object (hass) not available. Card cannot load.";
         isWarning = true;
     } else if (!this._entitiesLoaded) {
-        if (this._config?.boiler_instance_id) {
+        if (this._config?.timer_instance_id) {
             const configuredSensorState = Object.values(this.hass.states).find(
-                (state: HAState) => state.attributes.entry_id === this._config!.boiler_instance_id && state.entity_id.startsWith('sensor.')
+                (state: HAState) => state.attributes.entry_id === this._config!.timer_instance_id && state.entity_id.startsWith('sensor.')
             ) as HAState | undefined;
 
             if (!configuredSensorState) {
-                message = `Boiler Control Instance '${this._config.boiler_instance_id}' not found. Please select a valid instance in the card editor.`;
+                message = `Timer Control Instance '${this._config.timer_instance_id}' not found. Please select a valid instance in the card editor.`;
                 isWarning = true;
             } else if (typeof configuredSensorState.attributes.switch_entity_id !== 'string' || !(configuredSensorState.attributes.switch_entity_id && this.hass.states[configuredSensorState.attributes.switch_entity_id])) {
-                message = `Boiler Control Instance '${this._config.boiler_instance_id}' linked to missing or invalid switch '${configuredSensorState.attributes.switch_entity_id}'. Please check instance configuration.`;
+                message = `Timer Control Instance '${this._config.timer_instance_id}' linked to missing or invalid switch '${configuredSensorState.attributes.switch_entity_id}'. Please check instance configuration.`;
                 isWarning = true;
             } else {
-                message = "Loading Boiler Control Card. Please wait...";
+                message = "Loading Timer Control Card. Please wait...";
                 isWarning = false;
             }
         } else if (this._config?.sensor_entity) {
             const configuredSensorState = this.hass.states[this._config.sensor_entity];
             if (!configuredSensorState) {
-                message = `Configured Boiler Control Sensor '${this._config.sensor_entity}' not found. Please select a valid instance in the card editor.`;
+                message = `Configured Timer Control Sensor '${this._config.sensor_entity}' not found. Please select a valid instance in the card editor.`;
                 isWarning = true;
             } else if (typeof configuredSensorState.attributes.switch_entity_id !== 'string' || !(configuredSensorState.attributes.switch_entity_id && this.hass.states[configuredSensorState.attributes.switch_entity_id])) {
-                message = `Configured Boiler Control Sensor '${this._config.sensor_entity}' is invalid or its linked switch '${configuredSensorState.attributes.switch_entity_id}' is missing. Please select a valid instance.`;
+                message = `Configured Timer Control Sensor '${this._config.sensor_entity}' is invalid or its linked switch '${configuredSensorState.attributes.switch_entity_id}' is missing. Please select a valid instance.`;
                 isWarning = true;
             } else {
-                message = "Loading Boiler Control Card. Please wait...";
+                message = "Loading Timer Control Card. Please wait...";
                 isWarning = false;
             }
         } else {
-            message = "Select a Boiler Control Instance from the dropdown in the card editor to link this card.";
+            message = "Select a Timer Control Instance from the dropdown in the card editor to link this card.";
             isWarning = false;
         }
     }
@@ -458,10 +462,10 @@ class BoilerCard extends LitElement {
       return html`<ha-card><div class="${isWarning ? 'warning' : 'placeholder'}">${message}</div></ha-card>`;
     }
 	
-    const boilerSwitch = this.hass!.states[this._effectiveSwitchEntity!];
+    const timerSwitch = this.hass!.states[this._effectiveSwitchEntity!];
     const sensor = this.hass!.states[this._effectiveSensorEntity!];
     
-    const isOn = boilerSwitch.state === 'on';
+    const isOn = timerSwitch.state === 'on';
     const isTimerActive = sensor.attributes.timer_state === 'active';
     const timerDurationInMinutes = sensor.attributes.timer_duration || 0; 
     const isManualOn = isOn && !isTimerActive;
@@ -470,16 +474,9 @@ class BoilerCard extends LitElement {
     
     let totalSecondsForDisplay = committedSeconds;
     
-    const integerMinutes = Math.floor(totalSecondsForDisplay / 60);
-    const remainingSeconds = totalSecondsForDisplay % 60;
-    
-    let finalTotalMinutes = integerMinutes;
-    if (remainingSeconds >= 30) {
-        finalTotalMinutes += 1;
-    }
-
-    const hours = Math.floor(finalTotalMinutes / 60);
-    const minutes = finalTotalMinutes % 60;
+    const totalMinutes = Math.floor(totalSecondsForDisplay / 60);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
     const formattedTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
     
     const watchdogMessage = sensor.attributes.watchdog_message;
@@ -625,11 +622,11 @@ class BoilerCard extends LitElement {
 `;
   }
 }
-customElements.define("boiler-card", BoilerCard);
+customElements.define("timer-card", TimerCard);
 
 window.customCards = window.customCards || [];
 window.customCards.push({
-  type: "boiler-card",
-  name: "Boiler Control Card",
-  description: "A card for the Boiler Control integration.",
+  type: "timer-card",
+  name: "Simple Timer Card",
+  description: "A card for the Simple Timer integration.",
 });

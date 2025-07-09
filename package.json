@@ -1,8 +1,8 @@
 {
-  "name": "boiler-control-card",
+  "name": "simple-timer-card",
   "version": "1.0.0",
-  "description": "A custom card for Boiler Control integration in Home Assistant",
-  "main": "boiler-card.ts",
+  "description": "Custom simple timer integration for Home Assistant",
+  "main": "timer-card.ts",
   "type": "module",
   "scripts": {
     "build": "rollup -c",
@@ -13,7 +13,7 @@
     "home-assistant",
     "lovelace",
     "custom-card",
-    "boiler-control",
+    "simple-timer",
     "typescript"
   ],
   "targets": {

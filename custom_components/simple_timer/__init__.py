@@ -1,4 +1,4 @@
-"""The Boiler Control integration."""
+"""The Simple Timer integration."""
 import voluptuous as vol
 
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -27,7 +27,7 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
     })
 
     async def start_timer(call: ServiceCall):
-        """Handle the service call to start the boiler timer."""
+        """Handle the service call to start the device timer."""
         entry_id = call.data["entry_id"]
         duration = call.data["duration"]
         
@@ -41,10 +41,10 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
         if sensor:
             await sensor.async_start_timer(duration)
         else:
-            raise ValueError(f"No boiler control sensor found for entry_id: {entry_id}")
+            raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
 
     async def cancel_timer(call: ServiceCall):
-        """Handle the service call to cancel the boiler timer."""
+        """Handle the service call to cancel the device timer."""
         entry_id = call.data["entry_id"]
         
         # Find the sensor by entry_id
@@ -57,7 +57,7 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
         if sensor:
             await sensor.async_cancel_timer()
         else:
-            raise ValueError(f"No boiler control sensor found for entry_id: {entry_id}")
+            raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
 
     async def update_switch_entity(call: ServiceCall):
         """Handle the service call to update the switch entity for the sensor."""
@@ -74,7 +74,7 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
         if sensor:
             await sensor.async_update_switch_entity(switch_entity_id)
         else:
-            raise ValueError(f"No boiler control sensor found for entry_id: {entry_id}")
+            raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
 
     # Register all three services
     hass.services.async_register(
@@ -91,13 +91,13 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
     return True
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up a single Boiler Control config entry."""
+    """Set up a single Simple Timer config entry."""
     hass.data[DOMAIN][entry.entry_id] = {"sensor": None} # Initialize with None
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a Boiler Control config entry."""
+    """Unload a Simple Timer config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)

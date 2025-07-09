@@ -1,13 +1,13 @@
-// boiler-card-editor.ts
+// timer-card-editor.ts
 
 import { LitElement, html, css } from 'lit';
 
 // Define necessary interfaces directly in this file for compilation robustness.
 // In a full project setup, these might reside in a shared 'global.d.ts' or types file.
 
-interface BoilerCardConfig {
+interface TimerCardConfig {
   type: string;
-  boiler_instance_id?: string | null;
+  timer_instance_id?: string | null;
   entity?: string | null;
   sensor_entity?: string | null;
   timer_buttons: number[];
@@ -79,34 +79,34 @@ interface HAConfigEntriesByDomainResponse {
 
 const ATTR_INSTANCE_TITLE = "instance_title";
 
-const DOMAIN = "boiler_control";
+const DOMAIN = "simple_timer";
 
-class BoilerCardEditor extends LitElement {
+class TimerCardEditor extends LitElement {
   static properties = {
     hass: { type: Object },
     _config: { type: Object },
   };
 
   hass?: HomeAssistant;
-  _config: BoilerCardConfig;
+  _config: TimerCardConfig;
   _configFullyLoaded: boolean = false; // Track if we've received a complete config
 
-  private _boilerInstancesOptions: Array<{ value: string; label: string }> = [];
+  private _timerInstancesOptions: Array<{ value: string; label: string }> = [];
 
   constructor() {
     super();
     this._config = {
-      type: "custom:boiler-card",
+      type: "custom:timer-card",
       timer_buttons: [15, 30, 60, 90, 120, 150],
       notification_entity: null,
-      boiler_instance_id: null,
+      timer_instance_id: null,
       card_title: null
     };
   }
 
-  async _getBoilerControlInstances(): Promise<Array<{ value: string; label: string }>> {
+  async _getSimpleTimerInstances(): Promise<Array<{ value: string; label: string }>> {
     if (!this.hass || !this.hass.states) {
-      console.warn("BoilerCardEditor: hass.states not available when trying to fetch instances from states.");
+      console.warn("TimerCardEditor: hass.states not available when trying to fetch instances from states.");
       return [];
     }
 
@@ -115,7 +115,7 @@ class BoilerCardEditor extends LitElement {
     for (const entityId in this.hass.states) {
       const state = this.hass.states[entityId];
       
-      // UPDATED: Look for sensors that have the required boiler control attributes
+      // UPDATED: Look for sensors that have the required simple timer attributes
       // The entity name format is now: "[Instance Name] Runtime ([entry_id_short])"
       if (entityId.startsWith('sensor.') &&
           entityId.includes('runtime') &&  // Runtime sensors contain 'runtime' in their ID
@@ -127,24 +127,24 @@ class BoilerCardEditor extends LitElement {
         const entryId = state.attributes.entry_id;
         const instanceTitle = state.attributes[ATTR_INSTANCE_TITLE]; 
 
-        let instanceLabel = `Boiler Control (${entryId.substring(0, 8)})`;
+        let instanceLabel = `Timer Control (${entryId.substring(0, 8)})`;
 
-        console.debug(`BoilerCardEditor: Processing sensor ${entityId} (Entry: ${entryId})`);
-        console.debug(`BoilerCardEditor: Found raw attribute '${ATTR_INSTANCE_TITLE}': ${instanceTitle}`);
-        console.debug(`BoilerCardEditor: Type of raw attribute: ${typeof instanceTitle}`);
+        console.debug(`TimerCardEditor: Processing sensor ${entityId} (Entry: ${entryId})`);
+        console.debug(`TimerCardEditor: Found raw attribute '${ATTR_INSTANCE_TITLE}': ${instanceTitle}`);
+        console.debug(`TimerCardEditor: Type of raw attribute: ${typeof instanceTitle}`);
 
         if (instanceTitle && typeof instanceTitle === 'string' && instanceTitle.trim() !== '') {
             instanceLabel = instanceTitle.trim();
-            console.debug(`BoilerCardEditor: Using '${ATTR_INSTANCE_TITLE}' for label: "${instanceLabel}"`);
+            console.debug(`TimerCardEditor: Using '${ATTR_INSTANCE_TITLE}' for label: "${instanceLabel}"`);
         } else {
-            console.warn(`BoilerCardEditor: Sensor '${entityId}' has no valid '${ATTR_INSTANCE_TITLE}' attribute. Falling back to entry ID based label: "${instanceLabel}".`);
+            console.warn(`TimerCardEditor: Sensor '${entityId}' has no valid '${ATTR_INSTANCE_TITLE}' attribute. Falling back to entry ID based label: "${instanceLabel}".`);
         }
         
         if (!instancesMap.has(entryId)) {
           instancesMap.set(entryId, { value: entryId, label: instanceLabel });
-          console.debug(`BoilerCardEditor: Added instance: ${instanceLabel} (${entryId}) from sensor: ${entityId}`);
+          console.debug(`TimerCardEditor: Added instance: ${instanceLabel} (${entryId}) from sensor: ${entityId}`);
         } else {
-            console.debug(`BoilerCardEditor: Skipping duplicate entry_id: ${entryId}`);
+            console.debug(`TimerCardEditor: Skipping duplicate entry_id: ${entryId}`);
         }
       }
     }
@@ -153,9 +153,9 @@ class BoilerCardEditor extends LitElement {
     instances.sort((a, b) => a.label.localeCompare(b.label));
 
     if (instances.length === 0) {
-        console.info(`BoilerCardEditor: No Boiler Control integration instances found by scanning hass.states.`);
+        console.info(`TimerCardEditor: No Simple Timer integration instances found by scanning hass.states.`);
     } else {
-        console.info("BoilerCardEditor: Found Boiler Control instances by scanning states:", instances);
+        console.info("TimerCardEditor: Found Simple Timer instances by scanning states:", instances);
     }
     return instances;
   }
@@ -193,27 +193,27 @@ class BoilerCardEditor extends LitElement {
     return targets;
   }
 
-  async setConfig(cfg: BoilerCardConfig): Promise<void> {
-    console.log(`BoilerCardEditor: setConfig called with:`, cfg);
+  async setConfig(cfg: TimerCardConfig): Promise<void> {
+    console.log(`TimerCardEditor: setConfig called with:`, cfg);
     const oldConfig = { ...this._config };
 
     const timerButtonsToSet = Array.isArray(cfg.timer_buttons)
       ? [...cfg.timer_buttons].filter(val => Number.isInteger(val) && val > 0 && val <= 1000)
       : [15, 30, 60, 90, 120, 150];
 
-    const newConfigData: BoilerCardConfig = {
-      type: cfg.type || "custom:boiler-card",
+    const newConfigData: TimerCardConfig = {
+      type: cfg.type || "custom:timer-card",
       timer_buttons: timerButtonsToSet.sort((a, b) => a - b),
       card_title: cfg.card_title || null
     };
 
-    // SIMPLIFIED: Just preserve the boiler_instance_id as-is from the config
-    // Don't do any auto-selection here - let _fetchBoilerInstances handle that
-    if (cfg.boiler_instance_id) {
-        newConfigData.boiler_instance_id = cfg.boiler_instance_id;
-        console.info(`BoilerCardEditor: setConfig PRESERVING existing boiler_instance_id: '${cfg.boiler_instance_id}'`);
+    // SIMPLIFIED: Just preserve the timer_instance_id as-is from the config
+    // Don't do any auto-selection here - let _fetchTimerInstances handle that
+    if (cfg.timer_instance_id) {
+        newConfigData.timer_instance_id = cfg.timer_instance_id;
+        console.info(`TimerCardEditor: setConfig PRESERVING existing timer_instance_id: '${cfg.timer_instance_id}'`);
     } else {
-        console.info(`BoilerCardEditor: setConfig - no boiler_instance_id in config, will be auto-selected later`);
+        console.info(`TimerCardEditor: setConfig - no timer_instance_id in config, will be auto-selected later`);
     }
 
     // Preserve other legacy config fields if they exist
@@ -227,28 +227,28 @@ class BoilerCardEditor extends LitElement {
     // Mark that we've received a complete config (this prevents premature auto-selection)
     this._configFullyLoaded = true;
     
-    console.log(`BoilerCardEditor: setConfig result:`, this._config);
+    console.log(`TimerCardEditor: setConfig result:`, this._config);
     
     // Only dispatch if config actually changed
     if (JSON.stringify(oldConfig) !== JSON.stringify(this._config)) {
-        console.log(`BoilerCardEditor: Config changed, dispatching config-changed event`);
+        console.log(`TimerCardEditor: Config changed, dispatching config-changed event`);
         this.dispatchEvent(
             new CustomEvent("config-changed", { detail: { config: this._config } })
         );
     } else {
-        console.log(`BoilerCardEditor: Config unchanged, not dispatching event`);
+        console.log(`TimerCardEditor: Config unchanged, not dispatching event`);
     }
     
     this.requestUpdate();
   }
 
   get _schema(): any[] {
-    const boilerInstances = this._boilerInstancesOptions || [];
+    const timerInstances = this._timerInstancesOptions || [];
     const notificationServiceTargets = this._getNotificationServiceTargets();
 
-    const instanceOptions = boilerInstances.length > 0
-        ? boilerInstances
-        : [{ value: "none_found", label: "No Boiler Control Instances Found" }];
+    const instanceOptions = timerInstances.length > 0
+        ? timerInstances
+        : [{ value: "none_found", label: "No Simple Timer Instances Found" }];
 
     const notificationOptions = [{ value: "none_selected", label: "None" }];
     notificationServiceTargets.forEach(target => notificationOptions.push(target));
@@ -264,8 +264,8 @@ class BoilerCardEditor extends LitElement {
         }
       },
       {
-        name: "boiler_instance_id",
-        label: "Boiler Control Instance",
+        name: "timer_instance_id",
+        label: "Simple Timer Instance",
         required: true,
         selector: {
           select: {
@@ -290,54 +290,54 @@ class BoilerCardEditor extends LitElement {
   connectedCallback() {
       super.connectedCallback();
       if (this.hass) {
-          this._fetchBoilerInstances();
+          this._fetchTimerInstances();
       } else {
-          console.warn("BoilerCardEditor: hass not available on connectedCallback. Deferring instance fetch.");
+          console.warn("TimerCardEditor: hass not available on connectedCallback. Deferring instance fetch.");
       }
   }
 
   updated(changedProperties: Map<string | number | symbol, unknown>): void {
       super.updated(changedProperties);
       if (changedProperties.has("hass") && this.hass) {
-          if ((changedProperties.get("hass") as any)?.states !== this.hass.states || this._boilerInstancesOptions.length === 0) {
-               console.log("BoilerCardEditor: hass.states changed or instances not yet fetched, re-fetching instances.");
-               this._fetchBoilerInstances();
+          if ((changedProperties.get("hass") as any)?.states !== this.hass.states || this._timerInstancesOptions.length === 0) {
+               console.log("TimerCardEditor: hass.states changed or instances not yet fetched, re-fetching instances.");
+               this._fetchTimerInstances();
           }
       }
   }
 
-  async _fetchBoilerInstances() {
+  async _fetchTimerInstances() {
       if (this.hass) {
-          console.log(`BoilerCardEditor: _fetchBoilerInstances called. Config loaded: ${this._configFullyLoaded}, Current config boiler_instance_id: '${this._config?.boiler_instance_id}'`);
+          console.log(`TimerCardEditor: _fetchTimerInstances called. Config loaded: ${this._configFullyLoaded}, Current config timer_instance_id: '${this._config?.timer_instance_id}'`);
           
-          this._boilerInstancesOptions = await this._getBoilerControlInstances();
-          console.log(`BoilerCardEditor: Found ${this._boilerInstancesOptions.length} instances:`, this._boilerInstancesOptions);
+          this._timerInstancesOptions = await this._getSimpleTimerInstances();
+          console.log(`TimerCardEditor: Found ${this._timerInstancesOptions.length} instances:`, this._timerInstancesOptions);
           
           // CRITICAL: Only allow auto-selection if we're sure the config is fully loaded
           // This prevents overriding user selections when the editor is re-opened
           if (!this._configFullyLoaded) {
-              console.info(`BoilerCardEditor: Config not fully loaded yet, skipping any auto-selection logic`);
+              console.info(`TimerCardEditor: Config not fully loaded yet, skipping any auto-selection logic`);
               this.requestUpdate();
               return;
           }
           
           // AUTO-SELECT: Only auto-select if NO instance is currently configured
           // AND instances are available. Don't override existing valid selections.
-          const hasNoInstanceConfigured = !this._config?.boiler_instance_id || 
-                                        this._config.boiler_instance_id === "none_found" ||
-                                        this._config.boiler_instance_id === "";
-          const hasAvailableInstances = this._boilerInstancesOptions.length > 0;
+          const hasNoInstanceConfigured = !this._config?.timer_instance_id || 
+                                        this._config.timer_instance_id === "none_found" ||
+                                        this._config.timer_instance_id === "";
+          const hasAvailableInstances = this._timerInstancesOptions.length > 0;
           
-          console.log(`BoilerCardEditor: hasNoInstanceConfigured: ${hasNoInstanceConfigured}, hasAvailableInstances: ${hasAvailableInstances}`);
+          console.log(`TimerCardEditor: hasNoInstanceConfigured: ${hasNoInstanceConfigured}, hasAvailableInstances: ${hasAvailableInstances}`);
           
           if (hasNoInstanceConfigured && hasAvailableInstances) {
-              const firstInstance = this._boilerInstancesOptions[0];
-              console.info(`BoilerCardEditor: AUTO-SELECTING first available instance (no valid instance configured): '${firstInstance.value}' (${firstInstance.label})`);
+              const firstInstance = this._timerInstancesOptions[0];
+              console.info(`TimerCardEditor: AUTO-SELECTING first available instance (no valid instance configured): '${firstInstance.value}' (${firstInstance.label})`);
               
               // Update the config to include the auto-selected instance
-              const updatedConfig: BoilerCardConfig = {
+              const updatedConfig: TimerCardConfig = {
                   ...this._config,
-                  boiler_instance_id: firstInstance.value
+                  timer_instance_id: firstInstance.value
               };
               
               this._config = updatedConfig;
@@ -348,19 +348,19 @@ class BoilerCardEditor extends LitElement {
                       composed: true,
                   }),
               );
-          } else if (this._config?.boiler_instance_id && hasAvailableInstances) {
+          } else if (this._config?.timer_instance_id && hasAvailableInstances) {
               // Verify that the currently configured instance still exists
-              const currentInstanceExists = this._boilerInstancesOptions.some(
-                  instance => instance.value === this._config!.boiler_instance_id
+              const currentInstanceExists = this._timerInstancesOptions.some(
+                  instance => instance.value === this._config!.timer_instance_id
               );
               
               if (!currentInstanceExists) {
-                  console.warn(`BoilerCardEditor: Previously configured instance '${this._config.boiler_instance_id}' no longer exists. Auto-selecting first available instance.`);
-                  const firstInstance = this._boilerInstancesOptions[0];
+                  console.warn(`TimerCardEditor: Previously configured instance '${this._config.timer_instance_id}' no longer exists. Auto-selecting first available instance.`);
+                  const firstInstance = this._timerInstancesOptions[0];
                   
-                  const updatedConfig: BoilerCardConfig = {
+                  const updatedConfig: TimerCardConfig = {
                       ...this._config,
-                      boiler_instance_id: firstInstance.value
+                      timer_instance_id: firstInstance.value
                   };
                   
                   this._config = updatedConfig;
@@ -372,10 +372,10 @@ class BoilerCardEditor extends LitElement {
                       }),
                   );
               } else {
-                  console.info(`BoilerCardEditor: PRESERVING existing valid instance: '${this._config.boiler_instance_id}'`);
+                  console.info(`TimerCardEditor: PRESERVING existing valid instance: '${this._config.timer_instance_id}'`);
               }
           } else if (!hasAvailableInstances) {
-              console.warn(`BoilerCardEditor: No boiler control instances found.`);
+              console.warn(`TimerCardEditor: No simple timer instances found.`);
           }
           
           this.requestUpdate();
@@ -400,11 +400,11 @@ class BoilerCardEditor extends LitElement {
 
     currentButtons.sort((a, b) => a - b);
 
-    const updatedConfig: BoilerCardConfig = {
+    const updatedConfig: TimerCardConfig = {
         type: this._config!.type,
         timer_buttons: currentButtons,
     };
-    if (this._config?.boiler_instance_id) updatedConfig.boiler_instance_id = this._config.boiler_instance_id;
+    if (this._config?.timer_instance_id) updatedConfig.timer_instance_id = this._config.timer_instance_id;
     if (this._config?.entity) updatedConfig.entity = this._config.entity;
     if (this._config?.sensor_entity) updatedConfig.sensor_entity = this._config.sensor_entity;
     if (this._config?.notification_entity) updatedConfig.notification_entity = this._config.notification_entity;
@@ -456,19 +456,19 @@ class BoilerCardEditor extends LitElement {
     const newFormValues = ev.detail.value;
 
     if (!this._config) {
-      console.warn("BoilerCardEditor: _config is null in _valueChanged, deferring update.");
+      console.warn("TimerCardEditor: _config is null in _valueChanged, deferring update.");
       return;
     }
 
-    const updatedConfig: BoilerCardConfig = {
-        type: newFormValues.type || this._config.type || "custom:boiler-card",
+    const updatedConfig: TimerCardConfig = {
+        type: newFormValues.type || this._config.type || "custom:timer-card",
         timer_buttons: this._config.timer_buttons
     };
 
-    if (newFormValues.boiler_instance_id && newFormValues.boiler_instance_id !== "none_found") {
-        updatedConfig.boiler_instance_id = newFormValues.boiler_instance_id;
+    if (newFormValues.timer_instance_id && newFormValues.timer_instance_id !== "none_found") {
+        updatedConfig.timer_instance_id = newFormValues.timer_instance_id;
     } else {
-        delete updatedConfig.boiler_instance_id;
+        delete updatedConfig.timer_instance_id;
     }
 
     if (this._config.entity) updatedConfig.entity = this._config.entity;
@@ -542,4 +542,4 @@ class BoilerCardEditor extends LitElement {
   }
 }
 
-customElements.define("boiler-card-editor", BoilerCardEditor);
+customElements.define("timer-card-editor", TimerCardEditor);
