@@ -1,4 +1,4 @@
-# ha-boiler-control
-Home Assistant Boiler Control Integration for any generic boiler switch
+# ha-simple-timer
+Custom Simple Timer integration for Home Assistant
 
-![image](https://github.com/user-attachments/assets/d3f32f72-eceb-4462-8c1e-10e9fd03b4c5)
+![image](https://github.com/user-attachments/assets/5835b40c-4d07-472b-9d99-4446db63f6e7)
