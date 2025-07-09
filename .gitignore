@@ -122,3 +122,4 @@ package-lock.json
 # Windows
 Thumbs.db
 /*.docx
+/*.bat
