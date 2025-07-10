@@ -387,13 +387,14 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         now = dt_util.utcnow()
 
         _LOGGER.info(
-            "Simple Timer: [%s] Switch %s state change. From: %s, To: %s at %s. Current _last_on_timestamp: %s",
+            "Simple Timer: [%s] Switch %s state change. From: %s, To: %s at %s. Current _last_on_timestamp: %s, Timer state: %s",
             self._entry_id,
             self._switch_entity_id,
             from_state.state if from_state else "None",
             to_state.state if to_state else "None",
             now.isoformat(),
-            self._last_on_timestamp
+            self._last_on_timestamp,
+            self._timer_state
         )
 
         if not to_state:
@@ -409,10 +410,43 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             _LOGGER.info("Simple Timer: [%s] DETECTED OFF TRANSITION for %s. Stopping accumulation.", self._entry_id, self._switch_entity_id)
             self.hass.async_create_task(self._stop_realtime_accumulation())
             self._last_on_timestamp = None
+            
+            # 🔥 BUG FIX: Auto-cancel timer if switch turned off externally while timer is active
+            if self._timer_state == "active":
+                _LOGGER.info("Simple Timer: [%s] Switch turned OFF externally while timer was active. Auto-cancelling timer.", self._entry_id)
+                self.hass.async_create_task(self._auto_cancel_timer_on_external_off())
         
         else:
             _LOGGER.debug("Simple Timer: [%s] State change for %s was not a clear ON/OFF transition. No action taken.", self._entry_id, self._switch_entity_id)
         
+        self.async_write_ha_state()
+
+    async def _auto_cancel_timer_on_external_off(self):
+        """Auto-cancel timer when switch is turned off externally."""
+        _LOGGER.info("Simple Timer: [%s] Auto-cancelling timer due to external switch off", self._entry_id)
+        
+        # Unsubscribe the scheduled timer callback
+        if self._timer_unsub:
+            _LOGGER.debug("Simple Timer: [%s] Unsubscribing timer listener on auto-cancel.", self._entry_id)
+            self._timer_unsub()
+            self._timer_unsub = None
+        
+        # Stop timer update task
+        await self._stop_timer_update_task()
+        
+        # Clear timer state
+        self._timer_state = "idle"
+        self._timer_finishes_at = None
+        self._timer_duration = 0
+        
+        # Remove persisted timer data
+        try:
+            await self._store.async_remove()
+            _LOGGER.debug("Simple Timer: [%s] Persisted timer data removed on auto-cancel.", self._entry_id)
+        except Exception as e:
+            _LOGGER.warning("Simple Timer: [%s] Could not remove persisted timer data on auto-cancel: %s", self._entry_id, e)
+        
+        # Update the state to reflect timer cancellation
         self.async_write_ha_state()
 
     async def _start_realtime_accumulation(self) -> None:
