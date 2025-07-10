@@ -7,6 +7,9 @@ import homeassistant.helpers.config_validation as cv
 
 from .const import DOMAIN, PLATFORMS
 
+# Configuration schema for YAML setup (required by hassfest)
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
 async def async_setup(hass: HomeAssistant, _: dict) -> bool:
     """Set up the integration by registering services."""
     if hass.data.setdefault(DOMAIN, {}).get("services_registered"):

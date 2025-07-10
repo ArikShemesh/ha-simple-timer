@@ -3,9 +3,6 @@
   "content_in_root": false,
   "zip_release": false,
   "filename": "simple_timer",
-  "country": [],
   "homeassistant": "2024.1.0",
-  "render_readme": true,
-  "domains": ["simple_timer"],
-  "iot_class": "Local Polling"
+  "render_readme": true
 }
