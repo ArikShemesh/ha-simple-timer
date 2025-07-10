@@ -2,11 +2,12 @@
   "domain": "simple_timer",
   "name": "Simple Timer",
   "version": "1.0.0",
-  "documentation": "https://github.com/ArikShemesh/ha-simple_timer",
-  "issue_tracker": "https://github.com/ArikShemesh/ha-simple_timer/issues",
+  "documentation": "https://github.com/ArikShemesh/ha-simple-timer",
+  "issue_tracker": "https://github.com/ArikShemesh/ha-simple-timer/issues",
   "codeowners": ["@ArikShemesh"],
   "config_flow": true,
-  "iot_class": "local_push",
-  "icon": "mdi:timer-outline",
+  "dependencies": [],
+  "requirements": [],
+  "iot_class": "local_polling",
   "loggers": ["custom_components.simple_timer"]
 }
