@@ -1,8 +1,7 @@
 {
   "name": "Simple Timer",
-  "content_in_root": false,
-  "zip_release": false,
-  "filename": "simple_timer",
-  "homeassistant": "2024.1.0",
-  "render_readme": true
+  "hacs": "1.6.0",
+  "domains": ["simple_timer"],
+  "iot_class": "Local Polling",
+  "homeassistant": "2024.1.0"
 }
