@@ -32,5 +32,3 @@ A professional timer integration for Home Assistant with precise countdown funct
 4. Customize timer buttons and notifications
 
 No complex configuration required - works out of the box with professional results!
-
-TEST
