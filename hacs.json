@@ -1,7 +1,3 @@
 {
-  "name": "Simple Timer",
-  "hacs": "1.6.0",
-  "domains": ["simple_timer"],
-  "iot_class": "Local Polling",
-  "homeassistant": "2024.1.0"
+  "name": "Simple Timer"
 }
