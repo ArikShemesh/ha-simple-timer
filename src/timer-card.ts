@@ -54,8 +54,8 @@ class TimerCard extends LitElement {
     // Find the first timer control sensor and use its entry_id
     for (const entityId of Object.keys(hass.states)) {
         const state = hass.states[entityId];
-        if (entityId.startsWith("sensor.") && 
-            typeof state.attributes.entry_id === 'string' && 
+        if (entityId.startsWith("sensor.") &&
+            typeof state.attributes.entry_id === 'string' &&
             typeof state.attributes.switch_entity_id === 'string') {
             initialInstanceId = state.attributes.entry_id; // Use entry_id, not entity_id
             console.info(`TimerCard: getStubConfig auto-selected first instance: '${initialInstanceId}' from sensor '${entityId}'`);
@@ -95,7 +95,7 @@ class TimerCard extends LitElement {
 
     // Set buttons from validated config - could be empty array
     this.buttons = [...this._config.timer_buttons];
-    
+
     this._liveRuntimeSeconds = 0;
     this._notificationSentForCurrentCycle = false;
 
@@ -115,7 +115,7 @@ class TimerCard extends LitElement {
     // Case 1: configButtons is a valid array (could be empty)
     if (Array.isArray(configButtons)) {
         const invalidValues: any[] = [];
-        
+
         configButtons.forEach(val => {
             const numVal = Number(val);
             if (Number.isInteger(numVal) && numVal > 0 && numVal <= 1000) {
@@ -129,7 +129,7 @@ class TimerCard extends LitElement {
         if (invalidValues.length > 0) {
             this._validationMessage = `Invalid timer values ignored: ${invalidValues.join(', ')}. Only positive integers up to 1000 are allowed.`;
         }
-        
+
         validatedTimerButtons.sort((a, b) => a - b);
         console.log(`TimerCard: Using ${validatedTimerButtons.length} timer buttons from config:`, validatedTimerButtons);
         return validatedTimerButtons; // Could be empty array - that's OK!
@@ -141,7 +141,7 @@ class TimerCard extends LitElement {
         console.log(`TimerCardEditor: No timer_buttons in config, using empty array (no timer buttons)`);
         return [];
     }
-		
+
     // Case 3: configButtons is not an array - treat as invalid, use empty
     console.warn(`TimerCard: Invalid timer_buttons type (${typeof configButtons}):`, configButtons, `- using empty array`);
     this._validationMessage = `Invalid timer_buttons configuration. Expected array, got ${typeof configButtons}.`;
@@ -241,7 +241,7 @@ class TimerCard extends LitElement {
     console.error("Could not determine entry_id from effective sensor_entity attributes:", this._effectiveSensorEntity);
     return null;
   }
-  
+
   _sendNotification(message: string): void {
     if (!this.hass || !this.hass.callService || !this._config?.notification_entity || this._config.notification_entity === "none_selected") {
       return;
@@ -263,7 +263,7 @@ class TimerCard extends LitElement {
     }
     const entryId = this._getEntryId();
     if (!entryId) { console.error("Timer-card: Entry ID not found for starting timer."); return; }
-    
+
     const switchId = this._effectiveSwitchEntity!;
 
     this.hass.callService("homeassistant", "turn_on", { entity_id: switchId })
@@ -297,7 +297,7 @@ class TimerCard extends LitElement {
       });
     this._notificationSentForCurrentCycle = false;
   }
-	
+
   _togglePower(): void {
     if (!this._entitiesLoaded || !this.hass || !this.hass.states || !this.hass.callService) {
         console.error("Timer-card: Cannot toggle power. Entities not loaded or services unavailable.");
@@ -342,7 +342,7 @@ class TimerCard extends LitElement {
     });
     this.dispatchEvent(event);
   }
-  
+
   connectedCallback(): void {
     super.connectedCallback();
     this._determineEffectiveEntities();
@@ -378,7 +378,7 @@ class TimerCard extends LitElement {
       return;
     }
     const sensor = this.hass.states[this._effectiveSensorEntity!];
-    
+
     if (!sensor || sensor.attributes.timer_state !== 'active') {
       this._stopCountdown();
       this._notificationSentForCurrentCycle = false;
@@ -404,12 +404,12 @@ class TimerCard extends LitElement {
               if (!this._notificationSentForCurrentCycle) {
                   const finalSensorState = this.hass!.states[this._effectiveSensorEntity!];
                   const committedSeconds = parseFloat(finalSensorState.state as string) || 0;
-                  
+
                   const totalMinutes = Math.round(committedSeconds / 60);
                   const hours = Math.floor(totalMinutes / 60);
                   const minutes = totalMinutes % 60;
                   const formattedDailyUsage = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-                  
+
                   this._sendNotification(`Timer was turned off - daily usage ${formattedDailyUsage} (hh:mm)`);
                   this._notificationSentForCurrentCycle = true;
               }
@@ -439,10 +439,10 @@ class TimerCard extends LitElement {
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
     const formattedDailyUsage = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-    
+
     this._sendNotification(`Timer finished – daily usage ${formattedDailyUsage} (hh:mm)`);
   }
-  
+
   render() {
     let message: string | null = null;
     let isWarning = false;
@@ -487,23 +487,23 @@ class TimerCard extends LitElement {
     if (message) {
       return html`<ha-card><div class="${isWarning ? 'warning' : 'placeholder'}">${message}</div></ha-card>`;
     }
-	
+
     const timerSwitch = this.hass!.states[this._effectiveSwitchEntity!];
     const sensor = this.hass!.states[this._effectiveSensorEntity!];
-    
+
     const isOn = timerSwitch.state === 'on';
     const isTimerActive = sensor.attributes.timer_state === 'active';
-    const timerDurationInMinutes = sensor.attributes.timer_duration || 0; 
+    const timerDurationInMinutes = sensor.attributes.timer_duration || 0;
     const isManualOn = isOn && !isTimerActive;
 
-    const committedSeconds = parseFloat(sensor.state as string) || 0; 
-    
+    const committedSeconds = parseFloat(sensor.state as string) || 0;
+
     let totalSecondsForDisplay = committedSeconds;
-    
+
     // Format time based on show_seconds setting
     let formattedTime: string;
     let runtimeLabel: string;
-    
+
     if (this._config?.show_seconds) {
       // Show full HH:MM:SS format
       const totalSecondsInt = Math.floor(totalSecondsForDisplay);
@@ -520,12 +520,18 @@ class TimerCard extends LitElement {
       formattedTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
       runtimeLabel = "Daily Usage (hh:mm)";
     }
-    
+
     const watchdogMessage = sensor.attributes.watchdog_message;
 
     return html`
       <ha-card>
-        ${this._config?.card_title ? html`<div class="card-title">${this._config.card_title}</div>` : ''} 
+        ${this._config?.card_title ? html`<div class="card-title">${this._config.card_title}</div>` : ''}
+        ${watchdogMessage ? html`
+          <div class="status-message warning watchdog-banner">
+            <ha-icon icon="mdi:alert-outline" class="status-icon"></ha-icon>
+            <span class="status-text">${watchdogMessage}</span>
+          </div>
+        ` : ''}
         <div class="main-grid">
           <div class="button power-button ${isOn ? 'on' : ''}" @click=${this._togglePower}><ha-icon icon="mdi:power"></ha-icon></div>
           <div class="button readonly" @click=${this._showMoreInfo}>
@@ -534,12 +540,6 @@ class TimerCard extends LitElement {
           </div>
         </div>
         <div class="button-grid">
-        ${watchdogMessage ? html`
-          <div class="status-message warning">
-            <ha-icon icon="mdi:alert-outline" class="status-icon"></ha-icon>
-            <span class="status-text">${watchdogMessage}</span>
-          </div>
-        ` : ''}
           ${this.buttons.length > 0 ? this.buttons.map(minutes => {
             const isActive = isTimerActive && timerDurationInMinutes === minutes;
             const isDisabled = isManualOn || (isTimerActive && !isActive);
@@ -564,7 +564,7 @@ class TimerCard extends LitElement {
       </ha-card>
     `;
   }
-  
+
   static get styles() {
     return css`
       :host { display: block; }
@@ -598,44 +598,44 @@ class TimerCard extends LitElement {
       .main-grid, .button-grid { gap: 12px; padding: 12px; }
       .main-grid { display: grid; grid-template-columns: 1fr 1fr; }
       .button-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); padding-top: 0; }
-      .button { 
-        display: flex; 
-        flex-direction: column; 
-        align-items: center; 
-        justify-content: center; 
-        padding: 16px 8px; 
-        background-color: var(--secondary-background-color); 
-        border-radius: 12px; 
-        cursor: pointer; 
-        transition: background-color 0.2s, opacity 0.2s; 
-        text-align: center; 
-        -webkit-tap-highlight-color: transparent; 
-        height: 100px; 
-        box-sizing: border-box; 
+      .button {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 16px 8px;
+        background-color: var(--secondary-background-color);
+        border-radius: 12px;
+        cursor: pointer;
+        transition: background-color 0.2s, opacity 0.2s;
+        text-align: center;
+        -webkit-tap-highlight-color: transparent;
+        height: 100px;
+        box-sizing: border-box;
       }
       .button:hover { background-color: var(--primary-color-faded, #3a506b); }
-      .power-button { 
-        font-size: 80px; 
-        --mdc-icon-size: 80px; 
-        color: white; 
-        background-color: var(--error-color); 
+      .power-button {
+        font-size: 80px;
+        --mdc-icon-size: 80px;
+        color: white;
+        background-color: var(--error-color);
       }
       .power-button.on { background-color: var(--success-color); }
-      .readonly { 
-        background-color: var(--card-background-color); 
-        border: 1px solid var(--secondary-background-color); 
-        line-height: 1.2; 
-        cursor: default; 
+      .readonly {
+        background-color: var(--card-background-color);
+        border: 1px solid var(--secondary-background-color);
+        line-height: 1.2;
+        cursor: default;
       }
       .active, .active:hover { background-color: var(--primary-color); color: white; }
       .countdown-text { font-size: 28px; font-weight: bold; color: white; }
-      .daily-time-text { 
-        font-size: 36px; 
-        font-weight: bold; 
+      .daily-time-text {
+        font-size: 36px;
+        font-weight: bold;
       }
       /* Adjust font size when showing seconds to fit better */
-      .daily-time-text.with-seconds { 
-        font-size: 28px; 
+      .daily-time-text.with-seconds {
+        font-size: 28px;
       }
       .runtime-label { font-size: 14px; text-transform: uppercase; color: var(--secondary-text-color); margin-top: 2px; }
       .timer-button-content { display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; }
@@ -659,18 +659,26 @@ class TimerCard extends LitElement {
         --mdc-icon-size: 32px;
         opacity: 0.6;
       }
-      .status-message { 
-        display: flex; 
-        align-items: center; 
-        padding: 8px 12px; 
-        margin: 0 12px 12px 12px; 
-        border-radius: 8px; 
-        border: 1px solid var(--warning-color); 
-        background-color: rgba(var(--rgb-warning-color), 0.1); 
+      .status-message {
+        display: flex;
+        align-items: center;
+        padding: 8px 12px;
+        margin: 0 12px 12px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--warning-color);
+        background-color: rgba(var(--rgb-warning-color), 0.1);
       }
       .status-icon { color: var(--warning-color); margin-right: 8px; }
       .status-text { font-size: 14px; color: var(--primary-text-color); }
-    
+
+      /* ▼▼▼ CHANGE #2: ADDED NEW CSS FOR THE FULL-WIDTH BANNER ▼▼▼ */
+      .watchdog-banner {
+        margin: 0 0 12px 0;
+        border-radius: 0;
+        grid-column: 1 / -1; /* Ensure it spans all columns if it were in a grid */
+      }
+      /* ▲▲▲ END OF CHANGES ▲▲▲ */
+
       .status-message.warning {
         display: flex;
         align-items: center;
@@ -688,7 +696,7 @@ class TimerCard extends LitElement {
         font-size: 14px;
         color: var(--primary-text-color);
       }
-`;
+    `;
   }
 }
 customElements.define("timer-card", TimerCard);
