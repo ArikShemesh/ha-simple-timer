@@ -1,10 +1,8 @@
-// timer-card-editor.ts
+// timer-card-editor.ts - FIXED VERSION
 
 import { LitElement, html, css } from 'lit';
 
 // Define necessary interfaces directly in this file for compilation robustness.
-// In a full project setup, these might reside in a shared 'global.d.ts' or types file.
-
 interface TimerCardConfig {
   type: string;
   timer_instance_id?: string | null;
@@ -13,6 +11,7 @@ interface TimerCardConfig {
   timer_buttons: number[];
   notification_entity?: string | null;
   card_title?: string | null;
+  show_seconds?: boolean; // NEW: Option to show seconds in daily usage
 }
 
 interface HAState {
@@ -78,8 +77,8 @@ interface HAConfigEntriesByDomainResponse {
 }
 
 const ATTR_INSTANCE_TITLE = "instance_title";
-
 const DOMAIN = "simple_timer";
+const DEFAULT_TIMER_BUTTONS = [15, 30, 60, 90, 120, 150]; // Default for new cards only
 
 class TimerCardEditor extends LitElement {
   static properties = {
@@ -97,10 +96,11 @@ class TimerCardEditor extends LitElement {
     super();
     this._config = {
       type: "custom:timer-card",
-      timer_buttons: [15, 30, 60, 90, 120, 150],
+      timer_buttons: [...DEFAULT_TIMER_BUTTONS], // Use centralized default
       notification_entity: null,
       timer_instance_id: null,
-      card_title: null
+      card_title: null,
+      show_seconds: false
     };
   }
 
@@ -193,18 +193,49 @@ class TimerCardEditor extends LitElement {
     return targets;
   }
 
+  /**
+   * 🔧 FIX: Validation logic that allows empty timer buttons (optional)
+   */
+  _getValidatedTimerButtons(configButtons: any): number[] {
+    // Case 1: configButtons is a valid array (could be empty)
+    if (Array.isArray(configButtons)) {
+        const validatedButtons: number[] = [];
+        
+        configButtons.forEach(val => {
+            const numVal = Number(val);
+            if (Number.isInteger(numVal) && numVal > 0 && numVal <= 1000) {
+                validatedButtons.push(numVal);
+            }
+        });
+
+        validatedButtons.sort((a, b) => a - b);
+        console.log(`TimerCardEditor: Using ${validatedButtons.length} timer buttons from config:`, validatedButtons);
+        return validatedButtons; // Could be empty array - that's OK!
+    }
+
+    // Case 2: configButtons is undefined/null - use defaults ONLY for new cards
+    if (configButtons === undefined || configButtons === null) {
+        console.log(`TimerCardEditor: No timer_buttons in config, using defaults for new card:`, DEFAULT_TIMER_BUTTONS);
+        return [...DEFAULT_TIMER_BUTTONS];
+    }
+
+    // Case 3: configButtons is not an array - treat as invalid, use empty
+    console.warn(`TimerCardEditor: Invalid timer_buttons type (${typeof configButtons}):`, configButtons, `- using empty array`);
+    return []; // Return empty array for invalid non-array values
+  }
+
   async setConfig(cfg: TimerCardConfig): Promise<void> {
     console.log(`TimerCardEditor: setConfig called with:`, cfg);
     const oldConfig = { ...this._config };
 
-    const timerButtonsToSet = Array.isArray(cfg.timer_buttons)
-      ? [...cfg.timer_buttons].filter(val => Number.isInteger(val) && val > 0 && val <= 1000)
-      : [15, 30, 60, 90, 120, 150];
+    // 🔧 FIX: Use centralized validation logic
+    const timerButtonsToSet = this._getValidatedTimerButtons(cfg.timer_buttons);
 
     const newConfigData: TimerCardConfig = {
       type: cfg.type || "custom:timer-card",
-      timer_buttons: timerButtonsToSet.sort((a, b) => a - b),
-      card_title: cfg.card_title || null
+      timer_buttons: timerButtonsToSet,
+      card_title: cfg.card_title || null,
+      show_seconds: cfg.show_seconds || false
     };
 
     // SIMPLIFIED: Just preserve the timer_instance_id as-is from the config
@@ -273,6 +304,13 @@ class TimerCardEditor extends LitElement {
             mode: "dropdown",
           },
         },
+      },
+      {
+        name: "show_seconds",
+        label: "Show Seconds in Daily Usage",
+        selector: {
+          boolean: {}
+        }
       },
       {
         name: "notification_entity",
@@ -398,11 +436,13 @@ class TimerCardEditor extends LitElement {
       currentButtons = currentButtons.filter(button => button !== value);
     }
 
+    // 🔧 FIX: Allow empty arrays - timer buttons are optional
     currentButtons.sort((a, b) => a - b);
 
     const updatedConfig: TimerCardConfig = {
         type: this._config!.type,
-        timer_buttons: currentButtons,
+        timer_buttons: currentButtons, // Could be empty - that's OK!
+        show_seconds: this._config!.show_seconds || false
     };
     if (this._config?.timer_instance_id) updatedConfig.timer_instance_id = this._config.timer_instance_id;
     if (this._config?.entity) updatedConfig.entity = this._config.entity;
@@ -447,6 +487,12 @@ class TimerCardEditor extends LitElement {
             </label>
           `)}
         </div>
+        <div class="timer-buttons-info">
+          <p><strong>Current buttons:</strong> ${this._config?.timer_buttons?.length ? this._config.timer_buttons.join(', ') : 'None'}</p>
+          ${!this._config?.timer_buttons?.length ? html`
+            <p class="info-text">ℹ️ No timer buttons selected. Only power toggle and daily usage will be shown.</p>
+          ` : ''}
+        </div>
       </div>
     `;
   }
@@ -462,7 +508,8 @@ class TimerCardEditor extends LitElement {
 
     const updatedConfig: TimerCardConfig = {
         type: newFormValues.type || this._config.type || "custom:timer-card",
-        timer_buttons: this._config.timer_buttons
+        timer_buttons: this._config.timer_buttons,
+        show_seconds: newFormValues.show_seconds !== undefined ? newFormValues.show_seconds : (this._config.show_seconds || false)
     };
 
     if (newFormValues.timer_instance_id && newFormValues.timer_instance_id !== "none_found") {
@@ -521,6 +568,7 @@ class TimerCardEditor extends LitElement {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
         gap: 8px 16px;
+        margin-bottom: 16px;
       }
       @media (min-width: 400px) {
         .checkbox-grid {
@@ -537,6 +585,25 @@ class TimerCardEditor extends LitElement {
         margin-right: 8px;
         min-width: 20px;
         min-height: 20px;
+      }
+      .timer-buttons-info {
+        padding: 12px;
+        background-color: var(--secondary-background-color);
+        border-radius: 8px;
+        border: 1px solid var(--divider-color);
+      }
+      .timer-buttons-info p {
+        margin: 4px 0;
+        font-size: 14px;
+        color: var(--primary-text-color);
+      }
+      .warning-text {
+        color: var(--warning-color);
+        font-weight: bold;
+      }
+      .info-text {
+        color: var(--primary-text-color);
+        font-style: italic;
       }
     `;
   }

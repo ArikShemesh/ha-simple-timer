@@ -7,7 +7,8 @@ interface TimerCardConfig {
   sensor_entity?: string | null;
   timer_buttons: number[];
   notification_entity?: string | null;
-  card_title?: string | null; // NEW: Add this line
+  card_title?: string | null;
+  show_seconds?: boolean; // NEW: Option to show seconds in daily usage
 }
 
 // Define the structure for a Home Assistant state object

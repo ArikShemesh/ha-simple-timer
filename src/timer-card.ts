@@ -1,11 +1,12 @@
-// timer-card.ts
+// timer-card.ts - FIXED VERSION
 
 import { LitElement, html, css } from 'lit';
 
 // Ensure HomeAssistant and TimerCardConfig are recognized from global.d.ts
 
 const DOMAIN = "simple_timer";
-const CARD_VERSION = "1.0.0";
+const CARD_VERSION = "1.0.3";
+const DEFAULT_TIMER_BUTTONS = [15, 30, 60, 90, 120, 150]; // Default for new cards only
 
 console.info(
   `%c TIMER-CARD %c v${CARD_VERSION} `,
@@ -65,16 +66,18 @@ class TimerCard extends LitElement {
     return {
       type: "custom:timer-card",
       timer_instance_id: initialInstanceId, // This will now be explicitly set
-      timer_buttons: [15, 30, 60, 90, 120, 150],
-      card_title: "Simple Timer"
+      timer_buttons: [...DEFAULT_TIMER_BUTTONS], // Use default buttons
+      card_title: "Simple Timer",
+      show_seconds: false
     };
   }
 
   setConfig(cfg: TimerCardConfig): void {
     this._config = {
       type: cfg.type || "custom:timer-card",
-      timer_buttons: Array.isArray(cfg.timer_buttons) ? [...cfg.timer_buttons] : [15, 30, 60, 90, 120, 150],
-      card_title: cfg.card_title || null
+      timer_buttons: this._getValidatedTimerButtons(cfg.timer_buttons),
+      card_title: cfg.card_title || null,
+      show_seconds: cfg.show_seconds || false
     };
 
     if (cfg.timer_instance_id) {
@@ -90,12 +93,30 @@ class TimerCard extends LitElement {
         this._config.notification_entity = cfg.notification_entity;
     }
 
+    // Set buttons from validated config - could be empty array
+    this.buttons = [...this._config.timer_buttons];
+    
+    this._liveRuntimeSeconds = 0;
+    this._notificationSentForCurrentCycle = false;
+
+    this._effectiveSwitchEntity = null;
+    this._effectiveSensorEntity = null;
+    this._entitiesLoaded = false;
+    console.log(`TimerCard: setConfig completed. Configured instance ID: ${this._config.timer_instance_id}, Buttons: ${this.buttons.length}, Show seconds: ${this._config.show_seconds}`);
+  }
+
+  /**
+   * 🔧 FIX: Validation logic that allows empty timer buttons (optional)
+   */
+  _getValidatedTimerButtons(configButtons: any): number[] {
     let validatedTimerButtons: number[] = [];
     this._validationMessage = null;
 
-    if (Array.isArray(this._config.timer_buttons)) {
+    // Case 1: configButtons is a valid array (could be empty)
+    if (Array.isArray(configButtons)) {
         const invalidValues: any[] = [];
-        this._config.timer_buttons.forEach(val => {
+        
+        configButtons.forEach(val => {
             const numVal = Number(val);
             if (Number.isInteger(numVal) && numVal > 0 && numVal <= 1000) {
                 validatedTimerButtons.push(numVal);
@@ -104,22 +125,26 @@ class TimerCard extends LitElement {
             }
         });
 
+        // Show warning if there were invalid values
         if (invalidValues.length > 0) {
             this._validationMessage = `Invalid timer values ignored: ${invalidValues.join(', ')}. Only positive integers up to 1000 are allowed.`;
         }
+        
         validatedTimerButtons.sort((a, b) => a - b);
-    } else {
-        validatedTimerButtons = [15, 30, 45, 60, 90, 120, 150];
+        console.log(`TimerCard: Using ${validatedTimerButtons.length} timer buttons from config:`, validatedTimerButtons);
+        return validatedTimerButtons; // Could be empty array - that's OK!
     }
-    this.buttons = validatedTimerButtons;
-    
-    this._liveRuntimeSeconds = 0;
-    this._notificationSentForCurrentCycle = false;
 
-    this._effectiveSwitchEntity = null;
-    this._effectiveSensorEntity = null;
-    this._entitiesLoaded = false;
-    console.log(`TimerCard: setConfig completed. Configured instance ID: ${this._config.timer_instance_id}`);
+    // Case 2: configButtons is undefined/null - use defaults ONLY for new cards
+    if (configButtons === undefined || configButtons === null) {
+        console.log(`TimerCard: No timer_buttons in config, using defaults for new card:`, DEFAULT_TIMER_BUTTONS);
+        return [...DEFAULT_TIMER_BUTTONS];
+    }
+
+    // Case 3: configButtons is not an array - treat as invalid, use empty
+    console.warn(`TimerCard: Invalid timer_buttons type (${typeof configButtons}):`, configButtons, `- using empty array`);
+    this._validationMessage = `Invalid timer_buttons configuration. Expected array, got ${typeof configButtons}.`;
+    return []; // Return empty array for invalid non-array values
   }
 
   _determineEffectiveEntities(): void {
@@ -474,10 +499,26 @@ class TimerCard extends LitElement {
     
     let totalSecondsForDisplay = committedSeconds;
     
-    const totalMinutes = Math.floor(totalSecondsForDisplay / 60);
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    const formattedTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+    // Format time based on show_seconds setting
+    let formattedTime: string;
+    let runtimeLabel: string;
+    
+    if (this._config?.show_seconds) {
+      // Show full HH:MM:SS format
+      const totalSecondsInt = Math.floor(totalSecondsForDisplay);
+      const hours = Math.floor(totalSecondsInt / 3600);
+      const minutes = Math.floor((totalSecondsInt % 3600) / 60);
+      const seconds = totalSecondsInt % 60;
+      formattedTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+      runtimeLabel = "Daily Usage (hh:mm:ss)";
+    } else {
+      // Show HH:MM format (original behavior)
+      const totalMinutes = Math.floor(totalSecondsForDisplay / 60);
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      formattedTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+      runtimeLabel = "Daily Usage (hh:mm)";
+    }
     
     const watchdogMessage = sensor.attributes.watchdog_message;
 
@@ -487,8 +528,8 @@ class TimerCard extends LitElement {
         <div class="main-grid">
           <div class="button power-button ${isOn ? 'on' : ''}" @click=${this._togglePower}><ha-icon icon="mdi:power"></ha-icon></div>
           <div class="button readonly" @click=${this._showMoreInfo}>
-            <span class="daily-time-text">${formattedTime}</span>
-            <span class="runtime-label">Daily Usage (hh:mm)</span>
+            <span class="daily-time-text ${this._config?.show_seconds ? 'with-seconds' : ''}">${formattedTime}</span>
+            <span class="runtime-label">${runtimeLabel}</span>
           </div>
         </div>
         <div class="button-grid">
@@ -498,7 +539,7 @@ class TimerCard extends LitElement {
             <span class="status-text">${watchdogMessage}</span>
           </div>
         ` : ''}
-          ${this.buttons.map(minutes => {
+          ${this.buttons.length > 0 ? this.buttons.map(minutes => {
             const isActive = isTimerActive && timerDurationInMinutes === minutes;
             const isDisabled = isManualOn || (isTimerActive && !isActive);
             return html`
@@ -506,12 +547,17 @@ class TimerCard extends LitElement {
                 ${isActive && this._timeRemaining ? html`<span class="countdown-text">${this._timeRemaining}</span>` : html`<div class="timer-button-content"><span class="timer-button-value">${minutes}</span><span class="timer-button-unit">Min</span></div>`}
               </div>
             `;
-          })}
+          }) : html`
+            <div class="no-timers-message">
+              <ha-icon icon="mdi:timer-off-outline"></ha-icon>
+              <span>No timer buttons configured</span>
+            </div>
+          `}
         </div>
-        ${watchdogMessage || this._validationMessage ? html`
+        ${this._validationMessage ? html`
           <div class="status-message warning">
             <ha-icon icon="mdi:alert-outline" class="status-icon"></ha-icon>
-            <span class="status-text">${watchdogMessage || this._validationMessage}</span>
+            <span class="status-text">${this._validationMessage}</span>
           </div>
         ` : ''}
       </ha-card>
@@ -582,7 +628,14 @@ class TimerCard extends LitElement {
       }
       .active, .active:hover { background-color: var(--primary-color); color: white; }
       .countdown-text { font-size: 28px; font-weight: bold; color: white; }
-      .daily-time-text { font-size: 36px; font-weight: bold; }
+      .daily-time-text { 
+        font-size: 36px; 
+        font-weight: bold; 
+      }
+      /* Adjust font size when showing seconds to fit better */
+      .daily-time-text.with-seconds { 
+        font-size: 28px; 
+      }
       .runtime-label { font-size: 14px; text-transform: uppercase; color: var(--secondary-text-color); margin-top: 2px; }
       .timer-button-content { display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; }
       .timer-button-value { font-size: 36px; font-weight: 500; color: var(--primary-text-color); }
@@ -590,6 +643,21 @@ class TimerCard extends LitElement {
       .active .timer-button-value, .active .timer-button-unit { color: white; }
       .disabled { opacity: 0.5; cursor: not-allowed; }
       .disabled:hover { background-color: var(--secondary-background-color); }
+      .no-timers-message {
+        grid-column: 1 / -1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        color: var(--secondary-text-color);
+        font-style: italic;
+        gap: 8px;
+      }
+      .no-timers-message ha-icon {
+        --mdc-icon-size: 32px;
+        opacity: 0.6;
+      }
       .status-message { 
         display: flex; 
         align-items: center; 
