@@ -48,3 +48,13 @@ update_switch_entity:
         entity:
           domain: switch
 
+force_name_sync:
+  name: Force Name Sync
+  description: Forces immediate synchronization of sensor names after entry rename.
+  fields:
+    entry_id:
+      name: Entry ID (Optional)
+      description: The config entry ID to sync. If omitted, syncs all Simple Timer sensors.
+      required: false
+      selector:
+        text:

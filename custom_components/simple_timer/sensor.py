@@ -58,18 +58,23 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self.hass = hass
         self._entry = entry
         self._entry_id = entry.entry_id
-        self._instance_title = entry.data.get("name", "Timer")  # Changed from "instance_title" to "name"
         self._switch_entity_id = entry.data.get("switch_entity_id")
         
-        # UPDATED: Include part of entry_id in the sensor name to ensure unique entity IDs
+        # Store static parts that don't change
         entry_id_short = self._entry_id[:8]  # First 8 characters of entry_id
-        self._attr_name = f"{self._instance_title} Runtime ({entry_id_short})"
+        self._entry_id_short = entry_id_short
+        
+        # Set properties that are truly static
         self._attr_unique_id = f"timer_runtime_{self._entry_id}"
         self._attr_device_class = SensorDeviceClass.DURATION
         self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
         self._attr_icon = "mdi:timer"
         
-        _LOGGER.info(f"Simple Timer: Creating sensor with unique name: '{self._attr_name}' for entry_id: {self._entry_id}")
+        # Track the last known entry state for change detection
+        self._last_known_title = entry.title
+        self._last_known_data_name = entry.data.get("name")
+        
+        _LOGGER.info(f"Simple Timer: Creating sensor for entry_id: {self._entry_id}")
         
         # State tracking
         self._state = 0.0
@@ -94,6 +99,21 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._session_id = secrets.token_urlsafe(20)
         
         _LOGGER.debug(f"Simple Timer: [{self._session_id}] Sensor initialized for {self._entry_id}")
+
+    @property
+    def instance_title(self) -> str:
+        """Get the current instance title from the config entry (always fresh)."""
+        # Try entry.data["name"] first (from options flow), then fall back to entry.title (from rename)
+        data_name = self._entry.data.get("name")
+        if data_name:
+            return data_name
+        return self._entry.title or "Timer"
+
+    @property
+    def name(self) -> str:
+        """Return the name of the sensor (dynamically generated from current config)."""
+        current_title = self.instance_title
+        return f"{current_title} Runtime ({self._entry_id_short})"
 
     @property
     def native_value(self) -> float:
@@ -122,9 +142,80 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             "entry_id": self._entry_id,
             ATTR_SWITCH_ENTITY_ID: self._switch_entity_id,
             ATTR_LAST_ON_TIMESTAMP: self._last_on_timestamp.isoformat() if self._last_on_timestamp else None,
-            ATTR_INSTANCE_TITLE: self._instance_title,
+            ATTR_INSTANCE_TITLE: self.instance_title,  # Always fresh from config entry
             "session_id": self._session_id,
         }
+
+    async def _handle_name_change(self):
+            """Handle detected name changes."""
+            _LOGGER.info(f"Simple Timer: [{self._session_id}] Processing name change")
+            
+            # Force state update
+            self.async_write_ha_state()
+            
+            # Update entity registry - FIXED: Correct import and access
+            from homeassistant.helpers import entity_registry as er
+            entity_registry = er.async_get(self.hass)
+            if entity_registry:
+                entity_entry = entity_registry.async_get(self.entity_id)
+                if entity_entry:
+                    try:
+                        entity_registry.async_update_entity(
+                            self.entity_id,
+                            name=self.name
+                        )
+                        _LOGGER.info(f"Simple Timer: [{self._session_id}] Updated entity registry with new name: '{self.name}'")
+                    except Exception as e:
+                        _LOGGER.warning(f"Simple Timer: [{self._session_id}] Could not update entity registry: {e}")
+
+    def _check_and_handle_name_changes(self):
+        """Check for name changes and handle them synchronously when possible."""
+        current_title = self._entry.title
+        current_data_name = self._entry.data.get("name")
+        
+        if (current_title != self._last_known_title or 
+            current_data_name != self._last_known_data_name):
+            
+            _LOGGER.info(f"Simple Timer: [{self._session_id}] Name change detected: title='{current_title}', data_name='{current_data_name}'")
+            
+            # Update tracking variables
+            self._last_known_title = current_title
+            self._last_known_data_name = current_data_name
+            
+            # Schedule immediate async update
+            self.hass.async_create_task(self._handle_name_change())
+
+    async def async_force_name_sync(self):
+        """Force immediate name synchronization - callable via service."""
+        _LOGGER.info(f"Simple Timer: [{self._session_id}] MANUAL name sync triggered via service")
+        
+        # Update tracking variables to force change detection
+        self._last_known_title = None  # Force re-check
+        self._last_known_data_name = None  # Force re-check
+        
+        # Immediate name change handling
+        await self._handle_name_change()
+        
+        # Force multiple update mechanisms
+        self.async_write_ha_state()
+        
+        # Additional aggressive entity registry update - FIXED: Correct import and access
+        try:
+            from homeassistant.helpers import entity_registry as er
+            entity_registry = er.async_get(self.hass)
+            if entity_registry:
+                entity_entry = entity_registry.async_get(self.entity_id)
+                if entity_entry:
+                    new_name = self.name  # Get the current dynamic name
+                    entity_registry.async_update_entity(
+                        self.entity_id,
+                        name=new_name
+                    )
+                    _LOGGER.info(f"Simple Timer: [{self._session_id}] MANUAL SYNC: Updated entity registry to: '{new_name}'")
+        except Exception as e:
+            _LOGGER.warning(f"Simple Timer: [{self._session_id}] Manual sync entity registry update failed: {e}")
+        
+        return True
 
     async def async_added_to_hass(self):
         """Called when entity is added to hass."""
@@ -137,7 +228,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             self.hass.data[DOMAIN][self._entry_id] = {}
         self.hass.data[DOMAIN][self._entry_id]["sensor"] = self
         
-        # Listen for Home Assistant shutdown events - use multiple signals to catch shutdown early
+        # Listen for config entry updates (handles Configure button changes)
+        self._entry.add_update_listener(self._handle_config_entry_update)
+        
+        # Listen for shutdown events
         self.hass.bus.async_listen_once("homeassistant_stop", self._handle_ha_shutdown)
         self.hass.bus.async_listen_once("homeassistant_final_write", self._handle_ha_shutdown)
         
@@ -182,11 +276,26 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         # Start accumulation if switch is currently on
         if self._is_switch_on() and not self._last_on_timestamp:
             self._last_on_timestamp = dt_util.utcnow()
-            # Schedule accumulation start without blocking
             self.hass.async_create_task(self._start_realtime_accumulation())
         elif self._is_switch_on() and self._last_on_timestamp:
-            # Resume accumulation after restart - schedule it without blocking
             self.hass.async_create_task(self._delayed_start_accumulation())
+
+    async def _handle_config_entry_update(self, hass: HomeAssistant, entry: ConfigEntry):
+        """Handle updates to the config entry (including renames)."""
+        _LOGGER.info(f"Simple Timer: [{self._session_id}] Config entry updated - triggering immediate state refresh")
+        
+        # Update tracked values
+        self._last_known_title = entry.title
+        self._last_known_data_name = entry.data.get("name")
+        
+        # Check if the switch entity has changed
+        new_switch_entity = entry.data.get("switch_entity_id")
+        if new_switch_entity != self._switch_entity_id:
+            _LOGGER.info(f"Simple Timer: [{self._session_id}] Switch entity changed from '{self._switch_entity_id}' to '{new_switch_entity}'")
+            await self.async_update_switch_entity(new_switch_entity)
+        
+        # Immediate name change handling
+        await self._handle_name_change()
 
     def _schedule_accumulation_start(self):
         """Schedule accumulation start outside of startup context."""
@@ -703,6 +812,13 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
     async def async_will_remove_from_hass(self):
         """Called when entity will be removed from hass."""
         self._stop_event_received = True
+        
+        # Remove update listener
+        if hasattr(self._entry, 'remove_update_listener'):
+            try:
+                self._entry.remove_update_listener(self._handle_config_entry_update)
+            except (ValueError, AttributeError):
+                pass  # Listener might not be registered or already removed
         
         # Remove from hass.data
         if (DOMAIN in self.hass.data and 

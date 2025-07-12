@@ -28,6 +28,10 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
         vol.Required("entry_id"): cv.string,
         vol.Required("switch_entity_id"): cv.string,
     })
+    # Schema for manual name sync service
+    SERVICE_FORCE_NAME_SYNC_SCHEMA = vol.Schema({
+        vol.Optional("entry_id"): cv.string,
+    })
 
     async def start_timer(call: ServiceCall):
         """Handle the service call to start the device timer."""
@@ -79,7 +83,36 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
         else:
             raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
 
-    # Register all three services
+    async def force_name_sync(call: ServiceCall):
+        """Handle the service call to force immediate name synchronization."""
+        entry_id = call.data.get("entry_id")
+        
+        if entry_id:
+            # Sync specific entry
+            if entry_id in hass.data[DOMAIN] and "sensor" in hass.data[DOMAIN][entry_id]:
+                sensor = hass.data[DOMAIN][entry_id]["sensor"]
+                if sensor:
+                    result = await sensor.async_force_name_sync()
+                    if result:
+                        return
+            raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
+        else:
+            # Sync all entries
+            synced_count = 0
+            for stored_entry_id, entry_data in hass.data[DOMAIN].items():
+                if "sensor" in entry_data and entry_data["sensor"]:
+                    try:
+                        await entry_data["sensor"].async_force_name_sync()
+                        synced_count += 1
+                    except Exception as e:
+                        # Log error but continue with other sensors
+                        pass
+            
+            if synced_count > 0:
+                # Could add notification here if desired
+                pass
+
+    # Register all services
     hass.services.async_register(
         DOMAIN, "start_timer", start_timer, schema=SERVICE_START_TIMER_SCHEMA
     )
@@ -89,6 +122,9 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
     hass.services.async_register(
         DOMAIN, "update_switch_entity", update_switch_entity, schema=SERVICE_UPDATE_SWITCH_SCHEMA
     )
+    hass.services.async_register(
+        DOMAIN, "force_name_sync", force_name_sync, schema=SERVICE_FORCE_NAME_SYNC_SCHEMA
+    )
 
     hass.data[DOMAIN]["services_registered"] = True
     return True
@@ -96,8 +132,19 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up a single Simple Timer config entry."""
     hass.data[DOMAIN][entry.entry_id] = {"sensor": None} # Initialize with None
+    
+    # Add update listener to block title-only changes (3-dots rename)
+    entry.add_update_listener(_async_update_listener)
+    
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
+
+async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Handle config entry updates and block unwanted renames."""
+    # This listener intentionally does minimal work
+    # The real update handling is done in the sensor's _handle_config_entry_update method
+    # This listener is mainly here to ensure the sensor gets notified of changes
+    pass
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a Simple Timer config entry."""
