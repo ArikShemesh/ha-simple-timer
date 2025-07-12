@@ -285,25 +285,25 @@ class TimerCard extends LitElement {
     const entryId = this._getEntryId();
     if (!entryId) { console.error("Timer-card: Entry ID not found for cancelling timer."); return; }
 
-    const switchId = this._effectiveSwitchEntity!;
-
-    this.hass.callService("homeassistant", "turn_off", { entity_id: switchId })
+    this.hass.callService(DOMAIN, "cancel_timer", { entry_id: entryId })
       .then(() => {
-        this.hass!.callService(DOMAIN, "cancel_timer", { entry_id: entryId });
         this._sendTimerFinishedNotification();
       })
       .catch(error => {
-        console.error("Timer-card: Error turning off switch or cancelling timer:", error);
+        console.error("Timer-card: Error cancelling timer:", error);
       });
+
     this._notificationSentForCurrentCycle = false;
   }
 
+  // ▼▼▼ FIX: POWER BUTTON LOGIC RESTORED AND IMPROVED ▼▼▼
   _togglePower(): void {
     if (!this._entitiesLoaded || !this.hass || !this.hass.states || !this.hass.callService) {
         console.error("Timer-card: Cannot toggle power. Entities not loaded or services unavailable.");
         return;
     }
     const switchId = this._effectiveSwitchEntity!;
+    const sensorId = this._effectiveSensorEntity!;
 
     const timerSwitch = this.hass.states[switchId];
     if (!timerSwitch) {
@@ -311,11 +311,21 @@ class TimerCard extends LitElement {
         return;
     }
 
+    const sensor = this.hass.states[sensorId];
+    const isTimerActive = sensor && sensor.attributes.timer_state === 'active';
+
     if (timerSwitch.state === 'on') {
-      this._cancelTimer();
-      console.log(`Timer-card: Manually turning off switch: ${switchId}`);
+        // If a timer is running, we use the custom cancel service
+        if (isTimerActive) {
+            this._cancelTimer();
+            console.log(`Timer-card: Cancelling active timer for switch: ${switchId}`);
+        } else {
+            // Otherwise, it's a manual 'on', so we just turn it off normally.
+            this.hass.callService("homeassistant", "turn_off", { entity_id: switchId });
+            console.log(`Timer-card: Manually turning off switch: ${switchId}`);
+        }
     } else {
-      // Use generic HA service instead of domain-specific
+      // Standard turn on for manual operation
       this.hass.callService("homeassistant", "turn_on", { entity_id: switchId })
         .then(() => {
             this._sendNotification("Timer started");
@@ -581,14 +591,12 @@ class TimerCard extends LitElement {
         color: var(--primary-text-color);
         border-radius: 12px 12px 0 0;
         margin-bottom: 12px;
-        /* NEW: Added white-space property to preserve spaces within the title */
-        white-space: pre-wrap; /* This should fix the trimming for the div itself */
-        word-break: break-word; /* Ensure long words break */
+        white-space: pre-wrap;
+        word-break: break-word;
       }
-      .card-title pre { /* This pre tag is no longer needed if div handles white-space */
+      .card-title pre {
         margin: 0;
         padding: 0;
-        /* white-space: pre-wrap;  Removed as parent div should handle it */
         font-family: inherit;
         font-size: inherit;
         color: inherit;
@@ -633,7 +641,6 @@ class TimerCard extends LitElement {
         font-size: 36px;
         font-weight: bold;
       }
-      /* Adjust font size when showing seconds to fit better */
       .daily-time-text.with-seconds {
         font-size: 28px;
       }
@@ -670,15 +677,11 @@ class TimerCard extends LitElement {
       }
       .status-icon { color: var(--warning-color); margin-right: 8px; }
       .status-text { font-size: 14px; color: var(--primary-text-color); }
-
-      /* ▼▼▼ CHANGE #2: ADDED NEW CSS FOR THE FULL-WIDTH BANNER ▼▼▼ */
       .watchdog-banner {
         margin: 0 0 12px 0;
         border-radius: 0;
-        grid-column: 1 / -1; /* Ensure it spans all columns if it were in a grid */
+        grid-column: 1 / -1;
       }
-      /* ▲▲▲ END OF CHANGES ▲▲▲ */
-
       .status-message.warning {
         display: flex;
         align-items: center;

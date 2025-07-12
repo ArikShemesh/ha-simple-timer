@@ -329,11 +329,25 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         now = dt_util.utcnow()
 
         if self._timer_finishes_at and self._timer_finishes_at > now:
+            _LOGGER.info(f"Simple Timer: [{self._session_id}] Restored active timer, finishing at {self._timer_finishes_at}")
+
+            # Calculate and add offline runtime
+            last_state = await self.async_get_last_state()
+            if last_state and last_state.state != "unavailable":
+                offline_seconds = (now - last_state.last_updated).total_seconds()
+                if offline_seconds > 0:
+                    rounded_offline_seconds = round(offline_seconds)
+                    _LOGGER.info(f"Simple Timer: [{self._session_id}] Adding {rounded_offline_seconds}s (rounded from {offline_seconds:.2f}s) of offline runtime.")
+                    self._state += rounded_offline_seconds
+                    self._watchdog_message = "Warning: Home assistant was offline during a running timer! Usage time may be unsynchronized by a few seconds."
+
+            # Update state to show the new runtime and message immediately
+            self.async_write_ha_state()
+
             # Timer is still active, reschedule it
             self._timer_unsub = async_track_point_in_utc_time(
                 self.hass, self._async_timer_finished, self._timer_finishes_at
             )
-            _LOGGER.info(f"Simple Timer: [{self._session_id}] Restored active timer, finishing at {self._timer_finishes_at}")
 
             # Start timer update task for real-time countdown
             await self._start_timer_update_task()
@@ -348,7 +362,6 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 _LOGGER.warning(f"Simple Timer: [{self._session_id}] Could not load timer data: {e}")
 
         else:
-            # ▼▼▼ SCENARIO 1 FIX APPLIED HERE ▼▼▼
             _LOGGER.info(f"Simple Timer: [{self._session_id}] Timer expired during restart. Turning off switch and cleaning up.")
 
             # Turn off the switch
@@ -374,7 +387,6 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
             # Update the state to show the warning message
             self.async_write_ha_state()
-            # ▲▲▲ END OF FIX ▲▲▲
 
     async def _start_timer_update_task(self):
         """Start a task to update timer attributes every second."""
@@ -530,6 +542,11 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
         if to_state.state == STATE_ON and (not from_state or from_state.state != STATE_ON):
             _LOGGER.info("Simple Timer: [%s] DETECTED ON TRANSITION for %s. Setting timestamp and starting accumulation.", self._entry_id, self._switch_entity_id)
+            
+            # ▼▼▼ FIX: Clear warning message on manual power on ▼▼▼
+            if self._watchdog_message:
+                self._watchdog_message = None
+
             self._last_on_timestamp = now
             self.hass.async_create_task(self._start_realtime_accumulation())
 
@@ -538,7 +555,6 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             self.hass.async_create_task(self._stop_realtime_accumulation())
             self._last_on_timestamp = None
 
-            # 🔥 BUG FIX: Auto-cancel timer if switch turned off externally while timer is active
             if self._timer_state == "active":
                 _LOGGER.info("Simple Timer: [%s] Switch turned OFF externally while timer was active. Auto-cancelling timer.", self._entry_id)
                 self.hass.async_create_task(self._auto_cancel_timer_on_external_off())
@@ -548,31 +564,35 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
         self.async_write_ha_state()
 
+    async def _cleanup_timer_state(self):
+        """Internal function to reset timer attributes and storage."""
+        # Unsubscribe the scheduled timer callback
+        if self._timer_unsub:
+            self._timer_unsub()
+            self._timer_unsub = None
+        # Stop timer update task
+        await self._stop_timer_update_task()
+        # Clear timer state variables
+        self._timer_state = "idle"
+        self._timer_finishes_at = None
+        self._timer_duration = 0
+        # Remove persisted timer data
+        try:
+            await self._store.async_remove()
+        except Exception as e:
+            _LOGGER.warning(f"Simple Timer: [{self._session_id}] Could not remove persisted timer data during cleanup: {e}")
+
     async def _auto_cancel_timer_on_external_off(self):
         """Auto-cancel timer when switch is turned off externally."""
         _LOGGER.info("Simple Timer: [%s] Auto-cancelling timer due to external switch off", self._entry_id)
 
-        # Unsubscribe the scheduled timer callback
-        if self._timer_unsub:
-            _LOGGER.debug("Simple Timer: [%s] Unsubscribing timer listener on auto-cancel.", self._entry_id)
-            self._timer_unsub()
-            self._timer_unsub = None
+        # Clear watchdog message on manual/external off
+        if self._watchdog_message:
+            self._watchdog_message = None
 
-        # Stop timer update task
-        await self._stop_timer_update_task()
-
-        # Clear timer state
-        self._timer_state = "idle"
-        self._timer_finishes_at = None
-        self._timer_duration = 0
-
-        # Remove persisted timer data
-        try:
-            await self._store.async_remove()
-            _LOGGER.debug("Simple Timer: [%s] Persisted timer data removed on auto-cancel.", self._entry_id)
-        except Exception as e:
-            _LOGGER.warning("Simple Timer: [%s] Could not remove persisted timer data on auto-cancel: %s", self._entry_id, e)
-
+        # Perform cleanup
+        await self._cleanup_timer_state()
+        
         # Update the state to reflect timer cancellation
         self.async_write_ha_state()
 
@@ -726,27 +746,14 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             _LOGGER.debug("Simple Timer: [%s] Timer already idle, no action needed on cancel.", self._entry_id)
             return
 
-        # Unsubscribe the scheduled timer callback
-        if self._timer_unsub:
-            _LOGGER.debug("Simple Timer: [%s] Unsubscribing timer listener on cancel.", self._entry_id)
-            self._timer_unsub()
-            self._timer_unsub = None
+        # Clear watchdog message on manual cancel
+        if self._watchdog_message:
+            self._watchdog_message = None
 
-        # Stop timer update task
-        await self._stop_timer_update_task()
-
-        self._timer_state = "idle"
-        self._timer_finishes_at = None
-        self._timer_duration = 0
-
-        try:
-            await self._store.async_remove()
-            _LOGGER.debug("Simple Timer: [%s] Persisted timer data removed on cancel.", self._entry_id)
-        except Exception as e:
-            _LOGGER.warning("Simple Timer: [%s] Could not remove persisted timer data on cancel: %s", self._entry_id, e)
-
+        # Perform cleanup
+        await self._cleanup_timer_state()
+        
         # Turn off the switch if it's currently on, as cancellation implies stopping heating.
-        # This will trigger _handle_switch_change and stop accumulation.
         current_switch_state = self.hass.states.get(self._switch_entity_id) if self._switch_entity_id else None
         if current_switch_state and current_switch_state.state == STATE_ON:
             _LOGGER.info("Simple Timer: [%s] Turning off switch %s on timer cancellation.", self._entry_id, self._switch_entity_id)
@@ -756,23 +763,20 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         else:
             # If switch is already off, just stop accumulation task if it's somehow running
             await self._stop_realtime_accumulation()
-
+        
         self.async_write_ha_state()
 
     @callback
     async def _async_timer_finished(self, now: dt_util.dt | None = None) -> None:
-        """Callback executed when the scheduled timer finishes.
-        This method is designed to be idempotent.
-        """
-        # The 'now' argument is passed by async_track_point_in_utc_time, but we don't strictly need it.
+        """Callback executed when the scheduled timer finishes."""
         _LOGGER.info("Simple Timer: [%s] _async_timer_finished callback triggered.", self._entry_id)
 
-        # Check if timer state is still active. This makes the handler idempotent.
-        # If the timer was manually cancelled, _timer_state would be 'idle'.
         if self._timer_state != "active":
             _LOGGER.debug("Simple Timer: [%s] _async_timer_finished called but timer is not active. Ignoring.", self._entry_id)
             return
 
+        await self._cleanup_timer_state()
+        
         if self._switch_entity_id:
             _LOGGER.info(
                 "Simple Timer: [%s] Timer finished. Turning off switch %s.", self._entry_id, self._switch_entity_id
@@ -782,10 +786,9 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             )
         else:
             _LOGGER.warning("Simple Timer: [%s] Timer finished, but no switch entity ID is set. Cannot turn off switch.", self._entry_id)
-
-        # Call async_cancel_timer to clean up the timer state and storage.
-        # This also ensures accumulation stops if switch turns off.
-        await self.async_cancel_timer()
+        
+        # Update state
+        self.async_write_ha_state()
 
     def _is_switch_on(self) -> bool:
         """Helper to check if the tracked switch is currently ON."""
