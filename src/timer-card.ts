@@ -135,12 +135,13 @@ class TimerCard extends LitElement {
         return validatedTimerButtons; // Could be empty array - that's OK!
     }
 
-    // Case 2: configButtons is undefined/null - use defaults ONLY for new cards
+    // Case 2: configButtons is undefined/null - return empty array
+    // When property is deleted from YAML, it should result in no buttons
     if (configButtons === undefined || configButtons === null) {
-        console.log(`TimerCard: No timer_buttons in config, using defaults for new card:`, DEFAULT_TIMER_BUTTONS);
-        return [...DEFAULT_TIMER_BUTTONS];
+        console.log(`TimerCardEditor: No timer_buttons in config, using empty array (no timer buttons)`);
+        return [];
     }
-
+		
     // Case 3: configButtons is not an array - treat as invalid, use empty
     console.warn(`TimerCard: Invalid timer_buttons type (${typeof configButtons}):`, configButtons, `- using empty array`);
     this._validationMessage = `Invalid timer_buttons configuration. Expected array, got ${typeof configButtons}.`;
