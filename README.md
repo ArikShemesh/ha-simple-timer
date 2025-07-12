@@ -111,6 +111,17 @@ _or_
    - Customize timer buttons
    - Set optional notification entity
    - Add a custom card title
+  
+## 🔄 Renaming Timer Instances
+
+### ✅ Recommended Method
+1. Go to **Settings → Devices & Services**  
+2. Find your Simple Timer integration
+3. Click **Configure** (⚙️ gear icon)
+4. Change the name and save
+
+### 💡 Note on 3-Dots Rename
+If you use the 3-dots menu to rename, open **Configure** once afterward to sync the change.
 
 ## 🎛️ Card Configuration
 
