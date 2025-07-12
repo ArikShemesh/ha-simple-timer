@@ -327,66 +327,53 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
     async def _restore_active_timer(self):
         """Restore an active timer after restart."""
         now = dt_util.utcnow()
+        _LOGGER.info(f"Simple Timer: [{self._session_id}] Restoring an active timer state after restart.")
 
+        # Common logic for both scenarios: calculate offline time and set a warning.
+        last_state = await self.async_get_last_state()
+        if last_state and last_state.state != "unavailable":
+            offline_seconds = (now - last_state.last_updated).total_seconds()
+            if offline_seconds > 0:
+                rounded_offline_seconds = round(offline_seconds)
+                _LOGGER.info(f"Simple Timer: [{self._session_id}] Adding {rounded_offline_seconds}s (rounded from {offline_seconds:.2f}s) of offline runtime.")
+                self._state += rounded_offline_seconds
+                self._watchdog_message = "Warning: Home assistant was offline during a running timer! Usage time may be unsynchronized by a few seconds."
+
+        # Branching logic for final action
         if self._timer_finishes_at and self._timer_finishes_at > now:
-            _LOGGER.info(f"Simple Timer: [{self._session_id}] Restored active timer, finishing at {self._timer_finishes_at}")
-
-            # Calculate and add offline runtime
-            last_state = await self.async_get_last_state()
-            if last_state and last_state.state != "unavailable":
-                offline_seconds = (now - last_state.last_updated).total_seconds()
-                if offline_seconds > 0:
-                    rounded_offline_seconds = round(offline_seconds)
-                    _LOGGER.info(f"Simple Timer: [{self._session_id}] Adding {rounded_offline_seconds}s (rounded from {offline_seconds:.2f}s) of offline runtime.")
-                    self._state += rounded_offline_seconds
-                    self._watchdog_message = "Warning: Home assistant was offline during a running timer! Usage time may be unsynchronized by a few seconds."
-
-            # Update state to show the new runtime and message immediately
-            self.async_write_ha_state()
-
-            # Timer is still active, reschedule it
+            # SCENARIO 2: Timer is still active, resume it.
+            _LOGGER.info(f"Simple Timer: [{self._session_id}] Timer is still active, resuming. Finishes at {self._timer_finishes_at}")
             self._timer_unsub = async_track_point_in_utc_time(
                 self.hass, self._async_timer_finished, self._timer_finishes_at
             )
-
-            # Start timer update task for real-time countdown
             await self._start_timer_update_task()
-
-            # Load persisted timer data
             try:
                 data = await self._store.async_load()
                 if data:
                     self._timer_duration = data.get("duration", self._timer_duration)
-                    _LOGGER.debug(f"Simple Timer: [{self._session_id}] Loaded timer duration: {self._timer_duration}")
             except Exception as e:
                 _LOGGER.warning(f"Simple Timer: [{self._session_id}] Could not load timer data: {e}")
-
         else:
-            _LOGGER.info(f"Simple Timer: [{self._session_id}] Timer expired during restart. Turning off switch and cleaning up.")
-
-            # Turn off the switch
-            if self._switch_entity_id:
-                _LOGGER.info(f"Simple Timer: [{self._session_id}] Turning off switch {self._switch_entity_id} as timer finished while HA was offline.")
-                await self.hass.services.async_call(
-                    "homeassistant", "turn_off", {"entity_id": self._switch_entity_id}, blocking=True
-                )
-
-            # Set the warning message
-            self._watchdog_message = "Warning: Home Assistant was offline and interrupted the last timer!"
-
-            # Clean up timer state
+            # SCENARIO 1: Timer has expired. Clean up state THEN turn off switch.
+            _LOGGER.info(f"Simple Timer: [{self._session_id}] Timer expired during restart. Cleaning up and turning off switch.")
+            
+            # ▼▼▼ FIX: Clean up internal state FIRST to prevent race condition ▼▼▼
             self._timer_state = "idle"
             self._timer_finishes_at = None
             self._timer_duration = 0
-
-            # Remove persisted timer data
             try:
                 await self._store.async_remove()
             except Exception:
                 pass
-
-            # Update the state to show the warning message
-            self.async_write_ha_state()
+            
+            # THEN, turn off the switch.
+            if self._switch_entity_id:
+                await self.hass.services.async_call(
+                    "homeassistant", "turn_off", {"entity_id": self._switch_entity_id}, blocking=True
+                )
+        
+        # Write all changes (new state and/or message) to Home Assistant
+        self.async_write_ha_state()
 
     async def _start_timer_update_task(self):
         """Start a task to update timer attributes every second."""
@@ -543,7 +530,6 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         if to_state.state == STATE_ON and (not from_state or from_state.state != STATE_ON):
             _LOGGER.info("Simple Timer: [%s] DETECTED ON TRANSITION for %s. Setting timestamp and starting accumulation.", self._entry_id, self._switch_entity_id)
             
-            # ▼▼▼ FIX: Clear warning message on manual power on ▼▼▼
             if self._watchdog_message:
                 self._watchdog_message = None
 
