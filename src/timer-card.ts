@@ -5,7 +5,7 @@ import { LitElement, html, css } from 'lit';
 // Ensure HomeAssistant and TimerCardConfig are recognized from global.d.ts
 
 const DOMAIN = "simple_timer";
-const CARD_VERSION = "1.0.6";
+const CARD_VERSION = "1.0.7";
 const DEFAULT_TIMER_BUTTONS = [15, 30, 60, 90, 120, 150]; // Default for new cards only
 
 console.info(
@@ -550,7 +550,7 @@ class TimerCard extends LitElement {
           </div>
         </div>
         <div class="button-grid">
-          ${this.buttons.length > 0 ? this.buttons.map(minutes => {
+          ${this.buttons.map(minutes => {
             const isActive = isTimerActive && timerDurationInMinutes === minutes;
             const isDisabled = isManualOn || (isTimerActive && !isActive);
             return html`
@@ -558,12 +558,7 @@ class TimerCard extends LitElement {
                 ${isActive && this._timeRemaining ? html`<span class="countdown-text">${this._timeRemaining}</span>` : html`<div class="timer-button-content"><span class="timer-button-value">${minutes}</span><span class="timer-button-unit">Min</span></div>`}
               </div>
             `;
-          }) : html`
-            <div class="no-timers-message">
-              <ha-icon icon="mdi:timer-off-outline"></ha-icon>
-              <span>No timer buttons configured</span>
-            </div>
-          `}
+          })}
         </div>
         ${this._validationMessage ? html`
           <div class="status-message warning">
@@ -651,21 +646,6 @@ class TimerCard extends LitElement {
       .active .timer-button-value, .active .timer-button-unit { color: white; }
       .disabled { opacity: 0.5; cursor: not-allowed; }
       .disabled:hover { background-color: var(--secondary-background-color); }
-      .no-timers-message {
-        grid-column: 1 / -1;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 24px;
-        color: var(--secondary-text-color);
-        font-style: italic;
-        gap: 8px;
-      }
-      .no-timers-message ha-icon {
-        --mdc-icon-size: 32px;
-        opacity: 0.6;
-      }
       .status-message {
         display: flex;
         align-items: center;

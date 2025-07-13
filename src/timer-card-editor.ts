@@ -114,7 +114,7 @@ class TimerCardEditor extends LitElement {
 
     for (const entityId in this.hass.states) {
       const state = this.hass.states[entityId];
-      
+
       // UPDATED: Look for sensors that have the required simple timer attributes
       // The entity name format is now: "[Instance Name] Runtime ([entry_id_short])"
       if (entityId.startsWith('sensor.') &&
@@ -125,7 +125,7 @@ class TimerCardEditor extends LitElement {
           typeof state.attributes.switch_entity_id === 'string'
          ) {
         const entryId = state.attributes.entry_id;
-        const instanceTitle = state.attributes[ATTR_INSTANCE_TITLE]; 
+        const instanceTitle = state.attributes[ATTR_INSTANCE_TITLE];
 
         let instanceLabel = `Timer Control (${entryId.substring(0, 8)})`;
 
@@ -139,7 +139,7 @@ class TimerCardEditor extends LitElement {
         } else {
             console.warn(`TimerCardEditor: Sensor '${entityId}' has no valid '${ATTR_INSTANCE_TITLE}' attribute. Falling back to entry ID based label: "${instanceLabel}".`);
         }
-        
+
         if (!instancesMap.has(entryId)) {
           instancesMap.set(entryId, { value: entryId, label: instanceLabel });
           console.debug(`TimerCardEditor: Added instance: ${instanceLabel} (${entryId}) from sensor: ${entityId}`);
@@ -193,14 +193,12 @@ class TimerCardEditor extends LitElement {
     return targets;
   }
 
-  /**
-   * 🔧 FIX: Validation logic that allows empty timer buttons (optional)
-   */
+  // ▼▼▼ FIX APPLIED HERE ▼▼▼
   _getValidatedTimerButtons(configButtons: any): number[] {
     // Case 1: configButtons is a valid array (could be empty)
     if (Array.isArray(configButtons)) {
         const validatedButtons: number[] = [];
-        
+
         configButtons.forEach(val => {
             const numVal = Number(val);
             if (Number.isInteger(numVal) && numVal > 0 && numVal <= 1000) {
@@ -210,25 +208,25 @@ class TimerCardEditor extends LitElement {
 
         validatedButtons.sort((a, b) => a - b);
         console.log(`TimerCardEditor: Using ${validatedButtons.length} timer buttons from config:`, validatedButtons);
-        return validatedButtons; // Could be empty array - that's OK!
+        return validatedButtons;
     }
 
-    // Case 2: configButtons is undefined/null - use defaults ONLY for new cards
+    // Case 2: configButtons is undefined/null because the user deleted the key. Return an empty array.
+    // The constructor handles applying defaults for brand new cards.
     if (configButtons === undefined || configButtons === null) {
-        console.log(`TimerCardEditor: No timer_buttons in config, using defaults for new card:`, DEFAULT_TIMER_BUTTONS);
-        return [...DEFAULT_TIMER_BUTTONS];
+        console.log(`TimerCardEditor: No timer_buttons in config, using empty array.`);
+        return [];
     }
 
     // Case 3: configButtons is not an array - treat as invalid, use empty
     console.warn(`TimerCardEditor: Invalid timer_buttons type (${typeof configButtons}):`, configButtons, `- using empty array`);
-    return []; // Return empty array for invalid non-array values
+    return [];
   }
 
   async setConfig(cfg: TimerCardConfig): Promise<void> {
     console.log(`TimerCardEditor: setConfig called with:`, cfg);
     const oldConfig = { ...this._config };
 
-    // 🔧 FIX: Use centralized validation logic
     const timerButtonsToSet = this._getValidatedTimerButtons(cfg.timer_buttons);
 
     const newConfigData: TimerCardConfig = {
@@ -238,8 +236,6 @@ class TimerCardEditor extends LitElement {
       show_seconds: cfg.show_seconds || false
     };
 
-    // SIMPLIFIED: Just preserve the timer_instance_id as-is from the config
-    // Don't do any auto-selection here - let _fetchTimerInstances handle that
     if (cfg.timer_instance_id) {
         newConfigData.timer_instance_id = cfg.timer_instance_id;
         console.info(`TimerCardEditor: setConfig PRESERVING existing timer_instance_id: '${cfg.timer_instance_id}'`);
@@ -247,20 +243,15 @@ class TimerCardEditor extends LitElement {
         console.info(`TimerCardEditor: setConfig - no timer_instance_id in config, will be auto-selected later`);
     }
 
-    // Preserve other legacy config fields if they exist
     if (cfg.entity) newConfigData.entity = cfg.entity;
     if (cfg.sensor_entity) newConfigData.sensor_entity = cfg.sensor_entity;
     if (cfg.notification_entity) newConfigData.notification_entity = cfg.notification_entity;
 
-    // IMPORTANT: Set the config immediately, don't use setTimeout tricks
     this._config = newConfigData;
-    
-    // Mark that we've received a complete config (this prevents premature auto-selection)
     this._configFullyLoaded = true;
     
     console.log(`TimerCardEditor: setConfig result:`, this._config);
     
-    // Only dispatch if config actually changed
     if (JSON.stringify(oldConfig) !== JSON.stringify(this._config)) {
         console.log(`TimerCardEditor: Config changed, dispatching config-changed event`);
         this.dispatchEvent(
@@ -351,16 +342,12 @@ class TimerCardEditor extends LitElement {
           this._timerInstancesOptions = await this._getSimpleTimerInstances();
           console.log(`TimerCardEditor: Found ${this._timerInstancesOptions.length} instances:`, this._timerInstancesOptions);
           
-          // CRITICAL: Only allow auto-selection if we're sure the config is fully loaded
-          // This prevents overriding user selections when the editor is re-opened
           if (!this._configFullyLoaded) {
               console.info(`TimerCardEditor: Config not fully loaded yet, skipping any auto-selection logic`);
               this.requestUpdate();
               return;
           }
           
-          // AUTO-SELECT: Only auto-select if NO instance is currently configured
-          // AND instances are available. Don't override existing valid selections.
           const hasNoInstanceConfigured = !this._config?.timer_instance_id || 
                                         this._config.timer_instance_id === "none_found" ||
                                         this._config.timer_instance_id === "";
@@ -372,7 +359,6 @@ class TimerCardEditor extends LitElement {
               const firstInstance = this._timerInstancesOptions[0];
               console.info(`TimerCardEditor: AUTO-SELECTING first available instance (no valid instance configured): '${firstInstance.value}' (${firstInstance.label})`);
               
-              // Update the config to include the auto-selected instance
               const updatedConfig: TimerCardConfig = {
                   ...this._config,
                   timer_instance_id: firstInstance.value
@@ -387,7 +373,6 @@ class TimerCardEditor extends LitElement {
                   }),
               );
           } else if (this._config?.timer_instance_id && hasAvailableInstances) {
-              // Verify that the currently configured instance still exists
               const currentInstanceExists = this._timerInstancesOptions.some(
                   instance => instance.value === this._config!.timer_instance_id
               );
@@ -436,12 +421,11 @@ class TimerCardEditor extends LitElement {
       currentButtons = currentButtons.filter(button => button !== value);
     }
 
-    // 🔧 FIX: Allow empty arrays - timer buttons are optional
     currentButtons.sort((a, b) => a - b);
 
     const updatedConfig: TimerCardConfig = {
         type: this._config!.type,
-        timer_buttons: currentButtons, // Could be empty - that's OK!
+        timer_buttons: currentButtons,
         show_seconds: this._config!.show_seconds || false
     };
     if (this._config?.timer_instance_id) updatedConfig.timer_instance_id = this._config.timer_instance_id;
@@ -488,7 +472,6 @@ class TimerCardEditor extends LitElement {
           `)}
         </div>
         <div class="timer-buttons-info">
-          <p><strong>Current buttons:</strong> ${this._config?.timer_buttons?.length ? this._config.timer_buttons.join(', ') : 'None'}</p>
           ${!this._config?.timer_buttons?.length ? html`
             <p class="info-text">ℹ️ No timer buttons selected. Only power toggle and daily usage will be shown.</p>
           ` : ''}
@@ -529,7 +512,6 @@ class TimerCardEditor extends LitElement {
         updatedConfig.notification_entity = this._config.notification_entity;
     }
 
-    // Handle card_title from newFormValues
     if (newFormValues.card_title && newFormValues.card_title !== '') {
         updatedConfig.card_title = newFormValues.card_title;
     } else {
