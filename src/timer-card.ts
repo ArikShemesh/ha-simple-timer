@@ -1,11 +1,11 @@
-// timer-card.ts - FIXED VERSION
+// timer-card.ts
 
 import { LitElement, html, css } from 'lit';
 
 // Ensure HomeAssistant and TimerCardConfig are recognized from global.d.ts
 
 const DOMAIN = "simple_timer";
-const CARD_VERSION = "1.0.7";
+const CARD_VERSION = "1.0.8";
 const DEFAULT_TIMER_BUTTONS = [15, 30, 60, 90, 120, 150]; // Default for new cards only
 
 console.info(
@@ -105,14 +105,10 @@ class TimerCard extends LitElement {
     console.log(`TimerCard: setConfig completed. Configured instance ID: ${this._config.timer_instance_id}, Buttons: ${this.buttons.length}, Show seconds: ${this._config.show_seconds}`);
   }
 
-  /**
-   * 🔧 FIX: Validation logic that allows empty timer buttons (optional)
-   */
   _getValidatedTimerButtons(configButtons: any): number[] {
     let validatedTimerButtons: number[] = [];
     this._validationMessage = null;
 
-    // Case 1: configButtons is a valid array (could be empty)
     if (Array.isArray(configButtons)) {
         const invalidValues: any[] = [];
 
@@ -125,27 +121,21 @@ class TimerCard extends LitElement {
             }
         });
 
-        // Show warning if there were invalid values
         if (invalidValues.length > 0) {
             this._validationMessage = `Invalid timer values ignored: ${invalidValues.join(', ')}. Only positive integers up to 1000 are allowed.`;
         }
 
         validatedTimerButtons.sort((a, b) => a - b);
-        console.log(`TimerCard: Using ${validatedTimerButtons.length} timer buttons from config:`, validatedTimerButtons);
-        return validatedTimerButtons; // Could be empty array - that's OK!
+        return validatedTimerButtons;
     }
 
-    // Case 2: configButtons is undefined/null - return empty array
-    // When property is deleted from YAML, it should result in no buttons
     if (configButtons === undefined || configButtons === null) {
-        console.log(`TimerCardEditor: No timer_buttons in config, using empty array (no timer buttons)`);
         return [];
     }
 
-    // Case 3: configButtons is not an array - treat as invalid, use empty
     console.warn(`TimerCard: Invalid timer_buttons type (${typeof configButtons}):`, configButtons, `- using empty array`);
     this._validationMessage = `Invalid timer_buttons configuration. Expected array, got ${typeof configButtons}.`;
-    return []; // Return empty array for invalid non-array values
+    return [];
   }
 
   _determineEffectiveEntities(): void {
@@ -269,7 +259,7 @@ class TimerCard extends LitElement {
     this.hass.callService("homeassistant", "turn_on", { entity_id: switchId })
       .then(() => {
         this.hass!.callService(DOMAIN, "start_timer", { entry_id: entryId, duration: minutes });
-        this._sendNotification(`Timer was turned on for ${minutes} minutes`);
+        this._sendNotification(`${this._config?.card_title || 'Timer'} was turned on for ${minutes} minutes`);
       })
       .catch(error => {
         console.error("Timer-card: Error turning on switch or starting timer:", error);
@@ -296,7 +286,6 @@ class TimerCard extends LitElement {
     this._notificationSentForCurrentCycle = false;
   }
 
-  // ▼▼▼ FIX: POWER BUTTON LOGIC RESTORED AND IMPROVED ▼▼▼
   _togglePower(): void {
     if (!this._entitiesLoaded || !this.hass || !this.hass.states || !this.hass.callService) {
         console.error("Timer-card: Cannot toggle power. Entities not loaded or services unavailable.");
@@ -315,20 +304,23 @@ class TimerCard extends LitElement {
     const isTimerActive = sensor && sensor.attributes.timer_state === 'active';
 
     if (timerSwitch.state === 'on') {
-        // If a timer is running, we use the custom cancel service
         if (isTimerActive) {
             this._cancelTimer();
             console.log(`Timer-card: Cancelling active timer for switch: ${switchId}`);
         } else {
-            // Otherwise, it's a manual 'on', so we just turn it off normally.
             this.hass.callService("homeassistant", "turn_off", { entity_id: switchId });
+            const sensorState = this.hass.states[this._effectiveSensorEntity!];
+            if (sensorState) {
+                const totalSeconds = parseFloat(sensorState.state as string) || 0;
+                const { formattedTime, label } = this._formatTimeForNotification(totalSeconds);
+                this._sendNotification(`${this._config?.card_title || 'Timer'} was turned off - daily usage ${formattedTime} ${label}`);
+            }
             console.log(`Timer-card: Manually turning off switch: ${switchId}`);
         }
     } else {
-      // Standard turn on for manual operation
       this.hass.callService("homeassistant", "turn_on", { entity_id: switchId })
         .then(() => {
-            this._sendNotification("Timer started");
+            this._sendNotification(`${this._config?.card_title || 'Timer'} started`);
             console.log(`Timer-card: Manually turning on switch: ${switchId}`);
         })
         .catch(error => {
@@ -382,6 +374,24 @@ class TimerCard extends LitElement {
     this._liveRuntimeSeconds = 0;
   }
 
+  _formatTimeForNotification(totalSeconds: number): { formattedTime: string; label: string } {
+    if (this._config?.show_seconds) {
+      const totalSecondsInt = Math.floor(totalSeconds);
+      const hours = Math.floor(totalSecondsInt / 3600);
+      const minutes = Math.floor((totalSecondsInt % 3600) / 60);
+      const seconds = totalSecondsInt % 60;
+      const formattedTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+      return { formattedTime, label: "(hh:mm:ss)" };
+    } else {
+      // ▼▼▼ FIX: Use Math.floor to match the card's display logic ▼▼▼
+      const totalMinutes = Math.floor(totalSeconds / 60);
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      const formattedTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+      return { formattedTime, label: "(hh:mm)" };
+    }
+  }
+
   _updateCountdown(): void {
     if (!this._entitiesLoaded || !this.hass || !this.hass.states) {
       this._stopCountdown();
@@ -412,16 +422,19 @@ class TimerCard extends LitElement {
           if (remaining === 0) {
               this._stopCountdown();
               if (!this._notificationSentForCurrentCycle) {
-                  const finalSensorState = this.hass!.states[this._effectiveSensorEntity!];
-                  const committedSeconds = parseFloat(finalSensorState.state as string) || 0;
+                  this._notificationSentForCurrentCycle = true; // Set flag immediately to prevent multiple triggers
 
-                  const totalMinutes = Math.round(committedSeconds / 60);
-                  const hours = Math.floor(totalMinutes / 60);
-                  const minutes = totalMinutes % 60;
-                  const formattedDailyUsage = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+                  setTimeout(() => {
+                      if (!this.hass || !this._effectiveSensorEntity) return;
 
-                  this._sendNotification(`Timer was turned off - daily usage ${formattedDailyUsage} (hh:mm)`);
-                  this._notificationSentForCurrentCycle = true;
+                      const finalSensorState = this.hass.states[this._effectiveSensorEntity];
+                      if (!finalSensorState) return;
+
+                      const totalSeconds = parseFloat(finalSensorState.state as string) || 0;
+                      
+                      const { formattedTime, label } = this._formatTimeForNotification(totalSeconds);
+                      this._sendNotification(`${this._config?.card_title || 'Timer'} was turned off - daily usage ${formattedTime} ${label}`);
+                  }, 500);
               }
           }
         };
@@ -445,12 +458,9 @@ class TimerCard extends LitElement {
     if (!sensor) return;
 
     const committedSeconds = parseFloat(sensor.state as string) || 0;
-    const totalMinutes = Math.round(committedSeconds / 60);
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    const formattedDailyUsage = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-
-    this._sendNotification(`Timer finished – daily usage ${formattedDailyUsage} (hh:mm)`);
+    
+    const { formattedTime, label } = this._formatTimeForNotification(committedSeconds);
+    this._sendNotification(`${this._config?.card_title || 'Timer'} finished – daily usage ${formattedTime} ${label}`);
   }
 
   render() {
