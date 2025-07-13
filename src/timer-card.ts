@@ -5,7 +5,7 @@ import { LitElement, html, css } from 'lit';
 // Ensure HomeAssistant and TimerCardConfig are recognized from global.d.ts
 
 const DOMAIN = "simple_timer";
-const CARD_VERSION = "1.0.5";
+const CARD_VERSION = "1.0.6";
 const DEFAULT_TIMER_BUTTONS = [15, 30, 60, 90, 120, 150]; // Default for new cards only
 
 console.info(

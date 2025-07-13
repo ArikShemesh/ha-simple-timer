@@ -9,5 +9,5 @@
   "issue_tracker": "https://github.com/ArikShemesh/ha-simple-timer/issues",
   "loggers": ["custom_components.simple_timer"],
   "requirements": [],
-  "version": "1.0.5"
+  "version": "1.0.6"
 }
