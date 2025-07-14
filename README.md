@@ -1,12 +1,13 @@
-# HA Simple Timer Integration
+![image](https://github.com/ArikShemesh/ha-simple-timer/blob/main/custom_components/simple_timer/brands/simple_timer/logo.png)
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
 [![Version](https://img.shields.io/github/v/release/ArikShemesh/ha-simple-timer)](https://github.com/ArikShemesh/ha-simple-timer/releases)
 [![Downloads](https://img.shields.io/github/downloads/ArikShemesh/ha-simple-timer/total)](https://github.com/ArikShemesh/ha-simple-timer/releases)
 
+# HA Simple Timer Integration
 A simple timer integration for Home Assistant with precise countdown functionality and daily runtime tracking.
 
-![image](https://github.com/user-attachments/assets/5835b40c-4d07-472b-9d99-4446db63f6e7)
+![image](https://github.com/ArikShemesh/ha-simple-timer/blob/main/images/simple_timer_card.png)
 
 ## ✨ Key Features
 
@@ -36,12 +37,6 @@ A simple timer integration for Home Assistant with precise countdown functionali
 
 ### Step 1: Install the Integration via HACS
 
-Use this link to directly go to the repository in HACS
-
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=ArikShemesh&repository=ha-simple-timer)
-
-_or_
-
 #### Option A: Add as Custom Repository
 1. Open HACS in Home Assistant
 2. Go to "Integrations"
@@ -50,6 +45,13 @@ _or_
 5. Add repository URL: `https://github.com/ArikShemesh/ha-simple-timer`
 6. Select "Integration" as the category
 7. Click "Add"
+
+Then use this link to directly go to the repository in HACS
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=ArikShemesh&repository=ha-simple-timer)
+
+_or_
+
 8. Find "Simple Timer" in the integrations list and install
 9. **Restart Home Assistant**
 
