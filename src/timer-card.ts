@@ -1,11 +1,14 @@
 // timer-card.ts
 
-import { LitElement, html, css } from 'lit';
+import { LitElement, html } from 'lit';
+import { cardStyles } from './timer-card.styles';
+import { version } from "../package.json"
 
 // Ensure HomeAssistant and TimerCardConfig are recognized from global.d.ts
 
 const DOMAIN = "simple_timer";
-const CARD_VERSION = "1.0.10";
+const CARD_VERSION = version;
+const REPO_URL = "https://github.com/ArikShemesh/ha-simple-timer";
 const DEFAULT_TIMER_BUTTONS = [15, 30, 60, 90, 120, 150]; // Default for new cards only
 
 console.info(
@@ -383,7 +386,6 @@ class TimerCard extends LitElement {
       const formattedTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
       return { formattedTime, label: "(hh:mm:ss)" };
     } else {
-      // ▼▼▼ FIX: Use Math.floor to match the card's display logic ▼▼▼
       const totalMinutes = Math.floor(totalSeconds / 60);
       const hours = Math.floor(totalMinutes / 60);
       const minutes = totalMinutes % 60;
@@ -545,7 +547,13 @@ class TimerCard extends LitElement {
 
     return html`
       <ha-card>
-        ${this._config?.card_title ? html`<div class="card-title">${this._config.card_title}</div>` : ''}
+        <div class="card-header">
+            <div class="card-title">${this._config?.card_title || ''}</div>
+            <a href="${REPO_URL}" target="_blank" rel="noopener noreferrer" class="repo-link" title="Help">
+                <ha-icon icon="mdi:help-circle-outline"></ha-icon>
+            </a>
+        </div>
+
         ${watchdogMessage ? html`
           <div class="status-message warning watchdog-banner">
             <ha-icon icon="mdi:alert-outline" class="status-icon"></ha-icon>
@@ -581,115 +589,7 @@ class TimerCard extends LitElement {
   }
 
   static get styles() {
-    return css`
-      :host { display: block; }
-      .ha-card {
-        padding: 0;
-      }
-      .card-title {
-        font-size: 1.2em;
-        font-weight: bold;
-        text-align: center;
-        padding: 12px;
-        background-color: var(--primary-color-faded, rgba(150, 210, 230, 0.2));
-        border-bottom: 1px solid var(--divider-color);
-        color: var(--primary-text-color);
-        border-radius: 12px 12px 0 0;
-        margin-bottom: 12px;
-        white-space: pre-wrap;
-        word-break: break-word;
-      }
-      .card-title pre {
-        margin: 0;
-        padding: 0;
-        font-family: inherit;
-        font-size: inherit;
-        color: inherit;
-      }
-      .placeholder { padding: 16px; background-color: var(--secondary-background-color); }
-      .warning { padding: 16px; color: white; background-color: var(--error-color); }
-      .main-grid, .button-grid { gap: 12px; padding: 12px; }
-      .main-grid { display: grid; grid-template-columns: 1fr 1fr; }
-      .button-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); padding-top: 0; }
-      .button {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 16px 8px;
-        background-color: var(--secondary-background-color);
-        border-radius: 12px;
-        cursor: pointer;
-        transition: background-color 0.2s, opacity 0.2s;
-        text-align: center;
-        -webkit-tap-highlight-color: transparent;
-        height: 100px;
-        box-sizing: border-box;
-      }
-      .button:hover { background-color: var(--primary-color-faded, #3a506b); }
-      .power-button {
-        font-size: 80px;
-        --mdc-icon-size: 80px;
-        color: white;
-        background-color: var(--error-color);
-      }
-      .power-button.on { background-color: var(--success-color); }
-      .readonly {
-        background-color: var(--card-background-color);
-        border: 1px solid var(--secondary-background-color);
-        line-height: 1.2;
-        cursor: default;
-      }
-      .active, .active:hover { background-color: var(--primary-color); color: white; }
-      .countdown-text { font-size: 28px; font-weight: bold; color: white; }
-      .daily-time-text {
-        font-size: 36px;
-        font-weight: bold;
-      }
-      .daily-time-text.with-seconds {
-        font-size: 28px;
-      }
-      .runtime-label { font-size: 14px; text-transform: uppercase; color: var(--secondary-text-color); margin-top: 2px; }
-      .timer-button-content { display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; }
-      .timer-button-value { font-size: 36px; font-weight: 500; color: var(--primary-text-color); }
-      .timer-button-unit { font-size: 14px; color: var(--secondary-text-color); }
-      .active .timer-button-value, .active .timer-button-unit { color: white; }
-      .disabled { opacity: 0.5; cursor: not-allowed; }
-      .disabled:hover { background-color: var(--secondary-background-color); }
-      .status-message {
-        display: flex;
-        align-items: center;
-        padding: 8px 12px;
-        margin: 0 12px 12px 12px;
-        border-radius: 8px;
-        border: 1px solid var(--warning-color);
-        background-color: rgba(var(--rgb-warning-color), 0.1);
-      }
-      .status-icon { color: var(--warning-color); margin-right: 8px; }
-      .status-text { font-size: 14px; color: var(--primary-text-color); }
-      .watchdog-banner {
-        margin: 0 0 12px 0;
-        border-radius: 0;
-        grid-column: 1 / -1;
-      }
-      .status-message.warning {
-        display: flex;
-        align-items: center;
-        padding: 8px 12px;
-        margin: 0 12px 12px 12px;
-        border-radius: 8px;
-        border: 1px solid var(--warning-color);
-        background-color: rgba(var(--rgb-warning-color), 0.1);
-      }
-      .status-icon {
-        color: var(--warning-color);
-        margin-right: 8px;
-      }
-      .status-text {
-        font-size: 14px;
-        color: var(--primary-text-color);
-      }
-    `;
+    return cardStyles;
   }
 }
 customElements.define("timer-card", TimerCard);
