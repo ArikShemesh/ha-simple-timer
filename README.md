@@ -10,6 +10,7 @@ A simple timer integration for Home Assistant with precise countdown functionali
 ![image](https://github.com/ArikShemesh/ha-simple-timer/blob/main/images/simple_timer_card.png)
 
 ## ✨ Key Features
+🚀 **Out-of-the-box**, pre-packaged timer solution, eliminating manual creation of multiple Home Assistant entities, sensors, and automations.
 
 🕐 **Precise Timer Control** - Set countdown timers from 1-1000 minutes for any switch, input_boolean, light, or fan
 
