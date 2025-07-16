@@ -235,103 +235,90 @@ class TimerCard extends LitElement {
     return null;
   }
 
-  _sendNotification(message: string): void {
-    if (!this.hass || !this.hass.callService || !this._config?.notification_entity || this._config.notification_entity === "none_selected") {
-      return;
-    }
-    const serviceParts = this._config.notification_entity.split('.');
-    const domain = serviceParts[0];
-    const service = serviceParts.slice(1).join('.');
+	_startTimer(minutes: number): void {
+		if (!this._entitiesLoaded || !this.hass || !this.hass.callService) {
+				console.error("Timer-card: Cannot start timer. Entities not loaded or callService unavailable.");
+				return;
+		}
+		const entryId = this._getEntryId();
+		if (!entryId) { console.error("Timer-card: Entry ID not found for starting timer."); return; }
 
-    this.hass.callService(domain, service, { message: message })
-      .catch(error => {
-        console.warn("Timer-card: Notification failed:", error);
-      });
-  }
+		const switchId = this._effectiveSwitchEntity!;
 
-  _startTimer(minutes: number): void {
-    if (!this._entitiesLoaded || !this.hass || !this.hass.callService) {
-        console.error("Timer-card: Cannot start timer. Entities not loaded or callService unavailable.");
-        return;
-    }
-    const entryId = this._getEntryId();
-    if (!entryId) { console.error("Timer-card: Entry ID not found for starting timer."); return; }
+		this.hass.callService("homeassistant", "turn_on", { entity_id: switchId })
+			.then(() => {
+				this.hass!.callService(DOMAIN, "start_timer", { entry_id: entryId, duration: minutes });
+				// No manual notification - backend handles it
+			})
+			.catch(error => {
+				console.error("Timer-card: Error turning on switch or starting timer:", error);
+			});
+		this._notificationSentForCurrentCycle = false;
+	}
 
-    const switchId = this._effectiveSwitchEntity!;
+	_cancelTimer(): void {
+		if (!this._entitiesLoaded || !this.hass || !this.hass.callService) {
+				console.error("Timer-card: Cannot cancel timer. Entities not loaded or callService unavailable.");
+				return;
+		}
+		const entryId = this._getEntryId();
+		if (!entryId) { console.error("Timer-card: Entry ID not found for cancelling timer."); return; }
 
-    this.hass.callService("homeassistant", "turn_on", { entity_id: switchId })
-      .then(() => {
-        this.hass!.callService(DOMAIN, "start_timer", { entry_id: entryId, duration: minutes });
-        this._sendNotification(`${this._config?.card_title || 'Timer'} was turned on for ${minutes} minutes`);
-      })
-      .catch(error => {
-        console.error("Timer-card: Error turning on switch or starting timer:", error);
-      });
-    this._notificationSentForCurrentCycle = false;
-  }
+		this.hass.callService(DOMAIN, "cancel_timer", { entry_id: entryId })
+			.then(() => {
+				// No manual notification - backend handles it
+			})
+			.catch(error => {
+				console.error("Timer-card: Error cancelling timer:", error);
+			});
 
-  _cancelTimer(): void {
-    if (!this._entitiesLoaded || !this.hass || !this.hass.callService) {
-        console.error("Timer-card: Cannot cancel timer. Entities not loaded or callService unavailable.");
-        return;
-    }
-    const entryId = this._getEntryId();
-    if (!entryId) { console.error("Timer-card: Entry ID not found for cancelling timer."); return; }
+		this._notificationSentForCurrentCycle = false;
+	}
 
-    this.hass.callService(DOMAIN, "cancel_timer", { entry_id: entryId })
-      .then(() => {
-        this._sendTimerFinishedNotification();
-      })
-      .catch(error => {
-        console.error("Timer-card: Error cancelling timer:", error);
-      });
+	_togglePower(): void {
+		if (!this._entitiesLoaded || !this.hass || !this.hass.states || !this.hass.callService) {
+				console.error("Timer-card: Cannot toggle power. Entities not loaded or services unavailable.");
+				return;
+		}
+		const switchId = this._effectiveSwitchEntity!;
+		const sensorId = this._effectiveSensorEntity!;
 
-    this._notificationSentForCurrentCycle = false;
-  }
+		const timerSwitch = this.hass.states[switchId];
+		if (!timerSwitch) {
+				console.warn(`Timer-card: Switch entity '${switchId}' not found during toggle.`);
+				return;
+		}
 
-  _togglePower(): void {
-    if (!this._entitiesLoaded || !this.hass || !this.hass.states || !this.hass.callService) {
-        console.error("Timer-card: Cannot toggle power. Entities not loaded or services unavailable.");
-        return;
-    }
-    const switchId = this._effectiveSwitchEntity!;
-    const sensorId = this._effectiveSensorEntity!;
+		const sensor = this.hass.states[sensorId];
+		const isTimerActive = sensor && sensor.attributes.timer_state === 'active';
 
-    const timerSwitch = this.hass.states[switchId];
-    if (!timerSwitch) {
-        console.warn(`Timer-card: Switch entity '${switchId}' not found during toggle.`);
-        return;
-    }
-
-    const sensor = this.hass.states[sensorId];
-    const isTimerActive = sensor && sensor.attributes.timer_state === 'active';
-
-    if (timerSwitch.state === 'on') {
-        if (isTimerActive) {
-            this._cancelTimer();
-            console.log(`Timer-card: Cancelling active timer for switch: ${switchId}`);
-        } else {
-            this.hass.callService("homeassistant", "turn_off", { entity_id: switchId });
-            const sensorState = this.hass.states[this._effectiveSensorEntity!];
-            if (sensorState) {
-                const totalSeconds = parseFloat(sensorState.state as string) || 0;
-                const { formattedTime, label } = this._formatTimeForNotification(totalSeconds);
-                this._sendNotification(`${this._config?.card_title || 'Timer'} was turned off - daily usage ${formattedTime} ${label}`);
-            }
-            console.log(`Timer-card: Manually turning off switch: ${switchId}`);
-        }
-    } else {
-      this.hass.callService("homeassistant", "turn_on", { entity_id: switchId })
-        .then(() => {
-            this._sendNotification(`${this._config?.card_title || 'Timer'} started`);
-            console.log(`Timer-card: Manually turning on switch: ${switchId}`);
-        })
-        .catch(error => {
-            console.error("Timer-card: Error manually turning on switch:", error);
-        });
-      this._notificationSentForCurrentCycle = false;
-    }
-  }
+		if (timerSwitch.state === 'on') {
+				if (isTimerActive) {
+						this._cancelTimer();
+						console.log(`Timer-card: Cancelling active timer for switch: ${switchId}`);
+				} else {
+						// Use backend service for manual turn off with notification
+						this.hass.callService(DOMAIN, "manual_power_toggle", { 
+								entry_id: this._getEntryId(), 
+								action: "turn_off" 
+						});
+						console.log(`Timer-card: Manually turning off switch: ${switchId}`);
+				}
+		} else {
+			// Use backend service for manual turn on with notification  
+			this.hass.callService(DOMAIN, "manual_power_toggle", { 
+					entry_id: this._getEntryId(), 
+					action: "turn_on" 
+			})
+				.then(() => {
+						console.log(`Timer-card: Manually turning on switch: ${switchId}`);
+				})
+				.catch(error => {
+						console.error("Timer-card: Error manually turning on switch:", error);
+				});
+			this._notificationSentForCurrentCycle = false;
+		}
+	}
 
   _showMoreInfo(): void {
     if (!this._entitiesLoaded || !this.hass) {
@@ -377,73 +364,45 @@ class TimerCard extends LitElement {
     this._liveRuntimeSeconds = 0;
   }
 
-  _formatTimeForNotification(totalSeconds: number): { formattedTime: string; label: string } {
-    if (this._config?.show_seconds) {
-      const totalSecondsInt = Math.floor(totalSeconds);
-      const hours = Math.floor(totalSecondsInt / 3600);
-      const minutes = Math.floor((totalSecondsInt % 3600) / 60);
-      const seconds = totalSecondsInt % 60;
-      const formattedTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-      return { formattedTime, label: "(hh:mm:ss)" };
-    } else {
-      const totalMinutes = Math.floor(totalSeconds / 60);
-      const hours = Math.floor(totalMinutes / 60);
-      const minutes = totalMinutes % 60;
-      const formattedTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-      return { formattedTime, label: "(hh:mm)" };
-    }
-  }
+	_updateCountdown(): void {
+		if (!this._entitiesLoaded || !this.hass || !this.hass.states) {
+			this._stopCountdown();
+			return;
+		}
+		const sensor = this.hass.states[this._effectiveSensorEntity!];
 
-  _updateCountdown(): void {
-    if (!this._entitiesLoaded || !this.hass || !this.hass.states) {
-      this._stopCountdown();
-      return;
-    }
-    const sensor = this.hass.states[this._effectiveSensorEntity!];
+		if (!sensor || sensor.attributes.timer_state !== 'active') {
+			this._stopCountdown();
+			this._notificationSentForCurrentCycle = false;
+			return;
+		}
 
-    if (!sensor || sensor.attributes.timer_state !== 'active') {
-      this._stopCountdown();
-      this._notificationSentForCurrentCycle = false;
-      return;
-    }
+		if (!this._countdownInterval) {
+				const rawFinish = sensor.attributes.timer_finishes_at;
+				if (rawFinish === undefined) {
+						console.warn("Timer-card: timer_finishes_at is undefined for active timer. Stopping countdown.");
+						this._stopCountdown();
+						return;
+				}
+				const finishesAt = new Date(rawFinish).getTime();
 
-    if (!this._countdownInterval) {
-        const rawFinish = sensor.attributes.timer_finishes_at;
-        if (rawFinish === undefined) {
-            console.warn("Timer-card: timer_finishes_at is undefined for active timer. Stopping countdown.");
-            this._stopCountdown();
-            return;
-        }
-        const finishesAt = new Date(rawFinish).getTime();
+				const update = () => {
+					const now = new Date().getTime();
+					const remaining = Math.max(0, Math.round((finishesAt - now) / 1000));
+					this._timeRemaining = `${Math.floor(remaining / 60).toString().padStart(2, '0')}:${(remaining % 60).toString().padStart(2, '0')}`;
 
-        const update = () => {
-          const now = new Date().getTime();
-          const remaining = Math.max(0, Math.round((finishesAt - now) / 1000));
-          this._timeRemaining = `${Math.floor(remaining / 60).toString().padStart(2, '0')}:${(remaining % 60).toString().padStart(2, '0')}`;
-
-          if (remaining === 0) {
-              this._stopCountdown();
-              if (!this._notificationSentForCurrentCycle) {
-                  this._notificationSentForCurrentCycle = true; // Set flag immediately to prevent multiple triggers
-
-                  setTimeout(() => {
-                      if (!this.hass || !this._effectiveSensorEntity) return;
-
-                      const finalSensorState = this.hass.states[this._effectiveSensorEntity];
-                      if (!finalSensorState) return;
-
-                      const totalSeconds = parseFloat(finalSensorState.state as string) || 0;
-                      
-                      const { formattedTime, label } = this._formatTimeForNotification(totalSeconds);
-                      this._sendNotification(`${this._config?.card_title || 'Timer'} was turned off - daily usage ${formattedTime} ${label}`);
-                  }, 500);
-              }
-          }
-        };
-        this._countdownInterval = window.setInterval(update, 500);
-        update();
-    }
-  }
+					if (remaining === 0) {
+							this._stopCountdown();
+							// Backend handles the timer completion notification automatically
+							if (!this._notificationSentForCurrentCycle) {
+									this._notificationSentForCurrentCycle = true;
+							}
+					}
+				};
+				this._countdownInterval = window.setInterval(update, 500);
+				update();
+		}
+	}
 
   _stopCountdown(): void {
     if (this._countdownInterval) {
@@ -451,18 +410,6 @@ class TimerCard extends LitElement {
       this._countdownInterval = null;
     }
     this._timeRemaining = null;
-  }
-
-  _sendTimerFinishedNotification(): void {
-    if (!this._entitiesLoaded || !this.hass || !this.hass.states) return;
-
-    const sensor = this.hass!.states[this._effectiveSensorEntity!];
-    if (!sensor) return;
-
-    const committedSeconds = parseFloat(sensor.state as string) || 0;
-    
-    const { formattedTime, label } = this._formatTimeForNotification(committedSeconds);
-    this._sendNotification(`${this._config?.card_title || 'Timer'} finished – daily usage ${formattedTime} ${label}`);
   }
 
   render() {

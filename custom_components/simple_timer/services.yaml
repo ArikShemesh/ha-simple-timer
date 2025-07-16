@@ -58,3 +58,23 @@ force_name_sync:
       required: false
       selector:
         text:
+
+manual_power_toggle:
+  name: Manual Power Toggle
+  description: Manually toggles switch power and sends appropriate notifications.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: The config entry ID of the simple timer sensor.
+      required: true
+      selector:
+        text:
+    action:
+      name: Action
+      description: The action to perform (turn_on or turn_off).
+      required: true
+      selector:
+        select:
+          options:
+            - turn_on
+            - turn_off

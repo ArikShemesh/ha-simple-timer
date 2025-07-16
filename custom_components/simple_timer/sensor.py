@@ -157,6 +157,160 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
         return attrs
 
+    async def _get_card_notification_config(self) -> tuple[str | None, bool]:
+        """Get notification entity and show_seconds setting from any timer card configuration."""
+        try:
+            _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Looking for card notification config...")
+            
+            # Try to get from storage files directly (more reliable)
+            notification_entity, show_seconds = await self._get_notification_from_storage()
+            if notification_entity:
+                _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Found notification config from storage: {notification_entity}, show_seconds={show_seconds}")
+                return notification_entity, show_seconds
+            
+            # Fallback: try to get from runtime lovelace data (with proper access)
+            if hasattr(self.hass, 'data') and 'lovelace' in self.hass.data:
+                lovelace_data = self.hass.data['lovelace']
+                _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Checking lovelace data with keys: {list(lovelace_data.keys())}")
+                
+                # Check all lovelace configs with proper attribute access
+                for config_key in lovelace_data:
+                    try:
+                        config_obj = getattr(lovelace_data, str(config_key), None) or lovelace_data.get(config_key)
+                        if hasattr(config_obj, 'config') and config_obj.config:
+                            notification_entity, show_seconds = self._search_cards_in_config(config_obj.config)
+                            if notification_entity:
+                                _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Found notification config from lovelace: {notification_entity}, show_seconds={show_seconds}")
+                                return notification_entity, show_seconds
+                    except Exception as e:
+                        _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Error checking lovelace config {config_key}: {e}")
+                        continue
+            
+            _LOGGER.debug(f"Simple Timer: [{self._entry_id}] No notification config found")
+            return None, False
+                            
+        except Exception as e:
+            _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Error getting card notification config: {e}")
+            return None, False
+
+    def _search_cards_in_config(self, config: dict) -> tuple[str | None, bool]:
+        """Recursively search for timer cards in lovelace config."""
+        if isinstance(config, dict):
+            # Check if this is a timer card for our instance
+            if (config.get('type') == 'custom:timer-card' and 
+                config.get('timer_instance_id') == self._entry_id):
+                notification_entity = config.get('notification_entity')
+                show_seconds = config.get('show_seconds', False)
+                if notification_entity and notification_entity != 'none_selected':
+                    return notification_entity, show_seconds
+            
+            # Recursively search in nested structures
+            for value in config.values():
+                if isinstance(value, (dict, list)):
+                    result = self._search_cards_in_config(value)
+                    if result[0]:  # If notification_entity found
+                        return result
+                        
+        elif isinstance(config, list):
+            for item in config:
+                if isinstance(item, (dict, list)):
+                    result = self._search_cards_in_config(item)
+                    if result[0]:  # If notification_entity found
+                        return result
+        
+        return None, False
+
+    async def _get_notification_from_storage(self) -> tuple[str | None, bool]:
+        """Fallback: try to get notification config from storage files."""
+        try:
+            import os
+            import json
+            
+            storage_path = self.hass.config.path('.storage')
+            if not os.path.exists(storage_path):
+                return None, False
+                
+            # Search through lovelace storage files
+            for filename in os.listdir(storage_path):
+                if filename.startswith('lovelace'):
+                    try:
+                        with open(os.path.join(storage_path, filename), 'r') as f:
+                            data = json.load(f)
+                            if 'data' in data and 'config' in data['data']:
+                                notification_entity, show_seconds = self._search_cards_in_config(data['data']['config'])
+                                if notification_entity:
+                                    return notification_entity, show_seconds
+                    except (json.JSONDecodeError, KeyError, IOError):
+                        continue
+                        
+        except Exception as e:
+            _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Could not read storage files: {e}")
+        
+        return None, False
+
+    def _format_time_for_notification(self, total_seconds: float, show_seconds: bool = False) -> tuple[str, str]:
+        """Format time for notifications, matching frontend logic."""
+        if show_seconds:
+            total_seconds_int = int(total_seconds)
+            hours = total_seconds_int // 3600
+            minutes = (total_seconds_int % 3600) // 60
+            seconds = total_seconds_int % 60
+            formatted_time = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+            return formatted_time, "(hh:mm:ss)"
+        else:
+            total_minutes = int(total_seconds // 60)
+            hours = total_minutes // 60
+            minutes = total_minutes % 60
+            formatted_time = f"{hours:02d}:{minutes:02d}"
+            return formatted_time, "(hh:mm)"
+
+    async def _send_notification(self, message: str) -> None:
+        """Send notification using configured notification entity."""
+        try:
+            _LOGGER.debug(f"Simple Timer: [{self._entry_id}] _send_notification called with message: {message}")
+            
+            notification_entity, show_seconds = await self._get_card_notification_config()
+            
+            if not notification_entity:
+                _LOGGER.info(f"Simple Timer: [{self._entry_id}] No notification entity configured, skipping notification: {message}")
+                return
+                
+            # Parse the service call format
+            service_parts = notification_entity.split('.')
+            if len(service_parts) < 2:
+                _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Invalid notification entity format: {notification_entity}")
+                return
+                
+            domain = service_parts[0]
+            service = '.'.join(service_parts[1:])
+            
+            # Prepare title using instance name
+            title = self.instance_title or "Timer"
+            
+            _LOGGER.info(f"Simple Timer: [{self._entry_id}] Sending notification via {domain}.{service} - Title: '{title}', Message: '{message}'")
+            
+            # Call the notification service
+            await self.hass.services.async_call(
+                domain, 
+                service, 
+                {
+                    "message": message,
+                    "title": title
+                }
+            )
+            
+            _LOGGER.info(f"Simple Timer: [{self._entry_id}] Notification sent successfully")
+            
+        except Exception as e:
+            _LOGGER.error(f"Simple Timer: [{self._entry_id}] Failed to send notification: {e}")
+            import traceback
+            _LOGGER.error(f"Simple Timer: [{self._entry_id}] Notification error traceback: {traceback.format_exc()}")
+            
+    async def async_test_notification(self) -> None:
+        """Test notification functionality - can be called from Developer Tools."""
+        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Testing notification system...")
+        await self._send_notification("Test notification from Simple Timer")
+
     async def _save_next_reset_date(self):
         """Save the next reset date to storage, protected by a lock."""
         async with self._storage_lock:
@@ -547,6 +701,13 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             self._watchdog_message = None
         await self._cleanup_timer_state()
         self.async_write_ha_state()
+        
+    def _is_switch_on(self) -> bool:
+        """Helper to check if the tracked switch is currently ON."""
+        if self._switch_entity_id:
+            switch_state = self.hass.states.get(self._switch_entity_id)
+            return switch_state is not None and switch_state.state == STATE_ON
+        return False
 
     async def _start_realtime_accumulation(self) -> None:
         if self._stop_event_received:
@@ -622,6 +783,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             self._timer_unsub = async_track_point_in_utc_time(
                self.hass, self._async_timer_finished, self._timer_finishes_at
             )
+        
+        # Send start notification
+        await self._send_notification(f"Timer was turned on for {duration_minutes} minutes")
+        
         self.async_write_ha_state()
 
     async def async_cancel_timer(self) -> None:
@@ -631,6 +796,12 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             return
         if self._watchdog_message:
             self._watchdog_message = None
+        
+        # Get current usage before cleanup for notification
+        current_usage = self._state
+        notification_entity, show_seconds = await self._get_card_notification_config()
+        formatted_time, label = self._format_time_for_notification(current_usage, show_seconds)
+        
         await self._cleanup_timer_state()
         current_switch_state = self.hass.states.get(self._switch_entity_id) if self._switch_entity_id else None
         if current_switch_state and current_switch_state.state == STATE_ON:
@@ -639,6 +810,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             )
         else:
             await self._stop_realtime_accumulation()
+        
+        # Send cancellation notification
+        await self._send_notification(f"Timer finished – daily usage {formatted_time} {label}")
+        
         self.async_write_ha_state()
 
     @callback
@@ -647,19 +822,40 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         _LOGGER.info("Simple Timer: [%s] _async_timer_finished callback triggered.", self._entry_id)
         if self._timer_state != "active":
             return
+        
+        # Get current usage before cleanup for notification
+        current_usage = self._state
+        notification_entity, show_seconds = await self._get_card_notification_config()
+        formatted_time, label = self._format_time_for_notification(current_usage, show_seconds)
+        
         await self._cleanup_timer_state()
         if self._switch_entity_id:
             await self.hass.services.async_call(
                "homeassistant", "turn_off", {"entity_id": self._switch_entity_id}, blocking=True
             )
+        
+        # Send completion notification
+        await self._send_notification(f"Timer was turned off - daily usage {formatted_time} {label}")
+        
         self.async_write_ha_state()
 
-    def _is_switch_on(self) -> bool:
-        """Helper to check if the tracked switch is currently ON."""
-        if self._switch_entity_id:
-            switch_state = self.hass.states.get(self._switch_entity_id)
-            return switch_state is not None and switch_state.state == STATE_ON
-        return False
+    # Add notification capability to manual power toggle (called from frontend via service)
+    async def async_manual_power_toggle(self, action: str) -> None:
+        """Handle manual power toggle from frontend card."""
+        if action == "turn_on":
+            await self.hass.services.async_call(
+                "homeassistant", "turn_on", {"entity_id": self._switch_entity_id}
+            )
+            await self._send_notification("Timer started")
+        elif action == "turn_off":
+            current_usage = self._state
+            notification_entity, show_seconds = await self._get_card_notification_config()
+            formatted_time, label = self._format_time_for_notification(current_usage, show_seconds)
+            
+            await self.hass.services.async_call(
+                "homeassistant", "turn_off", {"entity_id": self._switch_entity_id}
+            )
+            await self._send_notification(f"Timer was turned off - daily usage {formatted_time} {label}")
 
     @callback
     def _reset_at_scheduled_time(self, now) -> None:

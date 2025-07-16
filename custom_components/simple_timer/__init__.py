@@ -31,7 +31,34 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
     # Schema for manual name sync service
     SERVICE_FORCE_NAME_SYNC_SCHEMA = vol.Schema({
         vol.Optional("entry_id"): cv.string,
+    })  
+    # Schema for manual power toggle service  
+    SERVICE_MANUAL_POWER_TOGGLE_SCHEMA = vol.Schema({
+        vol.Required("entry_id"): cv.string,
+        vol.Required("action"): vol.In(["turn_on", "turn_off"]),
     })
+    # Schema for test notification service  
+    SERVICE_TEST_NOTIFICATION_SCHEMA = vol.Schema({
+        vol.Required("entry_id"): cv.string,
+        vol.Optional("message", default="Test notification"): cv.string,
+    })
+
+    async def test_notification(call: ServiceCall):
+        """Test notification functionality."""
+        entry_id = call.data["entry_id"]
+        message = call.data.get("message", "Test notification")
+        
+        # Find the sensor by entry_id (hass is available from the outer scope here)
+        sensor = None
+        for stored_entry_id, entry_data in hass.data[DOMAIN].items():
+            if stored_entry_id == entry_id and "sensor" in entry_data:
+                sensor = entry_data["sensor"]
+                break
+        
+        if sensor:
+            await sensor._send_notification(message)
+        else:
+            raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
 
     async def start_timer(call: ServiceCall):
         """Handle the service call to start the device timer."""
@@ -112,6 +139,23 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
                 # Could add notification here if desired
                 pass
 
+    async def manual_power_toggle(call: ServiceCall):
+        """Handle manual power toggle from frontend card."""
+        entry_id = call.data["entry_id"]
+        action = call.data["action"]
+        
+        # Find the sensor by entry_id
+        sensor = None
+        for stored_entry_id, entry_data in hass.data[DOMAIN].items():
+            if stored_entry_id == entry_id and "sensor" in entry_data:
+                sensor = entry_data["sensor"]
+                break
+        
+        if sensor:
+            await sensor.async_manual_power_toggle(action)
+        else:
+            raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
+
     # Register all services
     hass.services.async_register(
         DOMAIN, "start_timer", start_timer, schema=SERVICE_START_TIMER_SCHEMA
@@ -124,6 +168,12 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
     )
     hass.services.async_register(
         DOMAIN, "force_name_sync", force_name_sync, schema=SERVICE_FORCE_NAME_SYNC_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, "manual_power_toggle", manual_power_toggle, schema=SERVICE_MANUAL_POWER_TOGGLE_SCHEMA
+    )
+    hass.services.async_register(
+    DOMAIN, "test_notification", test_notification, schema=SERVICE_TEST_NOTIFICATION_SCHEMA
     )
 
     hass.data[DOMAIN]["services_registered"] = True
