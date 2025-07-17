@@ -138,6 +138,7 @@ timer_instance_id: your_instance_entry_id
 timer_buttons: [15, 30, 60, 90, 120, 150]
 card_title: "Kitchen Timer"
 notification_entity: notify.mobile_app_your_phone
+show_seconds: true  # Optional: show HH:MM:SS format
 ```
 
 ### Configuration Options
@@ -149,6 +150,21 @@ notification_entity: notify.mobile_app_your_phone
 | `timer_buttons` | array | ❌ | `[15,30,60,90,120,150]` | Timer duration buttons (1-1000 minutes) |
 | `card_title` | string | ❌ | - | Custom title for the card |
 | `notification_entity` | string | ❌ | - | Notification service for timer alerts |
+| `show_seconds` | boolean | ❌ | false | Show seconds in time display (HH:MM:SS vs HH:MM)|
+
+## ❓ Frequently Asked Questions
+
+### Can I have multiple timer instances?
+Yes! Add multiple integrations for different devices.
+
+### Does the timer work if Home Assistant restarts?
+Yes, active timers resume automatically with offline time compensation.
+
+### Can I customize the timer buttons?
+Yes, configure `timer_buttons: [5, 10, 15, 30, 45, 60]` in the card YAML.
+
+### Why does my usage show a warning message?
+This appears when HA was offline during a timer to indicate potential time sync issues.
 
 ## 🚨 Troubleshooting
 
