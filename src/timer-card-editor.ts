@@ -193,16 +193,19 @@ class TimerCardEditor extends LitElement {
     targets.sort((a, b) => a.label.localeCompare(b.label));
     return targets;
   }
-
-  _getValidatedTimerButtons(configButtons: any): number[] {
-    // Case 1: configButtons is a valid array (could be empty)
+	
+	_getValidatedTimerButtons(configButtons: any): number[] {
     if (Array.isArray(configButtons)) {
         const validatedButtons: number[] = [];
+        const seen = new Set<number>();
 
         configButtons.forEach(val => {
             const numVal = Number(val);
             if (Number.isInteger(numVal) && numVal > 0 && numVal <= 1000) {
-                validatedButtons.push(numVal);
+                if (!seen.has(numVal)) {
+                    validatedButtons.push(numVal);
+                    seen.add(numVal);
+                }
             }
         });
 
@@ -211,17 +214,14 @@ class TimerCardEditor extends LitElement {
         return validatedButtons;
     }
 
-    // Case 2: configButtons is undefined/null because the user deleted the key. Return an empty array.
-    // The constructor handles applying defaults for brand new cards.
     if (configButtons === undefined || configButtons === null) {
         console.log(`TimerCardEditor: No timer_buttons in config, using empty array.`);
         return [];
     }
 
-    // Case 3: configButtons is not an array - treat as invalid, use empty
     console.warn(`TimerCardEditor: Invalid timer_buttons type (${typeof configButtons}):`, configButtons, `- using empty array`);
     return [];
-  }
+	}
 
   async setConfig(cfg: TimerCardConfig): Promise<void> {
     console.log(`TimerCardEditor: setConfig called with:`, cfg);

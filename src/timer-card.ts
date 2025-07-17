@@ -26,6 +26,7 @@ class TimerCard extends LitElement {
       _entitiesLoaded: { state: true },
       _effectiveSwitchEntity: { state: true },
       _effectiveSensorEntity: { state: true },
+      _validationMessages: { state: true },
     };
   }
 
@@ -38,7 +39,7 @@ class TimerCard extends LitElement {
   _timeRemaining: string | null = null;
 
   buttons: number[] = [];
-  _validationMessage: string | null = null;
+  _validationMessages: string[] = [];
   _notificationSentForCurrentCycle: boolean = false;
   _entitiesLoaded: boolean = false;
 
@@ -110,23 +111,35 @@ class TimerCard extends LitElement {
 
   _getValidatedTimerButtons(configButtons: any): number[] {
     let validatedTimerButtons: number[] = [];
-    this._validationMessage = null;
+    this._validationMessages = [];
 
     if (Array.isArray(configButtons)) {
         const invalidValues: any[] = [];
+        const uniqueValues = new Set<number>();
+        const duplicateValues: any[] = [];
 
         configButtons.forEach(val => {
             const numVal = Number(val);
             if (Number.isInteger(numVal) && numVal > 0 && numVal <= 1000) {
-                validatedTimerButtons.push(numVal);
+                if (uniqueValues.has(numVal)) {
+                    duplicateValues.push(numVal);
+                } else {
+                    uniqueValues.add(numVal);
+                    validatedTimerButtons.push(numVal);
+                }
             } else {
                 invalidValues.push(val);
             }
         });
 
+        const messages: string[] = [];
         if (invalidValues.length > 0) {
-            this._validationMessage = `Invalid timer values ignored: ${invalidValues.join(', ')}. Only positive integers up to 1000 are allowed.`;
+            messages.push(`Invalid timer values ignored: ${invalidValues.join(', ')}. Only positive integers up to 1000 are allowed.`);
         }
+        if (duplicateValues.length > 0) {
+            messages.push(`Duplicate timer values were removed: ${[...new Set(duplicateValues)].join(', ')}.`);
+        }
+        this._validationMessages = messages;
 
         validatedTimerButtons.sort((a, b) => a - b);
         return validatedTimerButtons;
@@ -137,7 +150,7 @@ class TimerCard extends LitElement {
     }
 
     console.warn(`TimerCard: Invalid timer_buttons type (${typeof configButtons}):`, configButtons, `- using empty array`);
-    this._validationMessage = `Invalid timer_buttons configuration. Expected array, got ${typeof configButtons}.`;
+    this._validationMessages = [`Invalid timer_buttons configuration. Expected array, got ${typeof configButtons}.`];
     return [];
   }
 
@@ -236,6 +249,7 @@ class TimerCard extends LitElement {
   }
 
 	_startTimer(minutes: number): void {
+        this._validationMessages = [];
 		if (!this._entitiesLoaded || !this.hass || !this.hass.callService) {
 				console.error("Timer-card: Cannot start timer. Entities not loaded or callService unavailable.");
 				return;
@@ -257,6 +271,7 @@ class TimerCard extends LitElement {
 	}
 
 	_cancelTimer(): void {
+        this._validationMessages = [];
 		if (!this._entitiesLoaded || !this.hass || !this.hass.callService) {
 				console.error("Timer-card: Cannot cancel timer. Entities not loaded or callService unavailable.");
 				return;
@@ -276,6 +291,7 @@ class TimerCard extends LitElement {
 	}
 
 	_togglePower(): void {
+        this._validationMessages = [];
 		if (!this._entitiesLoaded || !this.hass || !this.hass.states || !this.hass.callService) {
 				console.error("Timer-card: Cannot toggle power. Entities not loaded or services unavailable.");
 				return;
@@ -554,10 +570,12 @@ class TimerCard extends LitElement {
             `;
           })}
         </div>
-        ${this._validationMessage ? html`
+        ${this._validationMessages.length > 0 ? html`
           <div class="status-message warning">
             <ha-icon icon="mdi:alert-outline" class="status-icon"></ha-icon>
-            <span class="status-text">${this._validationMessage}</span>
+            <div class="status-text">
+                ${this._validationMessages.map(msg => html`<div>${msg}</div>`)}
+            </div>
           </div>
         ` : ''}
       </ha-card>
