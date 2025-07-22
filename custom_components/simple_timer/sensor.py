@@ -78,6 +78,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._accumulation_task = None
         self._state_listener_disposer = None
         self._stop_event_received = False
+        self._is_finishing_normally = False
 
         self._timer_state = "idle"
         self._timer_finishes_at = None
@@ -87,6 +88,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._timer_unsub = None
         self._watchdog_message = None
         self._timer_update_task = None
+        self._is_performing_reset = False
 
         # Reset scheduling
         self._next_reset_date = None
@@ -163,11 +165,11 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             if hasattr(self.hass, 'data') and 'lovelace' in self.hass.data:
                 lovelace_data = self.hass.data['lovelace']
                 
-                for config_key in lovelace_data:
+                # Iterate through dashboard configurations to find our card
+                for dashboard in lovelace_data.values():
                     try:
-                        config_obj = getattr(lovelace_data, str(config_key), None) or lovelace_data.get(config_key)
-                        if hasattr(config_obj, 'config') and config_obj.config:
-                            notification_entity, show_seconds = self._search_cards_in_config(config_obj.config)
+                        if hasattr(dashboard, 'config') and dashboard.config:
+                            notification_entity, show_seconds = self._search_cards_in_config(dashboard.config)
                             if notification_entity:
                                 return notification_entity, show_seconds
                     except Exception:
@@ -349,24 +351,32 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
     async def _perform_reset(self, is_catchup=False):
         """Perform daily runtime reset."""
-        reset_type = "catch-up" if is_catchup else "scheduled"
-        _LOGGER.info(
-            f"Simple Timer: [{self._entry_id}] Performing {reset_type} daily runtime reset. "
-            f"Current state: {self._state}s"
-        )
-        
-        self._state = 0.0
-        self._last_on_timestamp = None
-        
-        if self._switch_entity_id:
-            current_switch_state = self.hass.states.get(self._switch_entity_id)
-            if current_switch_state and current_switch_state.state == STATE_ON:
-                self._last_on_timestamp = dt_util.utcnow()
-                await self._start_realtime_accumulation()
-            else:
-                await self._stop_realtime_accumulation()
-        
-        self.async_write_ha_state()
+        self._is_performing_reset = True
+        try:
+            reset_type = "catch-up" if is_catchup else "scheduled"
+            _LOGGER.info(
+                f"Simple Timer: [{self._entry_id}] Performing {reset_type} daily runtime reset. "
+                f"Current state: {self._state}s"
+            )
+
+            await self._stop_realtime_accumulation()
+
+            if self._timer_state == "active":
+                _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Reset occurred during an active timer. Adjusting timer's base runtime.")
+                self._runtime_at_timer_start = 0.0 - self._calculate_timer_elapsed_since_start()
+
+            self._state = 0.0
+            self._last_on_timestamp = None
+            
+            if self._switch_entity_id:
+                current_switch_state = self.hass.states.get(self._switch_entity_id)
+                if current_switch_state and current_switch_state.state == STATE_ON:
+                    self._last_on_timestamp = dt_util.utcnow()
+                    await self._start_realtime_accumulation()
+            
+            self.async_write_ha_state()
+        finally:
+            self._is_performing_reset = False
 
     async def _handle_name_change(self):
         """Handle detected name changes."""
@@ -629,10 +639,14 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                         break
                     
         except asyncio.CancelledError:
-            # Ensure final state is correct when cancelled
+            # If the timer is finishing normally OR a reset is happening, do nothing.
+            if getattr(self, '_is_finishing_normally', False) or getattr(self, '_is_performing_reset', False):
+                raise
+
+            # Ensure final state is correct when cancelled MANUALLY or externally
             if self._timer_state == "active" and self._timer_start_moment:
                 runtime_at_start = getattr(self, '_runtime_at_timer_start', 0)
-                final_elapsed = int((dt_util.utcnow() - self._timer_start_moment).total_seconds())
+                final_elapsed = round((dt_util.utcnow() - self._timer_start_moment).total_seconds())
                 self._state = runtime_at_start + final_elapsed
                 self.async_write_ha_state()
             elif self._last_on_timestamp:
@@ -729,7 +743,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         
         # For cancelled timers, ensure we use the actual elapsed time, not the full duration
         if self._timer_start_moment:
-            actual_elapsed = int((dt_util.utcnow() - self._timer_start_moment).total_seconds())
+            actual_elapsed = round((dt_util.utcnow() - self._timer_start_moment).total_seconds())
             runtime_at_timer_start = self._state - actual_elapsed
             # Recalculate to ensure accuracy with whole seconds
             self._state = runtime_at_timer_start + actual_elapsed
@@ -755,7 +769,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         await self._send_notification(f"Timer finished – daily usage {formatted_time} {label}")
         
         self.async_write_ha_state()
-
+        
     @callback
     async def _async_timer_finished(self, now: dt_util.dt | None = None) -> None:
         """Handle timer completion with runtime compensation."""
@@ -764,41 +778,41 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         if self._timer_state != "active":
             return
         
-        # Stop accumulation task first to prevent race conditions
-        await self._stop_realtime_accumulation()
-        
-        # Always set runtime to exact timer duration for timer-based usage
-        if self._timer_duration > 0:
-            expected_runtime = self._timer_duration * 60  # Convert to seconds
-            # Use the stored runtime at timer start
-            runtime_at_start = getattr(self, '_runtime_at_timer_start', 0)
-            self._state = runtime_at_start + expected_runtime
-            _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Set runtime to exact timer duration: {self._state}s (start: {runtime_at_start}s + duration: {expected_runtime}s)")
-        
-        # Force state update
-        self.async_write_ha_state()
-        
-        # Small delay to ensure state is written
-        await asyncio.sleep(0.1)
-        
-        # Get current usage for notification
-        current_usage = self._state
-        notification_entity, show_seconds = await self._get_card_notification_config()
-        formatted_time, label = self._format_time_for_notification(current_usage, show_seconds)
-        
-        # Clean up timer
-        await self._cleanup_timer_state()
-        
-        # Turn off switch
-        if self._switch_entity_id:
-            await self.hass.services.async_call(
-               "homeassistant", "turn_off", {"entity_id": self._switch_entity_id}, blocking=True
-            )
-        
-        # Send notification
-        await self._send_notification(f"Timer was turned off - daily usage {formatted_time} {label}")
-        
-        self.async_write_ha_state()
+        try:
+            # Set a flag to prevent the cancellation handler from running its logic
+            self._is_finishing_normally = True
+            
+            # Stop accumulation task first to prevent race conditions
+            await self._stop_realtime_accumulation()
+            
+            # Always set runtime to exact timer duration for timer-based usage
+            if self._timer_duration > 0:
+                expected_runtime = self._timer_duration * 60  # Convert to seconds
+                runtime_at_start = getattr(self, '_runtime_at_timer_start', 0)
+                self._state = runtime_at_start + expected_runtime
+                _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Set runtime to exact timer duration: {self._state}s (start: {runtime_at_start}s + duration: {expected_runtime}s)")
+            
+            self.async_write_ha_state()
+            
+            await asyncio.sleep(0.1)
+            
+            current_usage = self._state
+            notification_entity, show_seconds = await self._get_card_notification_config()
+            formatted_time, label = self._format_time_for_notification(current_usage, show_seconds)
+            
+            await self._cleanup_timer_state()
+            
+            if self._switch_entity_id:
+                await self.hass.services.async_call(
+                "homeassistant", "turn_off", {"entity_id": self._switch_entity_id}, blocking=True
+                )
+            
+            await self._send_notification(f"Timer was turned off - daily usage {formatted_time} {label}")
+            
+            self.async_write_ha_state()
+        finally:
+            # Always unset the flag
+            self._is_finishing_normally = False
 
     async def async_manual_power_toggle(self, action: str) -> None:
         """Handle manual power toggle from frontend."""
@@ -1195,3 +1209,11 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             await self.async_update_switch_entity(new_switch_entity)
         
         await self._handle_name_change()
+        
+    def _calculate_timer_elapsed_since_start(self) -> int:
+        """Calculate elapsed time in seconds since the timer started."""
+        if self._timer_state == "active" and self._timer_start_moment:
+            now = dt_util.utcnow()
+            elapsed = (now - self._timer_start_moment).total_seconds()
+            return max(0, round(elapsed))
+        return 0
