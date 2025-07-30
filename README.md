@@ -6,7 +6,7 @@
 
 <a href="https://coff.ee/codemakor" target="_blank"><img src="https://www.buymeacoffee.com/assets/img/custom_images/white_img.png" alt="Buy Me A Coffee" style="height: auto !important;width: auto !important;" ></a>
 
-# HA Simple Timer Integration
+# HA Simple Timer Integration (+ Card)
 A simple timer integration for Home Assistant with precise countdown functionality and daily runtime tracking.
 
 ![image](https://github.com/ArikShemesh/ha-simple-timer/blob/main/images/simple_timer_card.png)
