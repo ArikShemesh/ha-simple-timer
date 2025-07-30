@@ -51,25 +51,14 @@ class TimerCard extends LitElement {
     return document.createElement("timer-card-editor");
   }
 
-  static getStubConfig(hass: HomeAssistant): TimerCardConfig {
-    console.log("TimerCard: Generating stub config with hass object:", hass);
-    let initialInstanceId: string | null = null;
-
-    // Find the first timer control sensor and use its entry_id
-    for (const entityId of Object.keys(hass.states)) {
-        const state = hass.states[entityId];
-        if (entityId.startsWith("sensor.") &&
-            typeof state.attributes.entry_id === 'string' &&
-            typeof state.attributes.switch_entity_id === 'string') {
-            initialInstanceId = state.attributes.entry_id; // Use entry_id, not entity_id
-            console.info(`TimerCard: getStubConfig auto-selected first instance: '${initialInstanceId}' from sensor '${entityId}'`);
-            break;
-        }
-    }
-
+  static getStubConfig(_hass: HomeAssistant): TimerCardConfig {
+    console.log("TimerCard: Generating stub config - NO auto-selection will be performed");
+    
+    // MODIFIED: Remove auto-selection completely
+    // Return a config with no timer_instance_id so user must manually select
     return {
       type: "custom:timer-card",
-      timer_instance_id: initialInstanceId, // This will now be explicitly set
+      timer_instance_id: null, // Changed from auto-selected instance to null
       timer_buttons: [...DEFAULT_TIMER_BUTTONS], // Use default buttons
       card_title: "Simple Timer",
       show_seconds: false
@@ -204,28 +193,10 @@ class TimerCard extends LitElement {
         }
     }
 
-    if (!entitiesAreValid) {
-        const allSensors = Object.keys(this.hass.states).filter(entityId => entityId.startsWith('sensor.'));
-        const autoDetectedSensorKey = allSensors.find(entityId => {
-            const state = this.hass!.states[entityId];
-            return typeof state.attributes.entry_id === 'string' && typeof state.attributes.switch_entity_id === 'string';
-        });
-
-        if (autoDetectedSensorKey) {
-            const sensorState = this.hass.states[autoDetectedSensorKey];
-            currentSensor = autoDetectedSensorKey;
-            currentSwitch = sensorState.attributes.switch_entity_id as string | null;
-            if (currentSwitch && this.hass.states[currentSwitch]) {
-                entitiesAreValid = true;
-                console.info(`TimerCard: Auto-detected first instance: Sensor '${currentSensor}', Switch '${currentSwitch}'.`);
-            } else {
-                console.warn(`TimerCard: Auto-detected sensor '${currentSensor}' links to missing or invalid switch '${currentSwitch}'.`);
-            }
-        } else {
-            console.info(`TimerCard: No simple_timer sensor found for auto-detection.`);
-        }
-    }
-
+    // REMOVED: Auto-detection fallback logic
+    // This was causing the card to automatically connect to the first available instance
+    // even when no timer_instance_id was configured
+    
     if (this._effectiveSwitchEntity !== currentSwitch || this._effectiveSensorEntity !== currentSensor) {
         this._effectiveSwitchEntity = currentSwitch;
         this._effectiveSensorEntity = currentSensor;

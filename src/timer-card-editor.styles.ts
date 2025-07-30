@@ -57,4 +57,19 @@ export const editorCardStyles = css`
         color: var(--primary-text-color);
         font-style: italic;
       }
+      
+      .card-config {
+        padding: 16px;
+      }
+      .config-row {
+        margin-bottom: 16px;
+      }
+      .config-row ha-textfield,
+      .config-row ha-select {
+        width: 100%;
+      }
+      .config-row ha-formfield {
+        display: flex;
+        align-items: center;
+      }
 `;

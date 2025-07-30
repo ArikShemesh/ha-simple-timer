@@ -161,38 +161,50 @@ class TimerCardEditor extends LitElement {
     return instances;
   }
 
-  _getNotificationServiceTargets(): Array<{ value: string; label: string }> {
-    if (!this.hass || !this.hass.services) {
-      return [];
-    }
-    const targets: Array<{ value: string; label: string }> = [];
+	_getNotificationServiceTargets(): Array<{ value: string; label: string }> {
+		if (!this.hass || !this.hass.services) {
+			return [];
+		}
+		const targets: Array<{ value: string; label: string }> = [];
 
-    if (this.hass.services.notify) {
-      for (const serviceName in this.hass.services.notify) {
-        if (serviceName !== "send" && !serviceName.includes("_all") && !serviceName.includes("_group")) {
-          const friendlyName = this.hass.services.notify[serviceName]?.description || serviceName;
-          targets.push({ value: `notify.${serviceName}`, label: friendlyName });
-        }
-      }
-    }
+		// Get all notify.* services
+		if (this.hass.services.notify) {
+			for (const serviceName in this.hass.services.notify) {
+				if (serviceName !== "send" && !serviceName.includes("_all") && !serviceName.includes("_group")) {
+					targets.push({ 
+						value: `notify.${serviceName}`, 
+						label: `notify.${serviceName}`
+					});
+				}
+			}
+		}
 
-    for (const domain in this.hass.services) {
-      if (domain.includes("telegram") || domain.includes("mobile_app")) {
-        const domainServices = this.hass.services[domain];
-        for (const serviceName in domainServices) {
-          if (serviceName.includes("send") || serviceName.includes("message") || serviceName.includes("notify")) {
-            const fullService = `${domain}.${serviceName}`;
-            if (!targets.some(t => t.value === fullService)) {
-                const friendlyName = domainServices[serviceName]?.description || fullService;
-                targets.push({ value: fullService, label: friendlyName });
-            }
-          }
-        }
-      }
-    }
-    targets.sort((a, b) => a.label.localeCompare(b.label));
-    return targets;
-  }
+		// Get services from other domains that can send notifications
+		for (const domain in this.hass.services) {
+			if (domain !== "notify") { // Skip notify since we handled it above
+				const domainServices = this.hass.services[domain];
+				for (const serviceName in domainServices) {
+					// Look for services that are commonly used for notifications
+					if (serviceName.includes("send") || 
+							serviceName.includes("message") || 
+							serviceName.includes("notify") ||
+							domain.includes("telegram") ||
+							domain.includes("mobile_app") ||
+							domain.includes("discord") ||
+							domain.includes("slack")) {
+						const fullService = `${domain}.${serviceName}`;
+						targets.push({ 
+							value: fullService, 
+							label: fullService  // Show technical name like telegram_bot.send_message
+						});
+					}
+				}
+			}
+		}
+		
+		targets.sort((a, b) => a.label.localeCompare(b.label));
+		return targets;
+	}
 	
 	_getValidatedTimerButtons(configButtons: any): number[] {
     if (Array.isArray(configButtons)) {
@@ -240,7 +252,7 @@ class TimerCardEditor extends LitElement {
         newConfigData.timer_instance_id = cfg.timer_instance_id;
         console.info(`TimerCardEditor: setConfig PRESERVING existing timer_instance_id: '${cfg.timer_instance_id}'`);
     } else {
-        console.info(`TimerCardEditor: setConfig - no timer_instance_id in config, will be auto-selected later`);
+        console.info(`TimerCardEditor: setConfig - no timer_instance_id in config, will remain unset`);
     }
 
     if (cfg.entity) newConfigData.entity = cfg.entity;
@@ -262,58 +274,6 @@ class TimerCardEditor extends LitElement {
     }
     
     this.requestUpdate();
-  }
-
-  get _schema(): any[] {
-    const timerInstances = this._timerInstancesOptions || [];
-    const notificationServiceTargets = this._getNotificationServiceTargets();
-
-    const instanceOptions = timerInstances.length > 0
-        ? timerInstances
-        : [{ value: "none_found", label: "No Simple Timer Instances Found" }];
-
-    const notificationOptions = [{ value: "none_selected", label: "None" }];
-    notificationServiceTargets.forEach(target => notificationOptions.push(target));
-
-    return [
-      {
-        name: "card_title",
-        label: "Card Title (Optional)",
-        selector: {
-          text: {
-            type: "text"
-          }
-        }
-      },
-      {
-        name: "timer_instance_id",
-        label: "Simple Timer Instance",
-        required: true,
-        selector: {
-          select: {
-            options: instanceOptions,
-            mode: "dropdown",
-          },
-        },
-      },
-      {
-        name: "show_seconds",
-        label: "Show Seconds in Daily Usage",
-        selector: {
-          boolean: {}
-        }
-      },
-      {
-        name: "notification_entity",
-        label: "Notification Service Target (Optional)",
-        selector: {
-          select: {
-            options: notificationOptions,
-            custom_value: false,
-          },
-        },
-      },
-    ];
   }
 
   connectedCallback() {
@@ -348,42 +308,19 @@ class TimerCardEditor extends LitElement {
               return;
           }
           
-          const hasNoInstanceConfigured = !this._config?.timer_instance_id || 
-                                        this._config.timer_instance_id === "none_found" ||
-                                        this._config.timer_instance_id === "";
-          const hasAvailableInstances = this._timerInstancesOptions.length > 0;
-          
-          console.log(`TimerCardEditor: hasNoInstanceConfigured: ${hasNoInstanceConfigured}, hasAvailableInstances: ${hasAvailableInstances}`);
-          
-          if (hasNoInstanceConfigured && hasAvailableInstances) {
-              const firstInstance = this._timerInstancesOptions[0];
-              console.info(`TimerCardEditor: AUTO-SELECTING first available instance (no valid instance configured): '${firstInstance.value}' (${firstInstance.label})`);
-              
-              const updatedConfig: TimerCardConfig = {
-                  ...this._config,
-                  timer_instance_id: firstInstance.value
-              };
-              
-              this._config = updatedConfig;
-              this.dispatchEvent(
-                  new CustomEvent("config-changed", {
-                      detail: { config: this._config },
-                      bubbles: true,
-                      composed: true,
-                  }),
-              );
-          } else if (this._config?.timer_instance_id && hasAvailableInstances) {
+          // MODIFIED: Remove auto-selection logic completely
+          // Only validate that existing configured instances still exist
+          if (this._config?.timer_instance_id && this._timerInstancesOptions.length > 0) {
               const currentInstanceExists = this._timerInstancesOptions.some(
                   instance => instance.value === this._config!.timer_instance_id
               );
               
               if (!currentInstanceExists) {
-                  console.warn(`TimerCardEditor: Previously configured instance '${this._config.timer_instance_id}' no longer exists. Auto-selecting first available instance.`);
-                  const firstInstance = this._timerInstancesOptions[0];
-                  
+                  console.warn(`TimerCardEditor: Previously configured instance '${this._config.timer_instance_id}' no longer exists. User will need to select a new instance.`);
+                  // Clear the invalid instance ID so user sees "Please select an instance"
                   const updatedConfig: TimerCardConfig = {
                       ...this._config,
-                      timer_instance_id: firstInstance.value
+                      timer_instance_id: null
                   };
                   
                   this._config = updatedConfig;
@@ -397,8 +334,8 @@ class TimerCardEditor extends LitElement {
               } else {
                   console.info(`TimerCardEditor: PRESERVING existing valid instance: '${this._config.timer_instance_id}'`);
               }
-          } else if (!hasAvailableInstances) {
-              console.warn(`TimerCardEditor: No simple timer instances found.`);
+          } else {
+              console.info(`TimerCardEditor: No timer_instance_id configured or no instances available. User must manually select.`);
           }
           
           this.requestUpdate();
@@ -448,13 +385,79 @@ class TimerCardEditor extends LitElement {
   render() {
     if (!this.hass) return html``;
 
+    const timerInstances = this._timerInstancesOptions || [];
+    const notificationServiceTargets = this._getNotificationServiceTargets();
+
+    const instanceOptions = [{ value: "", label: "None" }];
+    
+    if (timerInstances.length > 0) {
+        instanceOptions.push(...timerInstances);
+    } else {
+        instanceOptions.push({ value: "none_found", label: "No Simple Timer Instances Found" });
+    }
+
+    const notificationOptions = [{ value: "none_selected", label: "None" }];
+    notificationServiceTargets.forEach(target => notificationOptions.push(target));
+
     return html`
-      <ha-form
-        .hass=${this.hass}
-        .data=${this._config}
-        .schema=${this._schema}
-        @value-changed=${this._valueChanged}
-      ></ha-form>
+      <div class="card-config">
+        <div class="config-row">
+          <ha-textfield
+            .label=${"Card Title (optional)"}
+            .value=${this._config?.card_title || ""}
+            .configValue=${"card_title"}
+            @input=${this._valueChanged}
+            .placeholder=${"Optional title for the card"}
+          ></ha-textfield>
+        </div>
+        
+        <div class="config-row">
+          <ha-select
+            .label=${"Select Simple Timer Instance"}
+            .value=${this._config?.timer_instance_id || ""}
+            .configValue=${"timer_instance_id"}
+            @selected=${this._valueChanged}
+            @closed=${(ev) => ev.stopPropagation()}
+            fixedMenuPosition
+            naturalMenuWidth
+            required
+          >
+            ${instanceOptions.map(option => html`
+              <mwc-list-item .value=${option.value}>
+                ${option.label}
+              </mwc-list-item>
+            `)}
+          </ha-select>
+        </div>
+
+        <div class="config-row">
+          <ha-formfield .label=${"Show Seconds in Daily Usage"}>
+            <ha-switch
+              .checked=${this._config?.show_seconds || false}
+              .configValue=${"show_seconds"}
+              @change=${this._valueChanged}
+            ></ha-switch>
+          </ha-formfield>
+        </div>
+
+        <div class="config-row">
+          <ha-select
+            .label=${"Notification Service (optional)"}
+            .value=${this._config?.notification_entity || "none_selected"}
+            .configValue=${"notification_entity"}
+            @selected=${this._valueChanged}
+            @closed=${(ev) => ev.stopPropagation()}
+            fixedMenuPosition
+            naturalMenuWidth
+          >
+            ${notificationOptions.map(option => html`
+              <mwc-list-item .value=${option.value}>
+                ${option.label}
+              </mwc-list-item>
+            `)}
+          </ha-select>
+        </div>
+      </div>
 
       <div class="card-config-group">
         <h3>Select your timers (Minutes)</h3>
@@ -480,42 +483,67 @@ class TimerCardEditor extends LitElement {
     `;
   }
 
-  _valueChanged(ev: CustomEvent): void {
+  _valueChanged(ev: Event): void {
     ev.stopPropagation();
-    const newFormValues = ev.detail.value;
+    const target = ev.target as any;
+    
+    if (!this._config || !target.configValue) {
+      return;
+    }
 
-    if (!this._config) {
-      console.warn("TimerCardEditor: _config is null in _valueChanged, deferring update.");
+    const configValue = target.configValue;
+    let value;
+    
+    if (target.checked !== undefined) {
+      value = target.checked;
+    } else if (target.selected !== undefined) {
+      value = target.value;
+    } else if (target.value !== undefined) {
+      value = target.value;
+    } else {
       return;
     }
 
     const updatedConfig: TimerCardConfig = {
-        type: newFormValues.type || this._config.type || "custom:timer-card",
+        type: this._config.type || "custom:timer-card",
         timer_buttons: this._config.timer_buttons,
-        show_seconds: newFormValues.show_seconds !== undefined ? newFormValues.show_seconds : (this._config.show_seconds || false)
+        show_seconds: this._config.show_seconds || false
     };
 
-    if (newFormValues.timer_instance_id && newFormValues.timer_instance_id !== "none_found") {
-        updatedConfig.timer_instance_id = newFormValues.timer_instance_id;
-    } else {
-        delete updatedConfig.timer_instance_id;
+    // Handle specific field updates
+    if (configValue === "card_title") {
+        if (value && value !== '') {
+            updatedConfig.card_title = value;
+        } else {
+            delete updatedConfig.card_title;
+        }
+    } else if (configValue === "timer_instance_id") {
+        if (value && value !== "none_found" && value !== "") {
+            updatedConfig.timer_instance_id = value;
+        } else {
+            updatedConfig.timer_instance_id = null;
+        }
+    } else if (configValue === "show_seconds") {
+        updatedConfig.show_seconds = value;
+    } else if (configValue === "notification_entity") {
+        if (value && value !== "none_selected") {
+            updatedConfig.notification_entity = value;
+        } else {
+            delete updatedConfig.notification_entity;
+        }
     }
 
+    // Preserve existing values
     if (this._config.entity) updatedConfig.entity = this._config.entity;
     if (this._config.sensor_entity) updatedConfig.sensor_entity = this._config.sensor_entity;
-
-    if (newFormValues.notification_entity && newFormValues.notification_entity !== "none_selected") {
-        updatedConfig.notification_entity = newFormValues.notification_entity;
-    } else if (newFormValues.notification_entity === "none_selected") {
-        delete updatedConfig.notification_entity;
-    } else if (this._config.notification_entity) {
+    if (this._config.timer_instance_id && configValue !== "timer_instance_id") {
+        updatedConfig.timer_instance_id = this._config.timer_instance_id;
+    }
+    if (this._config.notification_entity && configValue !== "notification_entity") {
         updatedConfig.notification_entity = this._config.notification_entity;
     }
-
-    if (newFormValues.card_title && newFormValues.card_title !== '') {
-        updatedConfig.card_title = newFormValues.card_title;
-    } else {
-        delete updatedConfig.card_title;
+    if (this._config.card_title && configValue !== "card_title") {
+        updatedConfig.card_title = this._config.card_title;
     }
 
     if (JSON.stringify(this._config) !== JSON.stringify(updatedConfig)) {
