@@ -1,10 +1,12 @@
-![image](https://github.com/ArikShemesh/ha-simple-timer/blob/main/custom_components/simple_timer/brands/simple_timer/logo.png)
-
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
 [![Version](https://img.shields.io/github/v/release/ArikShemesh/ha-simple-timer)](https://github.com/ArikShemesh/ha-simple-timer/releases)
 [![Downloads](https://img.shields.io/github/downloads/ArikShemesh/ha-simple-timer/total)](https://github.com/ArikShemesh/ha-simple-timer/releases)
 
-# HA Simple Timer Integration
+![image](https://github.com/ArikShemesh/ha-simple-timer/blob/main/custom_components/simple_timer/brands/simple_timer/logo.png)
+
+<a href="https://coff.ee/codemakor" target="_blank"><img src="https://www.buymeacoffee.com/assets/img/custom_images/white_img.png" alt="Buy Me A Coffee" style="height: auto !important;width: auto !important;" ></a>
+
+# HA Simple Timer Integration (+ Card)
 A simple timer integration for Home Assistant with precise countdown functionality and daily runtime tracking.
 
 ![image](https://github.com/ArikShemesh/ha-simple-timer/blob/main/images/simple_timer_card.png)
