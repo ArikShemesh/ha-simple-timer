@@ -42,6 +42,9 @@ A simple timer integration for Home Assistant with precise countdown functionali
 
 ### HACS
 
+⚠️ If you previously added this integration as a custom repository in HACS, it's recommended to remove the custom entry and reinstall it from the official HACS store.
+You will continue to receive updates in both cases, but switching ensures you're aligned with the official listing and avoids potential issues in the future.
+
 Use this link to open the repository in HACS and click on Download
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=ArikShemesh&repository=ha-simple-timer)
