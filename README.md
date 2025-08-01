@@ -38,32 +38,20 @@ A simple timer integration for Home Assistant with precise countdown functionali
 
 ## 📦 Installation
 
-### Step 1: Install the Integration via HACS
+## Step 1: Integration Install
 
-#### Option A: Add as Custom Repository
-1. Open HACS in Home Assistant
-2. Go to "Integrations"
-3. Click the three dots (⋮) in the top right corner
-4. Select "Custom repositories"
-5. Add repository URL: `https://github.com/ArikShemesh/ha-simple-timer`
-6. Select "Integration" as the category
-7. Click "Add"
+### HACS
 
-Then use this link to directly go to the repository in HACS
+Use this link to open the repository in HACS and click on Download
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=ArikShemesh&repository=ha-simple-timer)
 
-_or_
-
-8. Find "Simple Timer" in the integrations list and install
-9. **Restart Home Assistant**
-
-#### Option B: Manual Installation
+### Manual Installation
 1. Download the latest release from [GitHub Releases](https://github.com/ArikShemesh/ha-simple-timer/releases)
 2. Extract the `custom_components/simple_timer` folder to your Home Assistant `custom_components` directory
 3. **Restart Home Assistant**
 
-### Step 2: Install the Timer Card (Manual)
+## Step 2: Install the Timer Card (Manual)
 
 Since HACS only downloads the integration files, you need to manually install the timer card:
 
