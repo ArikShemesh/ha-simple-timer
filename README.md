@@ -63,9 +63,8 @@ Since HACS only downloads the integration files, you need to manually install th
    ```
    config/
    └── www/
-       └── local/
-           └── ha-simple-timer/
-               └── timer-card.js       ← Place file here
+        └── ha-simple-timer/
+            └── timer-card.js       ← Place file here
    ```
 
 3. **Add reference to: `timer-card.js`**
@@ -160,7 +159,7 @@ This appears when HA was offline during a timer to indicate potential time sync 
 
 ### Card Not Appearing in Card Picker
 
-1. **Verify file location:** Ensure `timer-card.js` is in `/config/www/local/ha-simple-timer/`
+1. **Verify file location:** Ensure `timer-card.js` is in `/config/www/ha-simple-timer/`
 2. **Check resource configuration:** Verify the resource URL in `configuration.yaml`
 3. **Clear browser cache:** Hard refresh with Ctrl+F5 (Windows) or Cmd+Shift+R (Mac)
 4. **Check browser console:** Press F12 and look for JavaScript errors
