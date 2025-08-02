@@ -1,6 +1,8 @@
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
 [![Version](https://img.shields.io/github/v/release/ArikShemesh/ha-simple-timer)](https://github.com/ArikShemesh/ha-simple-timer/releases)
+[![GitHub Repo stars](https://img.shields.io/github/stars/ArikShemesh/ha-simple-timer?style=flat-square)](https://github.com/ArikShemesh/ha-simple-timer/releases)
 [![Downloads](https://img.shields.io/github/downloads/ArikShemesh/ha-simple-timer/total)](https://github.com/ArikShemesh/ha-simple-timer/releases)
+
 
 ![image](https://github.com/ArikShemesh/ha-simple-timer/blob/main/custom_components/simple_timer/brands/simple_timer/logo.png)
 
