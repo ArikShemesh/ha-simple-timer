@@ -136,14 +136,14 @@ show_seconds: true  # Optional: show HH:MM:SS format
 
 ### Configuration Options
 
-| Option | Type | Required | Default | Description |
-|--------|------|----------|---------|-------------|
-| `type` | string | ✅ | - | Must be `custom:timer-card` |
-| `timer_instance_id` | string | ✅ | - | Entry ID of your timer instance |
-| `timer_buttons` | array | ❌ | `[15,30,60,90,120,150]` | Timer duration buttons (1-1000 minutes) |
-| `card_title` | string | ❌ | - | Custom title for the card |
-| `notification_entity` | string | ❌ | - | Notification service for timer alerts |
-| `show_seconds` | boolean | ❌ | false | Show seconds in time display (HH:MM:SS vs HH:MM)|
+Option                | Type     | Required | Default                  | Description
+----------------------|----------|----------|--------------------------|-------------------------------------------------------
+`type`                | string   | ✅       | -                        | Must be `custom:timer-card`
+`timer_instance_id`   | string   | ✅       | -                        | Entry ID of your timer instance
+`timer_buttons`       | array    | ❌       | [15,30,60,90,120,150]    | Timer duration buttons (1-1000 minutes)
+`card_title`          | string   | ❌       | -                        | Custom title for the card
+`notification_entity` | string   | ❌       | -                        | Notification service for timer alerts
+`show_seconds`        | boolean  | ❌       | false                    | Show seconds in time display (HH:MM:SS vs HH:MM)
 
 ## ❓ Frequently Asked Questions
 
