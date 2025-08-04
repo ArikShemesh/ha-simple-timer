@@ -7,12 +7,12 @@ import { version } from "../package.json"
 // Ensure HomeAssistant and TimerCardConfig are recognized from global.d.ts
 
 const DOMAIN = "simple_timer";
-const CARD_VERSION = version;
+const CARD_VERSION = "1.1.4";
 const REPO_URL = "https://github.com/ArikShemesh/ha-simple-timer";
 const DEFAULT_TIMER_BUTTONS = [15, 30, 60, 90, 120, 150]; // Default for new cards only
 
 console.info(
-  `%c TIMER-CARD %c v${CARD_VERSION} `,
+  `%c SIMPLE-TIMER-CARD %c v${CARD_VERSION} `,
   'color: orange; font-weight: bold; background: black',
   'color: white; font-weight: bold; background: dimgray',
 );

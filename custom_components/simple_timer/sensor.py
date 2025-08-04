@@ -176,9 +176,9 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                         continue
             
             return None, False
-                            
+                                
         except Exception as e:
-            _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Error getting notification config: {e}")
+            _LOGGER.error(f"Simple Timer: [{self._entry_id}] Error getting notification config: {e}")
             return None, False
 
     def _search_cards_in_config(self, config: dict) -> tuple[str | None, bool]:
@@ -274,6 +274,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             notification_entity, show_seconds = await self._get_card_notification_config()
             
             if not notification_entity:
+                _LOGGER.info(f"Simple Timer: [{self._entry_id}] No notification entity configured")
                 return
                 
             # Parse the service call format
@@ -283,8 +284,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 return
                 
             domain = service_parts[0]
-            service = '.'.join(service_parts[1:])
+            service = service_parts[1]  # FIXED: Don't rejoin with dots
             title = self.instance_title or "Timer"
+            
+            _LOGGER.info(f"Simple Timer: [{self._entry_id}] Sending notification to {domain}.{service}: '{message}'")
             
             await self.hass.services.async_call(
                 domain, service, {"message": message, "title": title}
