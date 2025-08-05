@@ -127,3 +127,4 @@ Thumbs.db
 /*.bak
 /notepad session
 /*.tmp
+/custom_components/simple_timer/dist/*.map
