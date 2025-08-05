@@ -51,7 +51,7 @@ Use this link to open the repository in HACS and click on Download
 2. Extract the `custom_components/simple_timer` folder to your Home Assistant `custom_components` directory
 3. **Restart Home Assistant**
 
-## Step 2: Install the Timer Card (Manual)
+## Step 2: Install the Timer Card
 
 Since HACS only downloads the integration files, you need to manually install the timer card:
 
