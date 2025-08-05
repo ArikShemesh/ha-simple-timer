@@ -6,7 +6,11 @@ A simple Home Assistant integration that turns entities on and off with a precis
 
 <a href="https://coff.ee/codemakor" target="_blank"><img src="https://www.buymeacoffee.com/assets/img/custom_images/white_img.png" alt="Buy Me A Coffee" style="height: auto !important;width: auto !important;" ></a>
 
-![image](https://github.com/ArikShemesh/ha-simple-timer/blob/main/images/simple_timer_card.png)
+### Card Overview
+![image](https://github.com/ArikShemesh/simple-timer-card/blob/main/images/simple_timer_card.png)
+
+### Configuration
+![image](https://github.com/ArikShemesh/simple-timer-card/blob/main/images/simple_timer_card_editor.png)
 
 ## ✨ Key Features
 🚀 **Out-of-the-box**, pre-packaged timer solution, eliminating manual creation of multiple Home Assistant entities, sensors, and automations.
