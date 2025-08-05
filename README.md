@@ -35,9 +35,7 @@ A simple Home Assistant integration that turns entities on and off with a precis
 
 ## 📦 Installation
 
-## Step 1: Integration Install
-
-### HACS
+### HACS (Recommended)
 
 ⚠️ If you previously added this integration as a custom repository in HACS, it's recommended to remove the custom entry and reinstall it from the official HACS store.
 You will continue to receive updates in both cases, but switching ensures you're aligned with the official listing and avoids potential issues in the future.
@@ -51,39 +49,27 @@ Use this link to open the repository in HACS and click on Download
 2. Extract the `custom_components/simple_timer` folder to your Home Assistant `custom_components` directory
 3. **Restart Home Assistant**
 
-## Step 2: Install the Timer Card
+**That's it!** The timer card is automatically installed and ready to use - no additional steps required.
 
-Since HACS only downloads the integration files, you need to manually install the timer card:
+## 🎉 What's New in v1.1.5
 
-1. **Download the card file:**
-   - Go to the [latest release](https://github.com/ArikShemesh/ha-simple-timer/releases/latest)
-   - Download `timer-card.js` from the `dist` folder
+✨ **Automatic Card Installation** - The timer card is now automatically installed and configured when you install the integration! No more manual file copying or resource configuration needed.
 
-2. **Create the directory structure:**
-   ```
-   config/
-   └── www/
-        └── ha-simple-timer/
-            └── timer-card.js       ← Place file here
-   ```
+🔄 **Automatic Updates** - When you update the integration, the timer card is automatically updated with proper cache busting.
 
-3. **Add reference to: `timer-card.js`**
+📁 **Simplified Structure** - The frontend card is now bundled directly with the integration files.
 
-- **Using UI:** _Settings_ → _Dashboards_ → _More Options icon_ → _Resources_ → _Add Resource_ → Set _Url_ as `/local/ha-simple-timer/timer-card.js` → Set _Resource type_ as `JavaScript Module`.
+## 🔧 Behind the Scenes (v1.1.5)
 
-_or_
-  
-- **Edit your `configuration.yaml`** and add:
-  ```yaml
-  lovelace:
-   resources:
-     - url: /local/ha-simple-timer/timer-card.js
-       type: module
-  ```
+When the integration loads, it automatically:
+- 📂 **Copies** the timer card file from the integration to `config/www/simple-timer/timer-card.js`
+- 🔗 **Registers** the static path to serve the card file
+- 📋 **Adds/updates** the Lovelace resource with proper versioning (`/local/simple-timer/timer-card.js?v=1.1.5`)
+- 🔄 **Handles updates** by automatically updating the resource URL with new versions
 
-5. **Restart Home Assistant**
-
-6. **Clear browser cache** (Ctrl+F5 or Cmd+Shift+R)
+You can verify the automatic installation by checking:
+- **File location:** `config/www/simple-timer/timer-card.js` (automatically created)
+- **Resources:** Settings → Dashboards → Resources (automatically added)
 
 ## ⚙️ Configuration
 
@@ -127,7 +113,7 @@ timer_instance_id: your_instance_entry_id
 timer_buttons: [15, 30, 60, 90, 120, 150]
 card_title: "Kitchen Timer"
 notification_entity: notify.mobile_app_your_phone
-show_seconds: true  # Optional: show HH:MM:SS format
+show_seconds: true
 ```
 
 ### Configuration Options
@@ -159,11 +145,11 @@ This appears when HA was offline during a timer to indicate potential time sync 
 
 ### Card Not Appearing in Card Picker
 
-1. **Verify file location:** Ensure `timer-card.js` is in `/config/www/ha-simple-timer/`
-2. **Check resource configuration:** Verify the resource URL in `configuration.yaml`
-3. **Clear browser cache:** Hard refresh with Ctrl+F5 (Windows) or Cmd+Shift+R (Mac)
-4. **Check browser console:** Press F12 and look for JavaScript errors
-5. **Restart Home Assistant:** Sometimes needed after adding resources
+1. **Restart Home Assistant:** The card is installed during integration setup
+2. **Check integration logs:** Look for any errors during the card installation process
+3. **Verify automatic installation:** Check if `/config/www/simple-timer/timer-card.js` exists
+4. **Clear browser cache:** Hard refresh with Ctrl+F5 (Windows) or Cmd+Shift+R (Mac)
+5. **Check browser console:** Press F12 and look for JavaScript errors
 
 ### Timer Not Working
 
@@ -177,6 +163,14 @@ This appears when HA was offline during a timer to indicate potential time sync 
 1. **Device state changes:** Timer only tracks when the device is actually ON
 2. **Manual control:** If you turn the device off manually, tracking stops (by design)
 3. **Midnight reset:** Usage resets at 00:00 each day automatically
+
+### Card Installation Issues
+
+If the automatic card installation fails:
+1. **Check file permissions:** Ensure Home Assistant can write to the `www` directory
+2. **Verify disk space:** Ensure sufficient space for file copying
+3. **Check integration logs:** Look for specific error messages
+4. **Manual fallback:** You can still manually copy the card file from the integration's `dist` folder
 
 ## 📝 Getting Help
 
