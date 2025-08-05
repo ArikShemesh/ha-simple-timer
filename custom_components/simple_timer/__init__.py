@@ -1,19 +1,176 @@
 """The Simple Timer integration."""
 import voluptuous as vol
+import logging
+import os
+import shutil
+import asyncio
+import homeassistant.helpers.config_validation as cv
 
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.config_entries import ConfigEntry
-import homeassistant.helpers.config_validation as cv
+from homeassistant.components.http import StaticPathConfig
+from homeassistant.components.frontend import async_register_built_in_panel, add_extra_js_url
+from homeassistant.components.lovelace.resources import ResourceStorageCollection
 
 from .const import DOMAIN, PLATFORMS
+
+_LOGGER = logging.getLogger(__name__)
+
+def _copy_file_sync(source_file: str, dest_file: str, www_dir: str) -> bool:
+    """Synchronous file copy function to be run in executor."""
+    try:
+        # Create www/simple-timer directory if it doesn't exist
+        os.makedirs(www_dir, exist_ok=True)
+        
+        # Copy the file if source exists
+        if os.path.exists(source_file):
+            shutil.copy2(source_file, dest_file)
+            return True
+        else:
+            return False
+    except Exception:
+        return False
+
+async def copy_frontend_files(hass: HomeAssistant) -> bool:
+    """Copy frontend files from integration dist folder to www folder."""
+    try:
+        # Source: custom_components/simple_timer/dist/timer-card.js
+        integration_path = os.path.dirname(__file__)
+        source_file = os.path.join(integration_path, "dist", "timer-card.js")
+        
+        # Destination: config/www/simple-timer/timer-card.js
+        www_dir = hass.config.path("www", "simple-timer")
+        dest_file = os.path.join(www_dir, "timer-card.js")
+        
+        # Run the file copy in executor to avoid blocking I/O
+        success = await hass.async_add_executor_job(
+            _copy_file_sync, source_file, dest_file, www_dir
+        )
+        
+        if success:
+            _LOGGER.debug(f"Copied {source_file} to {dest_file}")
+            return True
+        else:
+            _LOGGER.warning(f"Source file not found: {source_file}")
+            return False
+            
+    except Exception as e:
+        _LOGGER.error(f"Failed to copy frontend files: {e}")
+        return False
+
+async def init_resource(hass: HomeAssistant, url: str, ver: str) -> bool:
+    """Add extra JS module for lovelace mode YAML and new lovelace resource
+    for mode GUI. It's better to add extra JS for all modes, because it has
+    random url to avoid problems with the cache. But chromecast don't support
+    extra JS urls and can't load custom card.
+    """
+    resources: ResourceStorageCollection = hass.data["lovelace"].resources
+    # force load storage
+    await resources.async_get_info()
+
+    url2 = f"{url}?v={ver}"
+
+    for item in resources.async_items():
+        if not item.get("url", "").startswith(url):
+            continue
+
+        # no need to update
+        if item["url"].endswith(ver):
+            return False
+
+        _LOGGER.debug(f"Update lovelace resource to: {url2}")
+
+        if isinstance(resources, ResourceStorageCollection):
+            await resources.async_update_item(
+                item["id"], {"res_type": "module", "url": url2}
+            )
+        else:
+            # not the best solution, but what else can we do
+            item["url"] = url2
+
+        return True
+
+    if isinstance(resources, ResourceStorageCollection):
+        _LOGGER.debug(f"Add new lovelace resource: {url2}")
+        await resources.async_create_item({"res_type": "module", "url": url2})
+    else:
+        _LOGGER.debug(f"Add extra JS module: {url2}")
+        add_extra_js_url(hass, url2)
+
+    return True
+    """Add extra JS module for lovelace mode YAML and new lovelace resource
+    for mode GUI. It's better to add extra JS for all modes, because it has
+    random url to avoid problems with the cache. But chromecast don't support
+    extra JS urls and can't load custom card.
+    """
+    resources: ResourceStorageCollection = hass.data["lovelace"].resources
+    # force load storage
+    await resources.async_get_info()
+
+    url2 = f"{url}?v={ver}"
+
+    for item in resources.async_items():
+        if not item.get("url", "").startswith(url):
+            continue
+
+        # no need to update
+        if item["url"].endswith(ver):
+            return False
+
+        _LOGGER.debug(f"Update lovelace resource to: {url2}")
+
+        if isinstance(resources, ResourceStorageCollection):
+            await resources.async_update_item(
+                item["id"], {"res_type": "module", "url": url2}
+            )
+        else:
+            # not the best solution, but what else can we do
+            item["url"] = url2
+
+        return True
+
+    if isinstance(resources, ResourceStorageCollection):
+        _LOGGER.debug(f"Add new lovelace resource: {url2}")
+        await resources.async_create_item({"res_type": "module", "url": url2})
+    else:
+        _LOGGER.debug(f"Add extra JS module: {url2}")
+        add_extra_js_url(hass, url2)
+
+    return True
 
 # Configuration schema for YAML setup (required by hassfest)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 async def async_setup(hass: HomeAssistant, _: dict) -> bool:
-    """Set up the integration by registering services."""
+    """Set up the integration by registering services and frontend resources."""
     if hass.data.setdefault(DOMAIN, {}).get("services_registered"):
         return True
+
+    # Copy frontend files from integration to www folder
+    await copy_frontend_files(hass)
+
+    # Option 1: Register static path pointing to www folder (after copy)
+    await hass.http.async_register_static_paths([
+        StaticPathConfig(
+            "/local/simple-timer/timer-card.js",
+            hass.config.path("www/simple-timer/timer-card.js"),
+            True
+        )
+    ])
+    
+    # Option 2: Alternative - serve directly from custom_components (uncomment to use)
+    # integration_path = os.path.dirname(__file__)
+    # await hass.http.async_register_static_paths([
+    #     StaticPathConfig(
+    #         "/local/simple-timer/timer-card.js",
+    #         os.path.join(integration_path, "dist", "timer-card.js"),
+    #         True
+    #     )
+    # ])
+
+    # Initialize the frontend resource
+    version = getattr(hass.data["integrations"][DOMAIN], "version", "1.0.0")
+    await init_resource(hass, "/local/simple-timer/timer-card.js", str(version))
 
     # Schema for the timer services
     SERVICE_START_TIMER_SCHEMA = vol.Schema({

@@ -4,7 +4,7 @@ import nodeResolve from "@rollup/plugin-node-resolve";
 import terser from '@rollup/plugin-terser';
 import typescript from "@rollup/plugin-typescript";
 import serve from "rollup-plugin-serve";
-
+import path from "path";
 
 const isProduction = process.env.NODE_ENV === 'production';
 const dev = process.env.ROLLUP_WATCH;
@@ -19,11 +19,18 @@ const serveOptions = {
   },
 };
 
+// Build output path inside the integration's dist folder
+const integrationDist = path.resolve(
+  "custom_components",
+  "simple_timer",
+  "dist"
+);
+
 export default [
   {
     input: "src/timer-card.ts",
     output: {
-      file: 'dist/timer-card.js',
+      file: path.join(integrationDist, "timer-card.js"),
       format: "es",
       inlineDynamicImports: true,
       sourcemap: !isProduction,
