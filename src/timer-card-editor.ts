@@ -3,17 +3,7 @@
 import { LitElement, html } from 'lit';
 import { editorCardStyles } from './timer-card-editor.styles';
 
-// Define necessary interfaces directly in this file for compilation robustness.
-interface TimerCardConfig {
-  type: string;
-  timer_instance_id?: string | null;
-  entity?: string | null;
-  sensor_entity?: string | null;
-  timer_buttons: number[];
-  notification_entity?: string | null;
-  card_title?: string | null;
-  show_seconds?: boolean; // NEW: Option to show seconds in daily usage
-}
+// Note: TimerCardConfig interface is defined in global.d.ts
 
 interface HAState {
   entity_id: string;
@@ -98,10 +88,8 @@ class TimerCardEditor extends LitElement {
     this._config = {
       type: "custom:timer-card",
       timer_buttons: [...DEFAULT_TIMER_BUTTONS], // Use centralized default
-      notification_entity: null,
       timer_instance_id: null,
-      card_title: null,
-      show_seconds: false
+      card_title: null
     };
   }
 
@@ -116,7 +104,7 @@ class TimerCardEditor extends LitElement {
     for (const entityId in this.hass.states) {
       const state = this.hass.states[entityId];
 
-      // UPDATED: Look for sensors that have the required simple timer attributes
+      // Look for sensors that have the required simple timer attributes
       // The entity name format is now: "[Instance Name] Runtime ([entry_id_short])"
       if (entityId.startsWith('sensor.') &&
           entityId.includes('runtime') &&  // Runtime sensors contain 'runtime' in their ID
@@ -160,51 +148,6 @@ class TimerCardEditor extends LitElement {
     }
     return instances;
   }
-
-	_getNotificationServiceTargets(): Array<{ value: string; label: string }> {
-		if (!this.hass || !this.hass.services) {
-			return [];
-		}
-		const targets: Array<{ value: string; label: string }> = [];
-
-		// Get all notify.* services
-		if (this.hass.services.notify) {
-			for (const serviceName in this.hass.services.notify) {
-				if (serviceName !== "send" && !serviceName.includes("_all") && !serviceName.includes("_group")) {
-					targets.push({ 
-						value: `notify.${serviceName}`, 
-						label: `notify.${serviceName}`
-					});
-				}
-			}
-		}
-
-		// Get services from other domains that can send notifications
-		for (const domain in this.hass.services) {
-			if (domain !== "notify") { // Skip notify since we handled it above
-				const domainServices = this.hass.services[domain];
-				for (const serviceName in domainServices) {
-					// Look for services that are commonly used for notifications
-					if (serviceName.includes("send") || 
-							serviceName.includes("message") || 
-							serviceName.includes("notify") ||
-							domain.includes("telegram") ||
-							domain.includes("mobile_app") ||
-							domain.includes("discord") ||
-							domain.includes("slack")) {
-						const fullService = `${domain}.${serviceName}`;
-						targets.push({ 
-							value: fullService, 
-							label: fullService  // Show technical name like telegram_bot.send_message
-						});
-					}
-				}
-			}
-		}
-		
-		targets.sort((a, b) => a.label.localeCompare(b.label));
-		return targets;
-	}
 	
 	_getValidatedTimerButtons(configButtons: any): number[] {
     if (Array.isArray(configButtons)) {
@@ -244,8 +187,7 @@ class TimerCardEditor extends LitElement {
     const newConfigData: TimerCardConfig = {
       type: cfg.type || "custom:timer-card",
       timer_buttons: timerButtonsToSet,
-      card_title: cfg.card_title || null,
-      show_seconds: cfg.show_seconds || false
+      card_title: cfg.card_title || null
     };
 
     if (cfg.timer_instance_id) {
@@ -255,9 +197,9 @@ class TimerCardEditor extends LitElement {
         console.info(`TimerCardEditor: setConfig - no timer_instance_id in config, will remain unset`);
     }
 
+    // Legacy support for old config properties
     if (cfg.entity) newConfigData.entity = cfg.entity;
     if (cfg.sensor_entity) newConfigData.sensor_entity = cfg.sensor_entity;
-    if (cfg.notification_entity) newConfigData.notification_entity = cfg.notification_entity;
 
     this._config = newConfigData;
     this._configFullyLoaded = true;
@@ -308,7 +250,6 @@ class TimerCardEditor extends LitElement {
               return;
           }
           
-          // MODIFIED: Remove auto-selection logic completely
           // Only validate that existing configured instances still exist
           if (this._config?.timer_instance_id && this._timerInstancesOptions.length > 0) {
               const currentInstanceExists = this._timerInstancesOptions.some(
@@ -362,13 +303,11 @@ class TimerCardEditor extends LitElement {
 
     const updatedConfig: TimerCardConfig = {
         type: this._config!.type,
-        timer_buttons: currentButtons,
-        show_seconds: this._config!.show_seconds || false
+        timer_buttons: currentButtons
     };
     if (this._config?.timer_instance_id) updatedConfig.timer_instance_id = this._config.timer_instance_id;
     if (this._config?.entity) updatedConfig.entity = this._config.entity;
     if (this._config?.sensor_entity) updatedConfig.sensor_entity = this._config.sensor_entity;
-    if (this._config?.notification_entity) updatedConfig.notification_entity = this._config.notification_entity;
     if (this._config?.card_title) updatedConfig.card_title = this._config.card_title;
 
     this._config = updatedConfig;
@@ -386,7 +325,6 @@ class TimerCardEditor extends LitElement {
     if (!this.hass) return html``;
 
     const timerInstances = this._timerInstancesOptions || [];
-    const notificationServiceTargets = this._getNotificationServiceTargets();
 
     const instanceOptions = [{ value: "", label: "None" }];
     
@@ -395,9 +333,6 @@ class TimerCardEditor extends LitElement {
     } else {
         instanceOptions.push({ value: "none_found", label: "No Simple Timer Instances Found" });
     }
-
-    const notificationOptions = [{ value: "none_selected", label: "None" }];
-    notificationServiceTargets.forEach(target => notificationOptions.push(target));
 
     return html`
       <div class="card-config">
@@ -429,34 +364,7 @@ class TimerCardEditor extends LitElement {
             `)}
           </ha-select>
         </div>
-
-        <div class="config-row">
-          <ha-formfield .label=${"Show Seconds in Daily Usage"}>
-            <ha-switch
-              .checked=${this._config?.show_seconds || false}
-              .configValue=${"show_seconds"}
-              @change=${this._valueChanged}
-            ></ha-switch>
-          </ha-formfield>
-        </div>
-
-        <div class="config-row">
-          <ha-select
-            .label=${"Notification Service (optional)"}
-            .value=${this._config?.notification_entity || "none_selected"}
-            .configValue=${"notification_entity"}
-            @selected=${this._valueChanged}
-            @closed=${(ev) => ev.stopPropagation()}
-            fixedMenuPosition
-            naturalMenuWidth
-          >
-            ${notificationOptions.map(option => html`
-              <mwc-list-item .value=${option.value}>
-                ${option.label}
-              </mwc-list-item>
-            `)}
-          </ha-select>
-        </div>
+				
       </div>
 
       <div class="card-config-group">
@@ -506,8 +414,7 @@ class TimerCardEditor extends LitElement {
 
     const updatedConfig: TimerCardConfig = {
         type: this._config.type || "custom:timer-card",
-        timer_buttons: this._config.timer_buttons,
-        show_seconds: this._config.show_seconds || false
+        timer_buttons: this._config.timer_buttons
     };
 
     // Handle specific field updates
@@ -523,14 +430,6 @@ class TimerCardEditor extends LitElement {
         } else {
             updatedConfig.timer_instance_id = null;
         }
-    } else if (configValue === "show_seconds") {
-        updatedConfig.show_seconds = value;
-    } else if (configValue === "notification_entity") {
-        if (value && value !== "none_selected") {
-            updatedConfig.notification_entity = value;
-        } else {
-            delete updatedConfig.notification_entity;
-        }
     }
 
     // Preserve existing values
@@ -539,18 +438,21 @@ class TimerCardEditor extends LitElement {
     if (this._config.timer_instance_id && configValue !== "timer_instance_id") {
         updatedConfig.timer_instance_id = this._config.timer_instance_id;
     }
-    if (this._config.notification_entity && configValue !== "notification_entity") {
-        updatedConfig.notification_entity = this._config.notification_entity;
-    }
     if (this._config.card_title && configValue !== "card_title") {
         updatedConfig.card_title = this._config.card_title;
     }
 
     if (JSON.stringify(this._config) !== JSON.stringify(updatedConfig)) {
         this._config = updatedConfig;
+        
+        // Clean up any old notification/show_seconds properties when saving
+        const cleanConfig: any = { ...updatedConfig };
+        delete cleanConfig.notification_entity;
+        delete cleanConfig.show_seconds;
+        
         this.dispatchEvent(
             new CustomEvent("config-changed", {
-                detail: { config: this._config },
+                detail: { config: cleanConfig },
                 bubbles: true,
                 composed: true,
             }),

@@ -6,9 +6,7 @@ interface TimerCardConfig {
   entity?: string | null;
   sensor_entity?: string | null;
   timer_buttons: number[];
-  notification_entity?: string | null;
   card_title?: string | null;
-  show_seconds?: boolean; // NEW: Option to show seconds in daily usage
 }
 
 // Define the structure for a Home Assistant state object
@@ -23,6 +21,7 @@ interface HAState {
     timer_finishes_at?: string;
     timer_duration?: number;
     watchdog_message?: string;
+    show_seconds?: boolean; // NEW: This comes from backend now
     [key: string]: any; // Allow for other unknown attributes
   };
   last_changed: string;
@@ -66,18 +65,13 @@ interface HomeAssistant {
     };
     [key: string]: any;
   };
-  // Add async_entity_ids if your code uses it directly on hass.states
-  // It's usually on hass.states.async_entity_ids
-  // If config_flow.py uses hass.states.async_entity_ids directly, this is where to add it
-  // async_entity_ids(domain?: string): string[];
 }
 
 // New Interfaces for config entries API response
 interface HAConfigEntry {
   entry_id: string;
   title: string;
-	domain: string;
-  // Add other properties if you need them, e.g., domain, disabled_by
+  domain: string;
 }
 
 interface HAConfigEntriesByDomainResponse {

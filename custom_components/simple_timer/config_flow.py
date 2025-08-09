@@ -18,6 +18,58 @@ class SimpleTimerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def __init__(self):
         """Initialize the config flow."""
         self._switch_entity_id = None
+        self._notification_entities = []
+
+    def _get_notification_services(self):
+        """Get available notification services with comprehensive discovery."""
+        if not self.hass or not hasattr(self.hass, 'services'):
+            return []
+        
+        services = []
+        
+        try:
+            # Method 1: Get all notify.* services using service registry
+            notify_services = self.hass.services.async_services().get("notify", {})
+            for service_name in notify_services.keys():
+                if service_name not in ["send", "persistent_notification"]:  # Exclude base services
+                    services.append(f"notify.{service_name}")
+            
+            # Method 2: Get notification services from other domains
+            all_services = self.hass.services.async_services()
+            for domain, domain_services in all_services.items():
+                if domain != "notify":
+                    for service_name in domain_services.keys():
+                        # Look for notification-related services
+                        if (any(keyword in service_name.lower() for keyword in ["send", "message", "notify"]) or
+                            any(keyword in domain.lower() for keyword in ["telegram", "mobile_app", "discord", "slack", "pushbullet", "pushover"])):
+                            full_service = f"{domain}.{service_name}"
+                            if full_service not in services:
+                                services.append(full_service)
+            
+            # Method 3: Check for common notification integrations by entity registry
+            try:
+                from homeassistant.helpers import entity_registry as er
+                entity_registry = er.async_get(self.hass)
+                if entity_registry:
+                    # Look for mobile app entities and infer services
+                    for entity in entity_registry.entities.values():
+                        if entity.platform == "mobile_app" and entity.domain == "notify":
+                            service_name = f"notify.mobile_app_{entity.unique_id.split('_')[0]}"
+                            if service_name not in services:
+                                services.append(service_name)
+            except Exception:
+                pass  # Don't fail if entity registry access fails
+            
+        except Exception as e:
+            _LOGGER.error(f"Simple Timer: Error getting notification services: {e}")
+            return []
+        
+        # Remove duplicates and sort
+        services = list(set(services))
+        services.sort()
+        
+        _LOGGER.debug(f"Simple Timer: Found {len(services)} notification services: {services}")
+        return services
 
     async def async_step_user(self, user_input=None):
         """
@@ -98,18 +150,25 @@ class SimpleTimerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 name = user_input.get("name", "").strip()
+                show_seconds = user_input.get("show_seconds", False)
+                selected_notifications = user_input.get("Select one or more notification entity (optional):", [])
                 
-                # Validate name
+                # Update notification list from multi-select (handles both add and remove)
+                self._notification_entities = selected_notifications if selected_notifications else []
+                _LOGGER.info(f"Simple Timer: Updated notifications to: {self._notification_entities}")
+                
+                # FINAL SUBMIT logic: Save everything
                 if not name:
                     errors["name"] = "Please enter a name"
                 else:
-                    # Create the config entry
-                    _LOGGER.info(f"Simple Timer: config_flow: Creating entry with name={name}, switch_entity_id={self._switch_entity_id}")
+                    _LOGGER.info(f"Simple Timer: FINAL SUBMIT - Creating entry with notifications={self._notification_entities}")
                     return self.async_create_entry(
                         title=name,
                         data={
                             "name": name,
-                            "switch_entity_id": self._switch_entity_id
+                            "switch_entity_id": self._switch_entity_id,
+                            "notification_entities": self._notification_entities,
+                            "show_seconds": show_seconds
                         }
                     )
                     
@@ -130,22 +189,50 @@ class SimpleTimerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     # Fall back to entity_id based name
                     suggested_name = self._switch_entity_id.split(".")[-1].replace("_", " ").title()
 
-        _LOGGER.info(f"Simple Timer: Auto-generated name: '{suggested_name}' from entity: {self._switch_entity_id}")
+        # Get available notification services
+        available_notifications = self._get_notification_services()
 
-        # Show name form with auto-populated value
-        data_schema = vol.Schema({
+        # Build form schema
+        schema_dict = {
             vol.Required("name", default=suggested_name): str,
-        })
+        }
+        
+        # Add single multi-select dropdown for all notification management
+        if available_notifications:
+            notification_options = []
+            for service in available_notifications:
+                notification_options.append({"value": service, "label": service})
+            
+            schema_dict[vol.Optional("Select one or more notification entity (optional):", default=self._notification_entities)] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=notification_options,
+                    multiple=True,  # Multi-select for both add and remove
+                    mode=selector.SelectSelectorMode.DROPDOWN
+                )
+            )
+        
+        # Add show_seconds at the bottom
+        schema_dict[vol.Optional("show_seconds", default=False)] = bool
 
-        _LOGGER.info(f"Simple Timer: Showing form for step 'name' with suggested_name='{suggested_name}'")
+        data_schema = vol.Schema(schema_dict)
+
+        # Create description with current notifications
+        description_placeholders = {
+            "selected_entity": self._switch_entity_id,
+            "entity_name": suggested_name
+        }
+        
+        if self._notification_entities:
+            description_placeholders["current_notifications"] = ", ".join(self._notification_entities)
+        else:
+            description_placeholders["current_notifications"] = "None selected"
+
+        _LOGGER.info(f"Simple Timer: Showing form for step 'name' with {len(self._notification_entities)} notifications")
         return self.async_show_form(
             step_id="name",
             data_schema=data_schema,
             errors=errors,
-            description_placeholders={
-                "selected_entity": self._switch_entity_id,
-                "entity_name": suggested_name
-            }
+            description_placeholders=description_placeholders
         )
 
     async def async_step_init(self, user_input=None):
@@ -164,8 +251,58 @@ class SimpleTimerOptionsFlow(config_entries.OptionsFlow):
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
-        # Don't set self.config_entry to avoid deprecation warning
-        pass
+        self._notification_entities = list(config_entry.data.get("notification_entities", []))
+
+    def _get_notification_services(self):
+        """Get available notification services with comprehensive discovery."""
+        if not self.hass or not hasattr(self.hass, 'services'):
+            return []
+        
+        services = []
+        
+        try:
+            # Method 1: Get all notify.* services using service registry
+            notify_services = self.hass.services.async_services().get("notify", {})
+            for service_name in notify_services.keys():
+                if service_name not in ["send", "persistent_notification"]:  # Exclude base services
+                    services.append(f"notify.{service_name}")
+            
+            # Method 2: Get notification services from other domains
+            all_services = self.hass.services.async_services()
+            for domain, domain_services in all_services.items():
+                if domain != "notify":
+                    for service_name in domain_services.keys():
+                        # Look for notification-related services
+                        if (any(keyword in service_name.lower() for keyword in ["send", "message", "notify"]) or
+                            any(keyword in domain.lower() for keyword in ["telegram", "mobile_app", "discord", "slack", "pushbullet", "pushover"])):
+                            full_service = f"{domain}.{service_name}"
+                            if full_service not in services:
+                                services.append(full_service)
+            
+            # Method 3: Check for common notification integrations by entity registry
+            try:
+                from homeassistant.helpers import entity_registry as er
+                entity_registry = er.async_get(self.hass)
+                if entity_registry:
+                    # Look for mobile app entities and infer services
+                    for entity in entity_registry.entities.values():
+                        if entity.platform == "mobile_app" and entity.domain == "notify":
+                            service_name = f"notify.mobile_app_{entity.unique_id.split('_')[0]}"
+                            if service_name not in services:
+                                services.append(service_name)
+            except Exception:
+                pass  # Don't fail if entity registry access fails
+            
+        except Exception as e:
+            _LOGGER.error(f"Simple Timer: Error getting notification services: {e}")
+            return []
+        
+        # Remove duplicates and sort
+        services = list(set(services))
+        services.sort()
+        
+        _LOGGER.debug(f"Simple Timer: Found {len(services)} notification services: {services}")
+        return services
 
     async def async_step_init(self, user_input=None):
         """Manage the options."""
@@ -178,8 +315,14 @@ class SimpleTimerOptionsFlow(config_entries.OptionsFlow):
             try:
                 name = user_input.get("name", "").strip()
                 switch_entity_id = user_input.get("switch_entity_id")
+                show_seconds = user_input.get("show_seconds", False)
+                selected_notifications = user_input.get("Select one or more notification entity (optional):", [])
                 
-                # Validate inputs
+                # Update notification list from multi-select (handles both add and remove)
+                self._notification_entities = selected_notifications if selected_notifications else []
+                _LOGGER.info(f"Simple Timer: Updated notifications to: {self._notification_entities}")
+                
+                # FINAL SUBMIT logic: Save everything
                 if not name:
                     errors["name"] = "Please enter a name"
                 elif not switch_entity_id:
@@ -190,8 +333,8 @@ class SimpleTimerOptionsFlow(config_entries.OptionsFlow):
                     if entity_state is None:
                         errors["switch_entity_id"] = "Entity not found"
                     else:
-                        # Update config entry
-                        await self._update_config_entry(name, switch_entity_id)
+                        _LOGGER.info(f"Simple Timer: FINAL SUBMIT - Saving with notifications={self._notification_entities}")
+                        await self._update_config_entry(name, switch_entity_id, show_seconds)
                         return self.async_create_entry(title="", data={})
                         
             except Exception as e:
@@ -201,6 +344,7 @@ class SimpleTimerOptionsFlow(config_entries.OptionsFlow):
         # Get current values
         current_name = self.config_entry.data.get("name") or self.config_entry.title or "Timer"
         current_switch_entity = self.config_entry.data.get("switch_entity_id", "")
+        current_show_seconds = self.config_entry.data.get("show_seconds", False)
 
         # Validate current switch entity
         current_switch_exists = True
@@ -210,20 +354,51 @@ class SimpleTimerOptionsFlow(config_entries.OptionsFlow):
                 current_switch_exists = False
                 errors["switch_entity_id"] = f"Current entity '{current_switch_entity}' not found. Please select a new one."
 
-        # Show form
-        data_schema = vol.Schema({
+        # Get available notification services
+        available_notifications = self._get_notification_services()
+
+        # Build form schema
+        schema_dict = {
             vol.Required("name", default=current_name): str,
             vol.Required("switch_entity_id", default=current_switch_entity if current_switch_exists else ""): selector.EntitySelector(
                 selector.EntitySelectorConfig(
                     domain=["switch", "input_boolean", "light", "fan"]
                 )
             ),
-        })
+        }
+        
+        # Add single multi-select dropdown for all notification management
+        if available_notifications:
+            notification_options = []
+            for service in available_notifications:
+                notification_options.append({"value": service, "label": service})
+            
+            schema_dict[vol.Optional("Select one or more notification entity (optional):", default=self._notification_entities)] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=notification_options,
+                    multiple=True,  # Multi-select for both add and remove
+                    mode=selector.SelectSelectorMode.DROPDOWN
+                )
+            )
+        
+        # Add show_seconds at the bottom
+        schema_dict[vol.Optional("show_seconds", default=current_show_seconds)] = bool
+
+        data_schema = vol.Schema(schema_dict)
+
+        # Add migration notice if old card settings might exist
+        description_placeholders = {}
+        if self._notification_entities:
+            description_placeholders["current_notifications"] = ", ".join(self._notification_entities)
+        else:
+            description_placeholders["current_notifications"] = "None selected"
+            description_placeholders["migration_notice"] = "Note: Notification and display settings have been moved from individual cards to the integration configuration. Please configure them here."
 
         return self.async_show_form(
             step_id="init",
             data_schema=data_schema,
-            errors=errors
+            errors=errors,
+            description_placeholders=description_placeholders
         )
 
     async def _force_name_sync_on_open(self):
@@ -246,14 +421,16 @@ class SimpleTimerOptionsFlow(config_entries.OptionsFlow):
                 data=new_data
             )
 
-    async def _update_config_entry(self, name: str, switch_entity_id: str):
+    async def _update_config_entry(self, name: str, switch_entity_id: str, show_seconds: bool):
         """Update config entry and force immediate sensor sync."""
         new_data = {
             "name": name,
-            "switch_entity_id": switch_entity_id
+            "switch_entity_id": switch_entity_id,
+            "notification_entities": self._notification_entities,
+            "show_seconds": show_seconds
         }
         
-        _LOGGER.info(f"Simple Timer: Updating entry {self.config_entry.entry_id} with name='{name}', switch='{switch_entity_id}'")
+        _LOGGER.info(f"Simple Timer: Updating entry {self.config_entry.entry_id} with name='{name}', switch='{switch_entity_id}', notifications={self._notification_entities}, show_seconds={show_seconds}")
         
         # Update both data and title
         self.hass.config_entries.async_update_entry(

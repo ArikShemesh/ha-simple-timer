@@ -2,9 +2,59 @@
 
 import { LitElement, html } from 'lit';
 import { cardStyles } from './timer-card.styles';
-import { version } from "../package.json"
 
 // Ensure HomeAssistant and TimerCardConfig are recognized from global.d.ts
+interface TimerCardConfig {
+  type: string;
+  timer_instance_id?: string | null;
+  entity?: string | null;
+  sensor_entity?: string | null;
+  timer_buttons: number[];
+  card_title?: string | null;
+  // Removed: notification_entity and show_seconds (now in backend config)
+}
+
+interface HAState {
+  entity_id: string;
+  state: string;
+  attributes: {
+    friendly_name?: string;
+    entry_id?: string;
+    switch_entity_id?: string;
+    timer_state?: 'active' | 'idle';
+    timer_finishes_at?: string;
+    timer_duration?: number;
+    watchdog_message?: string;
+    show_seconds?: boolean; // NEW: This comes from backend now
+    [key: string]: any;
+  };
+  last_changed: string;
+  last_updated: string;
+  context: {
+    id: string;
+    parent_id: string | null;
+    user_id: string | null;
+  };
+}
+
+interface HomeAssistant {
+  states: {
+    [entityId: string]: HAState;
+  };
+  services: {
+    [domain: string]: { [service: string]: any } | undefined;
+  };
+  callService(domain: string, service: string, data?: Record<string, unknown>): Promise<void>;
+  callApi<T = unknown>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, parameters?: Record<string, unknown>, headers?: Record<string, string>): Promise<T>;
+  config: {
+    components: {
+      [domain: string]: {
+        config_entries: { [entry_id: string]: unknown };
+      };
+    };
+    [key: string]: any;
+  };
+}
 
 const DOMAIN = "simple_timer";
 const CARD_VERSION = "1.1.5";
@@ -54,14 +104,11 @@ class TimerCard extends LitElement {
   static getStubConfig(_hass: HomeAssistant): TimerCardConfig {
     console.log("TimerCard: Generating stub config - NO auto-selection will be performed");
     
-    // MODIFIED: Remove auto-selection completely
-    // Return a config with no timer_instance_id so user must manually select
     return {
       type: "custom:timer-card",
       timer_instance_id: null, // Changed from auto-selected instance to null
       timer_buttons: [...DEFAULT_TIMER_BUTTONS], // Use default buttons
-      card_title: "Simple Timer",
-      show_seconds: false
+      card_title: "Simple Timer"
     };
   }
 
@@ -69,8 +116,7 @@ class TimerCard extends LitElement {
     this._config = {
       type: cfg.type || "custom:timer-card",
       timer_buttons: this._getValidatedTimerButtons(cfg.timer_buttons),
-      card_title: cfg.card_title || null,
-      show_seconds: cfg.show_seconds || false
+      card_title: cfg.card_title || null
     };
 
     if (cfg.timer_instance_id) {
@@ -82,9 +128,6 @@ class TimerCard extends LitElement {
     if (cfg.sensor_entity) {
         this._config.sensor_entity = cfg.sensor_entity;
     }
-    if (cfg.notification_entity) {
-        this._config.notification_entity = cfg.notification_entity;
-    }
 
     // Set buttons from validated config - could be empty array
     this.buttons = [...this._config.timer_buttons];
@@ -95,7 +138,7 @@ class TimerCard extends LitElement {
     this._effectiveSwitchEntity = null;
     this._effectiveSensorEntity = null;
     this._entitiesLoaded = false;
-    console.log(`TimerCard: setConfig completed. Configured instance ID: ${this._config.timer_instance_id}, Buttons: ${this.buttons.length}, Show seconds: ${this._config.show_seconds}`);
+    console.log(`TimerCard: setConfig completed. Configured instance ID: ${this._config.timer_instance_id}, Buttons: ${this.buttons.length}`);
   }
 
   _getValidatedTimerButtons(configButtons: any): number[] {
@@ -192,10 +235,6 @@ class TimerCard extends LitElement {
             console.warn(`TimerCard: Manually configured sensor_entity '${this._config.sensor_entity}' not found or missing required attributes.`);
         }
     }
-
-    // REMOVED: Auto-detection fallback logic
-    // This was causing the card to automatically connect to the first available instance
-    // even when no timer_instance_id was configured
     
     if (this._effectiveSwitchEntity !== currentSwitch || this._effectiveSensorEntity !== currentSensor) {
         this._effectiveSwitchEntity = currentSwitch;
@@ -233,7 +272,6 @@ class TimerCard extends LitElement {
 		this.hass.callService("homeassistant", "turn_on", { entity_id: switchId })
 			.then(() => {
 				this.hass!.callService(DOMAIN, "start_timer", { entry_id: entryId, duration: minutes });
-				// No manual notification - backend handles it
 			})
 			.catch(error => {
 				console.error("Timer-card: Error turning on switch or starting timer:", error);
@@ -252,7 +290,7 @@ class TimerCard extends LitElement {
 
 		this.hass.callService(DOMAIN, "cancel_timer", { entry_id: entryId })
 			.then(() => {
-				// No manual notification - backend handles it
+				// Backend handles notification
 			})
 			.catch(error => {
 				console.error("Timer-card: Error cancelling timer:", error);
@@ -284,7 +322,6 @@ class TimerCard extends LitElement {
 						this._cancelTimer();
 						console.log(`Timer-card: Cancelling active timer for switch: ${switchId}`);
 				} else {
-						// Use backend service for manual turn off with notification
 						this.hass.callService(DOMAIN, "manual_power_toggle", { 
 								entry_id: this._getEntryId(), 
 								action: "turn_off" 
@@ -292,7 +329,6 @@ class TimerCard extends LitElement {
 						console.log(`Timer-card: Manually turning off switch: ${switchId}`);
 				}
 		} else {
-			// Use backend service for manual turn on with notification  
 			this.hass.callService(DOMAIN, "manual_power_toggle", { 
 					entry_id: this._getEntryId(), 
 					action: "turn_on" 
@@ -380,7 +416,6 @@ class TimerCard extends LitElement {
 
 					if (remaining === 0) {
 							this._stopCountdown();
-							// Backend handles the timer completion notification automatically
 							if (!this._notificationSentForCurrentCycle) {
 									this._notificationSentForCurrentCycle = true;
 							}
@@ -417,6 +452,17 @@ class TimerCard extends LitElement {
 			duration: activeDuration
 		};
 	}
+
+  // NEW: Get show_seconds from the sensor attributes (backend config)
+  _getShowSeconds(): boolean {
+    if (!this._entitiesLoaded || !this.hass || !this._effectiveSensorEntity) {
+      return false;
+    }
+    
+    const sensor = this.hass.states[this._effectiveSensorEntity];
+    // The backend will set this attribute based on the config entry
+    return sensor?.attributes?.show_seconds || false;
+  }
 
   render() {
     let message: string | null = null;
@@ -475,11 +521,12 @@ class TimerCard extends LitElement {
 
     let totalSecondsForDisplay = committedSeconds;
 
-    // Format time based on show_seconds setting
+    // Format time based on show_seconds setting from backend
     let formattedTime: string;
     let runtimeLabel: string;
+    const showSeconds = this._getShowSeconds();
 
-    if (this._config?.show_seconds) {
+    if (showSeconds) {
       // Show full HH:MM:SS format
       const totalSecondsInt = Math.floor(totalSecondsForDisplay);
       const hours = Math.floor(totalSecondsInt / 3600);
@@ -526,7 +573,7 @@ class TimerCard extends LitElement {
         <div class="main-grid">
           <div class="button power-button ${isOn ? 'on' : ''}" @click=${this._togglePower}><ha-icon icon="mdi:power"></ha-icon></div>
           <div class="button readonly" @click=${this._showMoreInfo}>
-            <span class="daily-time-text ${this._config?.show_seconds ? 'with-seconds' : ''}">${formattedTime}</span>
+            <span class="daily-time-text ${showSeconds ? 'with-seconds' : ''}">${formattedTime}</span>
             <span class="runtime-label">${runtimeLabel}</span>
           </div>
         </div>

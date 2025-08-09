@@ -131,6 +131,9 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return the state attributes."""
         timer_remaining = self._calculate_timer_remaining()
+        
+        # Get show_seconds from config entry
+        show_seconds_setting = self._entry.data.get("show_seconds", False)
 
         attrs = {
             ATTR_TIMER_STATE: self._timer_state,
@@ -143,6 +146,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             ATTR_LAST_ON_TIMESTAMP: self._last_on_timestamp.isoformat() if self._last_on_timestamp else None,
             ATTR_INSTANCE_TITLE: self.instance_title,
             ATTR_NEXT_RESET_DATE: self._next_reset_date.isoformat() if self._next_reset_date else None,
+            "show_seconds": show_seconds_setting,  # Expose show_seconds from config entry
         }
 
         if self._last_reset_was_catchup:
@@ -153,36 +157,27 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
         return attrs
 
-    async def _get_card_notification_config(self) -> tuple[str | None, bool]:
-        """Get notification entity and show_seconds setting from timer card configuration."""
+    async def _get_card_notification_config(self) -> tuple[list[str], bool]:
+        """Get notification entities and show_seconds setting from config entry ONLY."""
         try:
-            # Try to get from storage files first
-            notification_entity, show_seconds = await self._get_notification_from_storage()
-            if notification_entity:
-                return notification_entity, show_seconds
+            # ALWAYS use config entry data - never fall back to old card configs
+            notification_entities = self._entry.data.get("notification_entities", [])
+            show_seconds = self._entry.data.get("show_seconds", False)
             
-            # Fallback to runtime lovelace data
-            if hasattr(self.hass, 'data') and 'lovelace' in self.hass.data:
-                lovelace_data = self.hass.data['lovelace']
-                
-                # Iterate through dashboard configurations to find our card
-                for dashboard in lovelace_data.values():
-                    try:
-                        if hasattr(dashboard, 'config') and dashboard.config:
-                            notification_entity, show_seconds = self._search_cards_in_config(dashboard.config)
-                            if notification_entity:
-                                return notification_entity, show_seconds
-                    except Exception:
-                        continue
+            if notification_entities:
+                _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Using notification entities from config: {notification_entities}")
+                return notification_entities, show_seconds
             
-            return None, False
+            # No notifications configured in backend
+            _LOGGER.debug(f"Simple Timer: [{self._entry_id}] No notification entities configured in backend")
+            return [], show_seconds
                                 
         except Exception as e:
             _LOGGER.error(f"Simple Timer: [{self._entry_id}] Error getting notification config: {e}")
-            return None, False
+            return [], False
 
     def _search_cards_in_config(self, config: dict) -> tuple[str | None, bool]:
-        """Recursively search for timer cards in lovelace config."""
+        """Recursively search for timer cards in lovelace config (LEGACY - for migration warning only)."""
         if isinstance(config, dict):
             # Check if this is a timer card for our instance
             if (config.get('type') == 'custom:timer-card' and 
@@ -209,7 +204,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         return None, False
 
     async def _get_notification_from_storage(self) -> tuple[str | None, bool]:
-        """Get notification config from storage files using async operations."""
+        """Get notification config from storage files using async operations (LEGACY - for migration warning only)."""
         try:
             import json
             import asyncio
@@ -269,32 +264,39 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             return formatted_time, "(hh:mm)"
 
     async def _send_notification(self, message: str) -> None:
-        """Send notification using configured notification entity."""
+        """Send notification using configured notification entities."""
         try:
-            notification_entity, show_seconds = await self._get_card_notification_config()
+            notification_entities, show_seconds = await self._get_card_notification_config()
             
-            if not notification_entity:
-                _LOGGER.info(f"Simple Timer: [{self._entry_id}] No notification entity configured")
+            if not notification_entities:
+                _LOGGER.debug(f"Simple Timer: [{self._entry_id}] No notification entities configured - staying silent")
                 return
-                
-            # Parse the service call format
-            service_parts = notification_entity.split('.')
-            if len(service_parts) < 2:
-                _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Invalid notification entity format: {notification_entity}")
-                return
-                
-            domain = service_parts[0]
-            service = service_parts[1]  # FIXED: Don't rejoin with dots
+            
             title = self.instance_title or "Timer"
             
-            _LOGGER.info(f"Simple Timer: [{self._entry_id}] Sending notification to {domain}.{service}: '{message}'")
-            
-            await self.hass.services.async_call(
-                domain, service, {"message": message, "title": title}
-            )
+            # Send to all configured notification services
+            for notification_entity in notification_entities:
+                try:
+                    # Parse the service call format
+                    service_parts = notification_entity.split('.')
+                    if len(service_parts) < 2:
+                        _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Invalid notification entity format: {notification_entity}")
+                        continue
+                        
+                    domain = service_parts[0]
+                    service = service_parts[1]  # Don't rejoin with dots
+                    
+                    _LOGGER.info(f"Simple Timer: [{self._entry_id}] Sending notification to {domain}.{service}: '{message}'")
+                    
+                    await self.hass.services.async_call(
+                        domain, service, {"message": message, "title": title}
+                    )
+                    
+                except Exception as e:
+                    _LOGGER.error(f"Simple Timer: [{self._entry_id}] Failed to send notification to {notification_entity}: {e}")
             
         except Exception as e:
-            _LOGGER.error(f"Simple Timer: [{self._entry_id}] Failed to send notification: {e}")
+            _LOGGER.error(f"Simple Timer: [{self._entry_id}] Failed to send notifications: {e}")
             
     async def async_test_notification(self) -> None:
         """Test notification functionality."""
