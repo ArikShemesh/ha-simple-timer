@@ -83,6 +83,8 @@ You can verify the automatic installation by checking:
 3. Search for **"Simple Timer"**
 4. Select the device you want to control (switch, light, fan, input_boolean)
 5. Give your timer instance a descriptive name (e.g., "Kitchen Timer", "Water Heater")
+6. Choose notification entitiy (optional) - can be add more than one
+7. Check show seconds (optional) - display seconds in uasge time and notifications
 
 ### Add Timer Card to Dashboard
 1. **Edit your dashboard**
@@ -91,8 +93,7 @@ You can verify the automatic installation by checking:
 4. **Configure the card:**
    - Select your timer instance
    - Customize timer buttons
-   - Set optional notification entity
-   - Add a custom card title
+   - Add a custom card title (optional)
   
 ## 🔄 Renaming Timer Instances
 
@@ -116,8 +117,6 @@ type: custom:timer-card
 timer_instance_id: your_instance_entry_id
 timer_buttons: [15, 30, 60, 90, 120, 150]
 card_title: "Kitchen Timer"
-notification_entity: notify.mobile_app_your_phone
-show_seconds: true
 ```
 
 ### Configuration Options
@@ -128,8 +127,6 @@ Option                | Type     | Required | Default                  | Descrip
 `timer_instance_id`   | string   | ✅       | -                        | Entry ID of your timer instance
 `timer_buttons`       | array    | ❌       | [15,30,60,90,120,150]    | Timer duration buttons (1-1000 minutes)
 `card_title`          | string   | ❌       | -                        | Custom title for the card
-`notification_entity` | string   | ❌       | -                        | Notification service for timer alerts
-`show_seconds`        | boolean  | ❌       | false                    | Show seconds in time display (HH:MM:SS vs HH:MM)
 
 ## ❓ Frequently Asked Questions
 
