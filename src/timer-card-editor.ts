@@ -364,19 +364,7 @@ class TimerCardEditor extends LitElement {
             `)}
           </ha-select>
         </div>
-
-        <!-- Migration notice only for cards with old configurations -->
-        ${(this._config as any)?.notification_entity || (this._config as any)?.show_seconds !== undefined ? html`
-          <div class="config-row">
-            <div style="background-color: var(--warning-color, #b5a77f); color: white; padding: 12px; border-radius: 8px; font-size: 14px;">
-              <strong>⚠️ Important Migration Notice:</strong><br/>
-              This card has old notification/display settings that are now ignored. 
-              Configure them in: <strong>Settings → Devices & Services → Simple Timer → Configure</strong>.
-              <br/><br/>
-              <strong>Save this card</strong> to complete the migration and remove this notice.
-            </div>
-          </div>
-        ` : ''}
+				
       </div>
 
       <div class="card-config-group">

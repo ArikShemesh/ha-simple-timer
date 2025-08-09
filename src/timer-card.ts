@@ -2,7 +2,6 @@
 
 import { LitElement, html } from 'lit';
 import { cardStyles } from './timer-card.styles';
-import { version } from "../package.json"
 
 // Ensure HomeAssistant and TimerCardConfig are recognized from global.d.ts
 interface TimerCardConfig {
