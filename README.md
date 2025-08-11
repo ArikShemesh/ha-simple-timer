@@ -33,7 +33,6 @@ A simple Home Assistant integration that turns entities on and off with a precis
 - **Kitchen Timers** - Control smart switches for appliances
 - **Garden Irrigation** - Time watering systems
 - **Lighting Control** - Automatic light timers
-- **HVAC Management** - Climate control scheduling
 - **Fan Control** - Bathroom or ventilation fans
 - **Any Timed Device** - Universal timer for any switchable device
 
