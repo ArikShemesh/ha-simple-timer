@@ -1016,29 +1016,124 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             self._state = 0.0
 
     async def _wait_for_startup_completion(self):
-        """Wait for HA startup to complete, then finish initialization."""
+        """Wait for HA startup to complete with defensive readiness checks."""
         try:
             _LOGGER.info(f"Simple Timer: [{self._entry_id}] Waiting for HA startup completion...")
             
-            # Wait for HA to reach running state
-            startup_wait_time = 30
-            for i in range(startup_wait_time):
-                if self.hass.state == CoreState.running:
-                    await asyncio.sleep(5)  # Buffer time
-                    break
-                await asyncio.sleep(1)
-            else:
-                _LOGGER.warning(f"Simple Timer: [{self._entry_id}] HA state never became running, proceeding after {startup_wait_time}s")
+            # Primary safety: traditional timeout as fallback
+            max_total_wait = 60  # 1 minute maximum
+            start_time = dt_util.utcnow()
             
-            _LOGGER.info(f"Simple Timer: [{self._entry_id}] HA startup completed, finishing initialization")
+            # Check HA core state first (most reliable indicator)
+            core_ready = await self._wait_for_core_state(max_total_wait)
+            if not core_ready:
+                elapsed = (dt_util.utcnow() - start_time).total_seconds()
+                _LOGGER.warning(f"Simple Timer: [{self._entry_id}] HA core not ready after {elapsed:.1f}s, continuing with initialization")
+            
+            # Optional additional readiness checks with individual timeouts
+            remaining_time = max_total_wait - (dt_util.utcnow() - start_time).total_seconds()
+            if remaining_time > 5:  # Only if we have time left
+                await self._check_optional_readiness(min(remaining_time, 15))
+            
+            elapsed = (dt_util.utcnow() - start_time).total_seconds()
+            _LOGGER.info(f"Simple Timer: [{self._entry_id}] Startup wait completed after {elapsed:.1f}s, proceeding with initialization")
+            
             await self._complete_initialization()
             
         except Exception as e:
-            _LOGGER.error(f"Simple Timer: [{self._entry_id}] Error during startup completion: {e}")
+            _LOGGER.error(f"Simple Timer: [{self._entry_id}] Error during startup wait: {e}")
+            # Always try to initialize even if startup wait fails
             try:
                 await self._complete_initialization()
-            except Exception as restore_error:
-                _LOGGER.error(f"Simple Timer: [{self._entry_id}] Error during initialization: {restore_error}")
+            except Exception as init_error:
+                _LOGGER.error(f"Simple Timer: [{self._entry_id}] Error during fallback initialization: {init_error}")
+
+    async def _wait_for_core_state(self, max_wait: float) -> bool:
+        """Wait for HA core to reach running state with timeout."""
+        check_interval = 1
+        elapsed = 0
+        
+        while elapsed < max_wait:
+            if self.hass.state == CoreState.running:
+                _LOGGER.debug(f"Simple Timer: [{self._entry_id}] HA core ready after {elapsed:.1f}s")
+                return True
+            
+            await asyncio.sleep(check_interval)
+            elapsed += check_interval
+        
+        return False
+
+    async def _check_optional_readiness(self, max_wait: float):
+        """Check optional readiness indicators with individual timeouts."""
+        checks = [
+            ("Entity registry", self._safe_check_entity_registry),
+            ("Service registry", self._safe_check_service_registry),
+        ]
+        
+        # Only check switch if we have the entity ID from config
+        switch_entity_id = getattr(self._entry, 'data', {}).get('switch_entity_id')
+        if switch_entity_id:
+            self._switch_entity_id = switch_entity_id
+            checks.append(("Switch entity", self._safe_check_switch_entity))
+        
+        check_timeout = max_wait / len(checks)  # Divide time among checks
+        
+        for check_name, check_func in checks:
+            try:
+                # Individual check with timeout
+                ready = await asyncio.wait_for(check_func(), timeout=check_timeout)
+                if ready:
+                    _LOGGER.debug(f"Simple Timer: [{self._entry_id}] {check_name} ready")
+                else:
+                    _LOGGER.debug(f"Simple Timer: [{self._entry_id}] {check_name} not ready, continuing anyway")
+            except asyncio.TimeoutError:
+                _LOGGER.debug(f"Simple Timer: [{self._entry_id}] {check_name} check timed out")
+            except Exception as e:
+                _LOGGER.debug(f"Simple Timer: [{self._entry_id}] {check_name} check failed: {e}")
+
+    async def _safe_check_entity_registry(self) -> bool:
+        """Safely check if entity registry is ready."""
+        try:
+            from homeassistant.helpers import entity_registry as er
+            entity_registry = er.async_get(self.hass)
+            
+            # Basic availability test
+            return entity_registry is not None
+        except ImportError:
+            # Module not available yet
+            return False
+        except Exception:
+            # Any other error
+            return False
+
+    async def _safe_check_service_registry(self) -> bool:
+        """Safely check if essential services are available."""
+        try:
+            services = self.hass.services.async_services()
+            
+            # Check for homeassistant domain (most critical)
+            ha_services = services.get("homeassistant", {})
+            has_turn_on = "turn_on" in ha_services
+            has_turn_off = "turn_off" in ha_services
+            
+            return has_turn_on and has_turn_off
+        except Exception:
+            return False
+
+    async def _safe_check_switch_entity(self) -> bool:
+        """Safely check if switch entity is available."""
+        if not self._switch_entity_id:
+            return True
+        
+        try:
+            switch_state = self.hass.states.get(self._switch_entity_id)
+            if not switch_state:
+                return False
+            
+            # Accept any state except unavailable/unknown
+            return switch_state.state not in ["unavailable", "unknown"]
+        except Exception:
+            return False
 
     async def _complete_initialization(self):
         """Complete full initialization after HA startup."""
