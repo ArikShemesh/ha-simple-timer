@@ -263,6 +263,41 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             formatted_time = f"{hours:02d}:{minutes:02d}"
             return formatted_time, "(hh:mm)"
 
+    async def _ensure_switch_state(self, desired_state: str, action_description: str) -> None:
+        """Ensure switch is in desired state, attempt to correct if not, and warn on failure."""
+        if not self._switch_entity_id:
+            return
+            
+        current_state = self.hass.states.get(self._switch_entity_id)
+        if not current_state:
+            return
+            
+        # If state is already correct, do nothing
+        if current_state.state == desired_state:
+            return
+            
+        # State mismatch - attempt to correct
+        try:
+            action = "turn_on" if desired_state == "on" else "turn_off"
+            await self.hass.services.async_call(
+                "homeassistant", action, {"entity_id": self._switch_entity_id}, blocking=True
+            )
+            
+            # Wait a moment for state change to propagate
+            await asyncio.sleep(1.0)
+            
+            # Verify correction worked
+            updated_state = self.hass.states.get(self._switch_entity_id)
+            if updated_state and updated_state.state != desired_state:
+                warning_msg = f"Warning: {action_description} - switch should be '{desired_state}' but remains '{updated_state.state}'. Check switch connectivity."
+                _LOGGER.warning(f"Simple Timer: [{self._entry_id}] {warning_msg}")
+                await self._send_notification(warning_msg)
+                
+        except Exception as e:
+            warning_msg = f"Warning: {action_description} - failed to set switch to '{desired_state}': {e}"
+            _LOGGER.warning(f"Simple Timer: [{self._entry_id}] {warning_msg}")
+            await self._send_notification(warning_msg)
+
     async def _send_notification(self, message: str) -> None:
         """Send notification using configured notification entities."""
         try:
@@ -767,6 +802,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             await self.hass.services.async_call(
                "homeassistant", "turn_off", {"entity_id": self._switch_entity_id}, blocking=True
             )
+            await self._ensure_switch_state("off", "Timer cancellation turn-off")
         else:
             await self._stop_realtime_accumulation()
         
@@ -808,10 +844,8 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             await self._cleanup_timer_state()
             
             if self._switch_entity_id:
-                await self.hass.services.async_call(
-                "homeassistant", "turn_off", {"entity_id": self._switch_entity_id}, blocking=True
-                )
-            
+                await self._ensure_switch_state("off", "Timer completion turn-off")
+                
             await self._send_notification(f"Timer was turned off - daily usage {formatted_time} {label}")
             
             self.async_write_ha_state()
@@ -822,18 +856,14 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
     async def async_manual_power_toggle(self, action: str) -> None:
         """Handle manual power toggle from frontend."""
         if action == "turn_on":
-            await self.hass.services.async_call(
-                "homeassistant", "turn_on", {"entity_id": self._switch_entity_id}
-            )
+            await self._ensure_switch_state("on", "Manual turn-on")
             await self._send_notification("Timer started")
         elif action == "turn_off":
             current_usage = self._state
             notification_entity, show_seconds = await self._get_card_notification_config()
             formatted_time, label = self._format_time_for_notification(current_usage, show_seconds)
             
-            await self.hass.services.async_call(
-                "homeassistant", "turn_off", {"entity_id": self._switch_entity_id}
-            )
+            await self._ensure_switch_state("off", "Manual turn-off")
             await self._send_notification(f"Timer was turned off - daily usage {formatted_time} {label}")
 
     @callback
@@ -948,11 +978,18 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                     
                     # Restore essential timer attributes
                     attrs = last_state.attributes
-                    self._timer_state = attrs.get(ATTR_TIMER_STATE, "idle")
                     self._timer_duration = attrs.get(ATTR_TIMER_DURATION, 0)
-                    
+
                     if attrs.get(ATTR_TIMER_FINISHES_AT):
                         self._timer_finishes_at = datetime.fromisoformat(attrs[ATTR_TIMER_FINISHES_AT])
+                        
+                        # Only restore as "active" if timer hasn't expired
+                        if self._timer_finishes_at and dt_util.utcnow() < self._timer_finishes_at:
+                            self._timer_state = "active"
+                        else:
+                            self._timer_state = "idle"
+                    else:
+                        self._timer_state = attrs.get(ATTR_TIMER_STATE, "idle")
                     
                     if attrs.get(ATTR_LAST_ON_TIMESTAMP):
                         self._last_on_timestamp = datetime.fromisoformat(attrs[ATTR_LAST_ON_TIMESTAMP])
@@ -1147,6 +1184,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 await self.hass.services.async_call(
                     "homeassistant", "turn_off", {"entity_id": self._switch_entity_id}, blocking=True
                 )
+                await self._ensure_switch_state("off", "Expired timer turn-off")
             except Exception as e:
                 _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Could not turn off switch: {e}")
         
@@ -1187,6 +1225,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             self.hass, self._async_timer_finished, self._timer_finishes_at
         )
         await self._start_timer_update_task()
+        await self._ensure_switch_state("on", "Active timer state verification on restart")
 
     async def _start_accumulation_if_needed(self):
         """Start accumulation if switch is on."""
