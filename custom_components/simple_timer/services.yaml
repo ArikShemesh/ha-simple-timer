@@ -78,3 +78,14 @@ manual_power_toggle:
           options:
             - turn_on
             - turn_off
+
+reset_daily_usage:
+  name: Reset Daily Usage
+  description: Manually reset daily usage time to zero
+  fields:
+    entry_id:
+      name: Entry ID
+      description: The config entry ID of the simple timer sensor
+      required: true
+      selector:
+        text:

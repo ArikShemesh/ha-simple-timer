@@ -1356,3 +1356,45 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             elapsed = (now - self._timer_start_moment).total_seconds()
             return max(0, round(elapsed))
         return 0
+        
+    async def async_reset_daily_usage(self) -> None:
+        """Manually reset daily usage to zero."""
+        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Manual daily usage reset requested")
+        
+        # Get current usage for notification
+        current_usage = self._state
+        notification_entity, show_seconds = await self._get_card_notification_config()
+        formatted_time, label = self._format_time_for_notification(current_usage, show_seconds)
+        
+        # Stop any ongoing accumulation
+        await self._stop_realtime_accumulation()
+        
+        # If timer is active, adjust the runtime_at_timer_start to maintain timer accuracy
+        if self._timer_state == "active":
+            # Set runtime_at_timer_start to negative elapsed time so final calculation remains correct
+            if self._timer_start_moment:
+                elapsed_seconds = (dt_util.utcnow() - self._timer_start_moment).total_seconds()
+                self._runtime_at_timer_start = -elapsed_seconds
+                _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Adjusted runtime_at_timer_start for active timer: {self._runtime_at_timer_start}s")
+        else:
+            self._runtime_at_timer_start = 0
+        
+        # Reset the state
+        old_state = self._state
+        self._state = 0.0
+        self._last_on_timestamp = None
+        
+        # If switch is currently on, restart accumulation from zero
+        if self._switch_entity_id:
+            current_switch_state = self.hass.states.get(self._switch_entity_id)
+            if current_switch_state and current_switch_state.state == STATE_ON:
+                self._last_on_timestamp = dt_util.utcnow()
+                await self._start_realtime_accumulation()
+        
+        # Update state immediately
+        self.async_write_ha_state()
+        
+        # Send notification
+        await self._send_notification(f"Daily usage reset from {formatted_time} {label} to 00:00")
+        
+        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Daily usage reset: {old_state}s -> 0s")

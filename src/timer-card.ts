@@ -95,6 +95,9 @@ class TimerCard extends LitElement {
 
   _effectiveSwitchEntity: string | null = null;
   _effectiveSensorEntity: string | null = null;
+	
+	_longPressTimer: number | null = null;
+	_isLongPress: boolean = false;
 
   static async getConfigElement(): Promise<HTMLElement> {
     await import("./timer-card-editor.js");
@@ -369,6 +372,9 @@ class TimerCard extends LitElement {
     super.disconnectedCallback();
     this._stopCountdown();
     this._stopLiveRuntime();
+		if (this._longPressTimer) {
+        window.clearTimeout(this._longPressTimer);
+    }
   }
 
   updated(changedProperties: Map<string | number | symbol, unknown>): void {
@@ -463,6 +469,69 @@ class TimerCard extends LitElement {
     // The backend will set this attribute based on the config entry
     return sensor?.attributes?.show_seconds || false;
   }
+	
+	_handleUsageClick(event: Event): void {
+			// Prevent default to avoid conflicts with touch events
+			event.preventDefault();
+			// Only show more info if it wasn't a long press
+			if (!this._isLongPress) {
+					this._showMoreInfo();
+			}
+			this._isLongPress = false;
+	}
+
+	_startLongPress(event: Event): void {
+			// Prevent default behavior (like text selection or context menu)
+			event.preventDefault();
+			this._isLongPress = false;
+			
+			this._longPressTimer = window.setTimeout(() => {
+					this._isLongPress = true;
+					this._resetUsage();
+					// Add haptic feedback on mobile
+					if ('vibrate' in navigator) {
+							navigator.vibrate(50);
+					}
+			}, 800); // 800ms long press duration
+	}
+
+	_endLongPress(event?: Event): void {
+			if (event) {
+					event.preventDefault();
+			}
+			if (this._longPressTimer) {
+					window.clearTimeout(this._longPressTimer);
+					this._longPressTimer = null;
+			}
+	}
+
+	_resetUsage(): void {
+			this._validationMessages = [];
+			
+			if (!this._entitiesLoaded || !this.hass || !this.hass.callService) {
+					console.error("Timer-card: Cannot reset usage. Entities not loaded or callService unavailable.");
+					return;
+			}
+			
+			const entryId = this._getEntryId();
+			if (!entryId) { 
+					console.error("Timer-card: Entry ID not found for resetting usage."); 
+					return; 
+			}
+
+			// Show confirmation dialog
+			if (!confirm("Reset daily usage to 00:00?\n\nThis action cannot be undone.")) {
+					return;
+			}
+
+			this.hass.callService(DOMAIN, "reset_daily_usage", { entry_id: entryId })
+					.then(() => {
+							console.log("Timer-card: Daily usage reset successfully");
+					})
+					.catch(error => {
+							console.error("Timer-card: Error resetting daily usage:", error);
+					});
+	}
 
   render() {
     let message: string | null = null;
@@ -572,10 +641,18 @@ class TimerCard extends LitElement {
 				` : ''}
         <div class="main-grid">
           <div class="button power-button ${isOn ? 'on' : ''}" @click=${this._togglePower}><ha-icon icon="mdi:power"></ha-icon></div>
-          <div class="button readonly" @click=${this._showMoreInfo}>
-            <span class="daily-time-text ${showSeconds ? 'with-seconds' : ''}">${formattedTime}</span>
-            <span class="runtime-label">${runtimeLabel}</span>
-          </div>
+          <div class="button readonly" 
+							 @click=${this._handleUsageClick} 
+							 @mousedown=${this._startLongPress} 
+							 @mouseup=${this._endLongPress}
+							 @mouseleave=${this._endLongPress}
+							 @touchstart=${this._startLongPress}
+							 @touchend=${this._endLongPress}
+							 @touchcancel=${this._endLongPress}
+							 title="Click for details, hold to reset daily usage">
+						<span class="daily-time-text ${showSeconds ? 'with-seconds' : ''}">${formattedTime}</span>
+						<span class="runtime-label">${runtimeLabel}</span>
+					</div>
         </div>
         <div class="button-grid">
           ${this.buttons.map(minutes => {

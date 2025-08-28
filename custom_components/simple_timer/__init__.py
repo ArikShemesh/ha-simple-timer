@@ -199,6 +199,9 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
         vol.Required("entry_id"): cv.string,
         vol.Optional("message", default="Test notification"): cv.string,
     })
+    SERVICE_RESET_DAILY_USAGE_SCHEMA = vol.Schema({
+    vol.Required("entry_id"): cv.string,
+    })
 
     async def test_notification(call: ServiceCall):
         """Test notification functionality."""
@@ -312,6 +315,22 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
             await sensor.async_manual_power_toggle(action)
         else:
             raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
+            
+    async def reset_daily_usage(call: ServiceCall):
+        """Handle manual daily usage reset."""
+        entry_id = call.data["entry_id"]
+        
+        # Find the sensor by entry_id
+        sensor = None
+        for stored_entry_id, entry_data in hass.data[DOMAIN].items():
+            if stored_entry_id == entry_id and "sensor" in entry_data:
+                sensor = entry_data["sensor"]
+                break
+        
+        if sensor:
+            await sensor.async_reset_daily_usage()
+        else:
+            raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
 
     # Register all services
     hass.services.async_register(
@@ -331,6 +350,9 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
     )
     hass.services.async_register(
     DOMAIN, "test_notification", test_notification, schema=SERVICE_TEST_NOTIFICATION_SCHEMA
+    )
+    hass.services.async_register(
+    DOMAIN, "reset_daily_usage", reset_daily_usage, schema=SERVICE_RESET_DAILY_USAGE_SCHEMA
     )
 
     hass.data[DOMAIN]["services_registered"] = True
