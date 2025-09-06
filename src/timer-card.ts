@@ -68,11 +68,12 @@ console.info(
 );
 
 class TimerCard extends LitElement {
-  static get properties() {
+	static get properties() {
     return {
       hass: { type: Object },
       _config: { type: Object },
       _timeRemaining: { state: true },
+      _sliderValue: { state: true },
       _entitiesLoaded: { state: true },
       _effectiveSwitchEntity: { state: true },
       _effectiveSensorEntity: { state: true },
@@ -87,6 +88,7 @@ class TimerCard extends LitElement {
   _liveRuntimeSeconds: number = 0;
 
   _timeRemaining: string | null = null;
+	_sliderValue: number = 0;
 
   buttons: number[] = [];
   _validationMessages: string[] = [];
@@ -418,7 +420,19 @@ class TimerCard extends LitElement {
 				const update = () => {
 					const now = new Date().getTime();
 					const remaining = Math.max(0, Math.round((finishesAt - now) / 1000));
-					this._timeRemaining = `${Math.floor(remaining / 60).toString().padStart(2, '0')}:${(remaining % 60).toString().padStart(2, '0')}`;
+          
+          // Format countdown based on show_seconds setting
+          const showSeconds = this._getShowSeconds();
+          if (showSeconds) {
+            const hours = Math.floor(remaining / 3600);
+            const minutes = Math.floor((remaining % 3600) / 60);
+            const seconds = remaining % 60;
+            this._timeRemaining = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+          } else {
+            const minutes = Math.floor(remaining / 60);
+            const seconds = remaining % 60;
+            this._timeRemaining = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+          }
 
 					if (remaining === 0) {
 							this._stopCountdown();
@@ -532,6 +546,11 @@ class TimerCard extends LitElement {
 							console.error("Timer-card: Error resetting daily usage:", error);
 					});
 	}
+	
+	_handleSliderChange(event: Event): void {
+		const slider = event.target as HTMLInputElement;
+		this._sliderValue = parseInt(slider.value);
+	}
 
   render() {
     let message: string | null = null;
@@ -586,36 +605,38 @@ class TimerCard extends LitElement {
     const timerDurationInMinutes = sensor.attributes.timer_duration || 0;
     const isManualOn = isOn && !isTimerActive;
 
-    const committedSeconds = parseFloat(sensor.state as string) || 0;
-
-    let totalSecondsForDisplay = committedSeconds;
+		const committedSeconds = parseFloat(sensor.state as string) || 0;
 
     // Format time based on show_seconds setting from backend
-    let formattedTime: string;
-    let runtimeLabel: string;
     const showSeconds = this._getShowSeconds();
+    let dailyUsageFormatted: string;
+    let countdownDisplay: string;
 
     if (showSeconds) {
       // Show full HH:MM:SS format
-      const totalSecondsInt = Math.floor(totalSecondsForDisplay);
+      const totalSecondsInt = Math.floor(committedSeconds);
       const hours = Math.floor(totalSecondsInt / 3600);
       const minutes = Math.floor((totalSecondsInt % 3600) / 60);
       const seconds = totalSecondsInt % 60;
-      formattedTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-      runtimeLabel = "Daily Usage (hh:mm:ss)";
+      dailyUsageFormatted = `Daily Usage: ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+      
+      // Countdown display - show active countdown or 00:00:00
+      countdownDisplay = this._timeRemaining || '00:00:00';
     } else {
       // Show HH:MM format (original behavior)
-      const totalMinutes = Math.floor(totalSecondsForDisplay / 60);
+      const totalMinutes = Math.floor(committedSeconds / 60);
       const hours = Math.floor(totalMinutes / 60);
       const minutes = totalMinutes % 60;
-      formattedTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-      runtimeLabel = "Daily Usage (hh:mm)";
+      dailyUsageFormatted = `Daily Usage: ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+      
+      // Countdown display - show active countdown or 00:00
+      countdownDisplay = this._timeRemaining || '00:00';
     }
 
     const watchdogMessage = sensor.attributes.watchdog_message;
 		const orphanedTimer = this._hasOrphanedTimer();
 
-    return html`
+		return html`
       <ha-card>
         <div class="card-header">
             <div class="card-title">${this._config?.card_title || ''}</div>
@@ -630,41 +651,71 @@ class TimerCard extends LitElement {
             <span class="status-text">${watchdogMessage}</span>
           </div>
         ` : ''}
-				${orphanedTimer.isOrphaned ? html`
-					<div class="status-message warning">
-						<ha-icon icon="mdi:timer-alert-outline" class="status-icon"></ha-icon>
-						<span class="status-text">
-							Active ${orphanedTimer.duration}-minute timer has no corresponding button. 
-							Use the power button to cancel or wait for automatic completion.
-						</span>
-					</div>
-				` : ''}
-        <div class="main-grid">
-          <div class="button power-button ${isOn ? 'on' : ''}" @click=${this._togglePower}><ha-icon icon="mdi:power"></ha-icon></div>
-          <div class="button readonly" 
-							 @click=${this._handleUsageClick} 
-							 @mousedown=${this._startLongPress} 
-							 @mouseup=${this._endLongPress}
-							 @mouseleave=${this._endLongPress}
-							 @touchstart=${this._startLongPress}
-							 @touchend=${this._endLongPress}
-							 @touchcancel=${this._endLongPress}
-							 title="Click for details, hold to reset daily usage">
-						<span class="daily-time-text ${showSeconds ? 'with-seconds' : ''}">${formattedTime}</span>
-						<span class="runtime-label">${runtimeLabel}</span>
-					</div>
+        ${orphanedTimer.isOrphaned ? html`
+          <div class="status-message warning">
+            <ha-icon icon="mdi:timer-alert-outline" class="status-icon"></ha-icon>
+            <span class="status-text">
+              Active ${orphanedTimer.duration}-minute timer has no corresponding button. 
+              Use the power button to cancel or wait for automatic completion.
+            </span>
+          </div>
+        ` : ''}
+
+        <div class="card-content">
+
+          <!-- Countdown Display Section -->
+          <div class="countdown-section">
+            <div class="countdown-display ${isTimerActive ? 'active' : ''}">
+              ${countdownDisplay}
+            </div>
+          </div>
+
+          <!-- Slider Row -->
+          <div class="slider-row">
+            <div class="slider-container">
+              <input 
+                type="range" 
+                min="0" 
+                max="300" 
+                .value=${this._sliderValue.toString()}
+                @input=${this._handleSliderChange}
+                class="timer-slider"
+              />
+              <span class="slider-label">${this._sliderValue} min</span>
+            </div>
+            <div class="power-button-small ${isOn ? 'on' : ''}" 
+								 @click=${this._togglePower}
+								 @mousedown=${this._startLongPress} 
+								 @mouseup=${this._endLongPress}
+								 @mouseleave=${this._endLongPress}
+								 @touchstart=${this._startLongPress}
+								 @touchend=${this._endLongPress}
+								 @touchcancel=${this._endLongPress}
+								 title="Click to toggle power, hold to reset daily usage">
+							<ha-icon icon="mdi:power"></ha-icon>
+							<div class="power-usage-text">${dailyUsageFormatted.replace('Daily Usage: ', '')}</div>
+						</div>
+          </div>
+
+          <!-- Timer Buttons -->
+          <div class="button-grid">
+            ${this.buttons.map(minutes => {
+              const isActive = isTimerActive && timerDurationInMinutes === minutes;
+              const isDisabled = isManualOn || (isTimerActive && !isActive);
+              return html`
+                <div class="timer-button ${isActive ? 'active' : ''} ${isDisabled ? 'disabled' : ''}" 
+                     @click=${() => { 
+                       if (isActive) this._cancelTimer(); 
+                       else if (!isDisabled) this._startTimer(minutes); 
+                     }}>
+                  <div class="timer-button-value">${minutes}</div>
+                  <div class="timer-button-unit">Min</div>
+                </div>
+              `;
+            })}
+          </div>
         </div>
-        <div class="button-grid">
-          ${this.buttons.map(minutes => {
-            const isActive = isTimerActive && timerDurationInMinutes === minutes;
-            const isDisabled = isManualOn || (isTimerActive && !isActive);
-            return html`
-              <div class="button timer-button ${isActive ? 'active' : ''} ${isDisabled ? 'disabled' : ''}" @click=${() => { if (isActive) this._cancelTimer(); else if (!isDisabled) this._startTimer(minutes); }}>
-                ${isActive && this._timeRemaining ? html`<span class="countdown-text">${this._timeRemaining}</span>` : html`<div class="timer-button-content"><span class="timer-button-value">${minutes}</span><span class="timer-button-unit">Min</span></div>`}
-              </div>
-            `;
-          })}
-        </div>
+
         ${this._validationMessages.length > 0 ? html`
           <div class="status-message warning">
             <ha-icon icon="mdi:alert-outline" class="status-icon"></ha-icon>
