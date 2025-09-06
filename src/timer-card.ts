@@ -78,6 +78,7 @@ class TimerCard extends LitElement {
 
   _timeRemaining: string | null = null;
 	_sliderValue: number = 0;
+	_timerStartedViaSlider: boolean = false;
 
   buttons: number[] = [];
   _validationMessages: string[] = [];
@@ -261,6 +262,7 @@ class TimerCard extends LitElement {
 				console.error("Timer-card: Cannot start timer. Entities not loaded or callService unavailable.");
 				return;
 		}
+		
 		const entryId = this._getEntryId();
 		if (!entryId) { console.error("Timer-card: Entry ID not found for starting timer."); return; }
 
@@ -282,6 +284,9 @@ class TimerCard extends LitElement {
 				console.error("Timer-card: Cannot cancel timer. Entities not loaded or callService unavailable.");
 				return;
 		}
+		
+		this._timerStartedViaSlider = false;
+		
 		const entryId = this._getEntryId();
 		if (!entryId) { console.error("Timer-card: Entry ID not found for cancelling timer."); return; }
 
@@ -326,18 +331,26 @@ class TimerCard extends LitElement {
 						console.log(`Timer-card: Manually turning off switch: ${switchId}`);
 				}
 		} else {
-			this.hass.callService(DOMAIN, "manual_power_toggle", { 
-					entry_id: this._getEntryId(), 
-					action: "turn_on" 
-			})
-				.then(() => {
-						console.log(`Timer-card: Manually turning on switch: ${switchId}`);
-				})
-				.catch(error => {
-						console.error("Timer-card: Error manually turning on switch:", error);
-				});
-			this._notificationSentForCurrentCycle = false;
-		}
+      // Switch is currently OFF
+      if (this._sliderValue > 0) {
+				this._timerStartedViaSlider = true;
+        this._startTimer(this._sliderValue);
+        console.log(`Timer-card: Starting timer for ${this._sliderValue} minutes`);
+      } else {
+        // Manual turn on (infinite until manually turned off)
+        this.hass.callService(DOMAIN, "manual_power_toggle", { 
+          entry_id: this._getEntryId(), 
+          action: "turn_on" 
+        })
+        .then(() => {
+          console.log(`Timer-card: Manually turning on switch (infinite): ${switchId}`);
+        })
+        .catch(error => {
+          console.error("Timer-card: Error manually turning on switch:", error);
+        });
+      }
+      this._notificationSentForCurrentCycle = false;
+    }
 	}
 
   _showMoreInfo(): void {
@@ -355,12 +368,31 @@ class TimerCard extends LitElement {
     this.dispatchEvent(event);
   }
 
-  connectedCallback(): void {
-    super.connectedCallback();
-    this._determineEffectiveEntities();
-    this._updateLiveRuntime();
-    this._updateCountdown();
-  }
+	connectedCallback(): void {
+			super.connectedCallback();
+			
+			// Restore slider value per instance
+			const instanceId = this._config?.timer_instance_id || 'default';
+			const savedValue = localStorage.getItem(`simple-timer-slider-${instanceId}`);
+			
+			if (savedValue) {
+					this._sliderValue = parseInt(savedValue);
+			} else {
+					// Fall back to last timer duration for this instance
+					this._determineEffectiveEntities();
+					if (this._entitiesLoaded && this.hass && this._effectiveSensorEntity) {
+							const sensor = this.hass.states[this._effectiveSensorEntity];
+							const lastDuration = sensor?.attributes?.timer_duration || 0;
+							if (lastDuration > 0 && lastDuration <= 300) {
+									this._sliderValue = lastDuration;
+							}
+					}
+			}
+			
+			this._determineEffectiveEntities();
+			this._updateLiveRuntime();
+			this._updateCountdown();
+	}
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
@@ -458,9 +490,10 @@ class TimerCard extends LitElement {
 
 		const activeDuration = sensor.attributes.timer_duration || 0;
 		const hasMatchingButton = this.buttons.includes(activeDuration);
+		const isWithinSliderRange = activeDuration >= 0 && activeDuration <= 300;
 
 		return {
-			isOrphaned: !hasMatchingButton,
+			isOrphaned: !hasMatchingButton && !isWithinSliderRange,
 			duration: activeDuration
 		};
 	}
@@ -594,8 +627,12 @@ class TimerCard extends LitElement {
 	}
 	
 	_handleSliderChange(event: Event): void {
-		const slider = event.target as HTMLInputElement;
-		this._sliderValue = parseInt(slider.value);
+			const slider = event.target as HTMLInputElement;
+			this._sliderValue = parseInt(slider.value);
+			
+			// Save per instance in localStorage
+			const instanceId = this._config?.timer_instance_id || 'default';
+			localStorage.setItem(`simple-timer-slider-${instanceId}`, this._sliderValue.toString());
 	}
 
   render() {
@@ -743,7 +780,7 @@ class TimerCard extends LitElement {
           <!-- Timer Buttons -->
           <div class="button-grid">
             ${this.buttons.map(minutes => {
-              const isActive = isTimerActive && timerDurationInMinutes === minutes;
+              const isActive = isTimerActive && timerDurationInMinutes === minutes && !this._timerStartedViaSlider;
               const isDisabled = isManualOn || (isTimerActive && !isActive);
               return html`
                 <div class="timer-button ${isActive ? 'active' : ''} ${isDisabled ? 'disabled' : ''}" 
