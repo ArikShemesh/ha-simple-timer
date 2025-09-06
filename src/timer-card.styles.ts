@@ -26,16 +26,6 @@ export const cardStyles = css`
         white-space: pre-wrap;
         word-break: break-word;
       }
-      .repo-link {
-        position: absolute;
-        top: 0px;
-        right: 12px;
-        color: var(--secondary-text-color);
-        z-index: 1;
-      }
-      .repo-link:hover {
-        color: var(--primary-color);
-      }
       .placeholder { 
         padding: 16px; 
         background-color: var(--secondary-background-color); 
@@ -92,33 +82,84 @@ export const cardStyles = css`
       }
       
       .timer-slider {
-        flex: 1;
-        height: 20px;
-        -webkit-appearance: none;
-        appearance: none;
-        background: var(--secondary-background-color);
-        border-radius: 20px;
-        outline: none;
-      }
+				flex: 1;
+				height: 20px;
+				-webkit-appearance: none;
+				appearance: none;
+				background: var(--secondary-background-color);
+				border-radius: 20px;
+				outline: none;
+			}
       
       .timer-slider::-webkit-slider-thumb {
-        -webkit-appearance: none;
-        appearance: none;
-        width: 30px;
-        height: 30px;
-        border-radius: 50%;
-        background: var(--primary-color);
-        cursor: pointer;
-      }
+				-webkit-appearance: none;
+				appearance: none;
+				width: 30px;
+				height: 30px;
+				border-radius: 50%;
+				background: #2ab69c;
+				cursor: pointer;
+				border: 2px solid #4bd9bf;
+				box-shadow: 
+					0 0 0 2px rgba(75, 217, 191, 0.3),
+					0 0 8px rgba(42, 182, 156, 0.4),
+					0 2px 4px rgba(0, 0, 0, 0.2);
+				transition: all 0.2s ease;
+			}
+			
+			.timer-slider::-webkit-slider-thumb:hover {
+				background: #239584;
+				border: 2px solid #4bd9bf;
+				box-shadow: 
+					0 0 0 3px rgba(75, 217, 191, 0.4),
+					0 0 12px rgba(42, 182, 156, 0.6),
+					0 2px 6px rgba(0, 0, 0, 0.3);
+				transform: scale(1.05);
+			}
+			
+			.timer-slider::-webkit-slider-thumb:active {
+				background: #1e7e6f;
+				border: 2px solid #4bd9bf;
+				box-shadow: 
+					0 0 0 4px rgba(75, 217, 191, 0.5),
+					0 0 16px rgba(42, 182, 156, 0.7),
+					0 2px 8px rgba(0, 0, 0, 0.4);
+				transform: scale(0.98);
+			}
       
       .timer-slider::-moz-range-thumb {
-        width: 30px;
-        height: 30px;
-        border-radius: 50%;
-        background: var(--primary-color);
-        cursor: pointer;
-        border: none;
-      }
+				width: 30px;
+				height: 30px;
+				border-radius: 50%;
+				background: #2ab69c;
+				cursor: pointer;
+				border: 2px solid #4bd9bf;
+				box-shadow: 
+					0 0 0 2px rgba(75, 217, 191, 0.3),
+					0 0 8px rgba(42, 182, 156, 0.4),
+					0 2px 4px rgba(0, 0, 0, 0.2);
+				transition: all 0.2s ease;
+			}
+			
+			.timer-slider::-moz-range-thumb:hover {
+				background: #239584;
+				border: 2px solid #4bd9bf;
+				box-shadow: 
+					0 0 0 3px rgba(75, 217, 191, 0.4),
+					0 0 12px rgba(42, 182, 156, 0.6),
+					0 2px 6px rgba(0, 0, 0, 0.3);
+				transform: scale(1.05);
+			}
+
+			.timer-slider::-moz-range-thumb:active {
+				background: #1e7e6f;
+				border: 2px solid #4bd9bf;
+				box-shadow: 
+					0 0 0 4px rgba(75, 217, 191, 0.5),
+					0 0 16px rgba(42, 182, 156, 0.7),
+					0 2px 8px rgba(0, 0, 0, 0.4);
+				transform: scale(0.98);
+			}
       
       .slider-label {
         font-size: 16px;
@@ -129,22 +170,46 @@ export const cardStyles = css`
       }
       
       .power-button-small {
-				border-radius: 12px;
-				display: flex;
-				flex-direction: column;  /* Stack icon and text vertically */
-				align-items: center;
-				justify-content: center;
-				cursor: pointer;
-				transition: background-color 0.2s;
-				background-color: var(--error-color);
-				color: white;
-				font-size: 24px;  /* Smaller icon */
-				--mdc-icon-size: 35px;
-				padding: 6px;
+					width: 80px;
+					height: 65px;
+					flex-shrink: 0;
+					box-sizing: border-box;
+					border-radius: 12px;
+					display: flex;
+					flex-direction: column;
+					align-items: center;
+					justify-content: center;
+					cursor: pointer;
+					transition: background-color 0.2s;
+					background-color: #2a2a2a;
+					border: 1px solid #444;
+					color: #ccc;
+					font-size: 18px;
+					--mdc-icon-size: 24px;
+					padding: 4px;
+			}
+			
+			.power-button-small ha-icon[icon] {
+					transform: translateY(-3px);
 			}
       
       .power-button-small.on {
-				background-color: var(--success-color);
+					background-color: #2ab69c;
+					border: 2px solid #4bd9bf;
+					color: white;
+					box-shadow: 
+							0 0 0 2px rgba(42, 182, 156, 0.3),
+							0 0 12px rgba(42, 182, 156, 0.6);
+					animation: pulse 2s infinite;
+			}
+
+			@keyframes pulse {
+					0%, 100% { box-shadow: 
+							0 0 0 2px rgba(42, 182, 156, 0.3),
+							0 0 12px rgba(42, 182, 156, 0.6); }
+					50% { box-shadow: 
+							0 0 0 4px rgba(42, 182, 156, 0.5),
+							0 0 20px rgba(42, 182, 156, 0.8); }
 			}
 			
 			.power-usage-text {
@@ -181,14 +246,16 @@ export const cardStyles = css`
         background-color: var(--primary-color-faded, #3a506b);
       }
       
-      .timer-button.active {
-        background-color: var(--primary-color);
-        color: white;
-      }
+			.timer-button.active {
+				background-color: #2ab69c;
+				color: white;
+				box-shadow: 0 0 8px rgba(42, 182, 156, 0.4);
+			}
       
       .timer-button.active:hover {
-        background-color: var(--primary-color);
-      }
+				background-color: #239584;
+				box-shadow: 0 0 12px rgba(42, 182, 156, 0.6);
+			}
       
       .timer-button.disabled {
         opacity: 0.5;

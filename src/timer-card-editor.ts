@@ -187,7 +187,8 @@ class TimerCardEditor extends LitElement {
     const newConfigData: TimerCardConfig = {
       type: cfg.type || "custom:timer-card",
       timer_buttons: timerButtonsToSet,
-      card_title: cfg.card_title || null
+      card_title: cfg.card_title || null,
+			power_button_icon: cfg.power_button_icon || null
     };
 
     if (cfg.timer_instance_id) {
@@ -309,6 +310,7 @@ class TimerCardEditor extends LitElement {
     if (this._config?.entity) updatedConfig.entity = this._config.entity;
     if (this._config?.sensor_entity) updatedConfig.sensor_entity = this._config.sensor_entity;
     if (this._config?.card_title) updatedConfig.card_title = this._config.card_title;
+		if (this._config?.power_button_icon) updatedConfig.power_button_icon = this._config.power_button_icon;
 
     this._config = updatedConfig;
     this.dispatchEvent(
@@ -364,6 +366,21 @@ class TimerCardEditor extends LitElement {
             `)}
           </ha-select>
         </div>
+				
+				<div class="config-row">
+					<ha-textfield
+						.label=${"Power Button Icon (optional)"}
+						.value=${this._config?.power_button_icon || ""}
+						.configValue=${"power_button_icon"}
+						@input=${this._valueChanged}
+						.placeholder=${"e.g., mdi:power, mdi:lightbulb, or leave empty for no icon"}
+						.helper=${"Enter any MDI icon name (mdi:icon-name) or leave empty to hide icon"}
+					>
+						${this._config?.power_button_icon ? html`
+							<ha-icon icon="${this._config.power_button_icon}" slot="leadingIcon"></ha-icon>
+						` : ''}
+					</ha-textfield>
+				</div>
 				
       </div>
 
@@ -430,7 +447,9 @@ class TimerCardEditor extends LitElement {
         } else {
             updatedConfig.timer_instance_id = null;
         }
-    }
+    } else if (configValue === "power_button_icon") {
+			updatedConfig.power_button_icon = value || null;
+		}
 
     // Preserve existing values
     if (this._config.entity) updatedConfig.entity = this._config.entity;
@@ -441,6 +460,9 @@ class TimerCardEditor extends LitElement {
     if (this._config.card_title && configValue !== "card_title") {
         updatedConfig.card_title = this._config.card_title;
     }
+		if (this._config.power_button_icon !== undefined && configValue !== "power_button_icon") {
+			updatedConfig.power_button_icon = this._config.power_button_icon;
+		}
 
     if (JSON.stringify(this._config) !== JSON.stringify(updatedConfig)) {
         this._config = updatedConfig;

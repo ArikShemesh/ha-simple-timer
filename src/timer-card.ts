@@ -3,16 +3,6 @@
 import { LitElement, html } from 'lit';
 import { cardStyles } from './timer-card.styles';
 
-// Ensure HomeAssistant and TimerCardConfig are recognized from global.d.ts
-interface TimerCardConfig {
-  type: string;
-  timer_instance_id?: string | null;
-  entity?: string | null;
-  sensor_entity?: string | null;
-  timer_buttons: number[];
-  card_title?: string | null;
-  // Removed: notification_entity and show_seconds (now in backend config)
-}
 
 interface HAState {
   entity_id: string;
@@ -58,7 +48,6 @@ interface HomeAssistant {
 
 const DOMAIN = "simple_timer";
 const CARD_VERSION = "1.2.0";
-const REPO_URL = "https://github.com/ArikShemesh/ha-simple-timer";
 const DEFAULT_TIMER_BUTTONS = [15, 30, 60, 90, 120, 150]; // Default for new cards only
 
 console.info(
@@ -100,6 +89,7 @@ class TimerCard extends LitElement {
 	
 	_longPressTimer: number | null = null;
 	_isLongPress: boolean = false;
+	_touchStartPosition: { x: number; y: number } | null = null;
 
   static async getConfigElement(): Promise<HTMLElement> {
     await import("./timer-card-editor.js");
@@ -113,7 +103,8 @@ class TimerCard extends LitElement {
       type: "custom:timer-card",
       timer_instance_id: null, // Changed from auto-selected instance to null
       timer_buttons: [...DEFAULT_TIMER_BUTTONS], // Use default buttons
-      card_title: "Simple Timer"
+      card_title: "Simple Timer",
+			power_button_icon: "mdi:power"
     };
   }
 
@@ -121,7 +112,8 @@ class TimerCard extends LitElement {
     this._config = {
       type: cfg.type || "custom:timer-card",
       timer_buttons: this._getValidatedTimerButtons(cfg.timer_buttons),
-      card_title: cfg.card_title || null
+      card_title: cfg.card_title || null,
+			power_button_icon: cfg.power_button_icon || null
     };
 
     if (cfg.timer_instance_id) {
@@ -143,7 +135,7 @@ class TimerCard extends LitElement {
     this._effectiveSwitchEntity = null;
     this._effectiveSensorEntity = null;
     this._entitiesLoaded = false;
-    console.log(`TimerCard: setConfig completed. Configured instance ID: ${this._config.timer_instance_id}, Buttons: ${this.buttons.length}`);
+    console.log(`TimerCard: setConfig completed. Configured instance ID: ${this._config.timer_instance_id}, Buttons: ${this.buttons.length}, Power Icon: ${this._config.power_button_icon}`);
   }
 
   _getValidatedTimerButtons(configButtons: any): number[] {
@@ -495,7 +487,6 @@ class TimerCard extends LitElement {
 	}
 
 	_startLongPress(event: Event): void {
-			// Prevent default behavior (like text selection or context menu)
 			event.preventDefault();
 			this._isLongPress = false;
 			
@@ -517,6 +508,61 @@ class TimerCard extends LitElement {
 					window.clearTimeout(this._longPressTimer);
 					this._longPressTimer = null;
 			}
+	}
+	
+	_handlePowerClick(event: Event): void {
+    // Only handle mouse clicks, not touch events
+    if (event.type === 'click' && !this._isLongPress) {
+        event.preventDefault();
+        event.stopPropagation();
+        this._togglePower();
+    }
+    this._isLongPress = false;
+	}
+	
+	_handleTouchEnd(event: TouchEvent): void {
+			event.preventDefault();
+			
+			if (this._longPressTimer) {
+					window.clearTimeout(this._longPressTimer);
+					this._longPressTimer = null;
+			}
+			
+			// Check if the touch moved too much (sliding)
+			let hasMoved = false;
+			if (this._touchStartPosition && event.changedTouches[0]) {
+					const touch = event.changedTouches[0];
+					const deltaX = Math.abs(touch.clientX - this._touchStartPosition.x);
+					const deltaY = Math.abs(touch.clientY - this._touchStartPosition.y);
+					const moveThreshold = 10; // pixels
+					
+					hasMoved = deltaX > moveThreshold || deltaY > moveThreshold;
+			}
+			
+			// Only trigger if it's not a long press AND the touch didn't move much
+			if (!this._isLongPress && !hasMoved) {
+					this._togglePower();
+			}
+			
+			this._isLongPress = false;
+			this._touchStartPosition = null;
+	}
+
+	_handleTouchStart(event: TouchEvent): void {
+			event.preventDefault();
+			this._isLongPress = false;
+			
+			// Record the initial touch position
+			const touch = event.touches[0];
+			this._touchStartPosition = { x: touch.clientX, y: touch.clientY };
+			
+			this._longPressTimer = window.setTimeout(() => {
+					this._isLongPress = true;
+					this._resetUsage();
+					if ('vibrate' in navigator) {
+							navigator.vibrate(50);
+					}
+			}, 800);
 	}
 
 	_resetUsage(): void {
@@ -639,10 +685,7 @@ class TimerCard extends LitElement {
 		return html`
       <ha-card>
         <div class="card-header">
-            <div class="card-title">${this._config?.card_title || ''}</div>
-            <a href="${REPO_URL}" target="_blank" rel="noopener noreferrer" class="repo-link" title="Help">
-                <ha-icon icon="mdi:help-circle-outline"></ha-icon>
-            </a>
+					<div class="card-title">${this._config?.card_title || ''}</div>
         </div>
 
         ${watchdogMessage ? html`
@@ -684,15 +727,15 @@ class TimerCard extends LitElement {
               <span class="slider-label">${this._sliderValue} min</span>
             </div>
             <div class="power-button-small ${isOn ? 'on' : ''}" 
-								 @click=${this._togglePower}
+								 @click=${this._handlePowerClick}
 								 @mousedown=${this._startLongPress} 
 								 @mouseup=${this._endLongPress}
 								 @mouseleave=${this._endLongPress}
-								 @touchstart=${this._startLongPress}
-								 @touchend=${this._endLongPress}
+								 @touchstart=${this._handleTouchStart}
+								 @touchend=${this._handleTouchEnd}
 								 @touchcancel=${this._endLongPress}
 								 title="Click to toggle power, hold to reset daily usage">
-							<ha-icon icon="mdi:power"></ha-icon>
+							${this._config?.power_button_icon ? html`<ha-icon icon="${this._config.power_button_icon}"></ha-icon>` : ''}
 							<div class="power-usage-text">${dailyUsageFormatted.replace('Daily Usage: ', '')}</div>
 						</div>
           </div>
