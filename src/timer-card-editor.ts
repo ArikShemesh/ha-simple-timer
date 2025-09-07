@@ -189,7 +189,8 @@ class TimerCardEditor extends LitElement {
       timer_buttons: timerButtonsToSet,
       card_title: cfg.card_title || null,
 			power_button_icon: cfg.power_button_icon || null,
-			slider_max: cfg.slider_max || 120
+			slider_max: cfg.slider_max || 120,
+			reverse_mode: cfg.reverse_mode || false
     };
 
     if (cfg.timer_instance_id) {
@@ -397,6 +398,16 @@ class TimerCardEditor extends LitElement {
 					></ha-textfield>
 				</div>
 				
+				<div class="config-row">
+					<ha-formfield .label=${"Reverse Mode (Delayed Start)"}>
+						<ha-switch
+							.checked=${this._config?.reverse_mode || false}
+							.configValue=${"reverse_mode"}
+							@change=${this._valueChanged}
+						></ha-switch>
+					</ha-formfield>
+				</div>
+				
       </div>
 
       <div class="card-config-group">
@@ -467,6 +478,8 @@ class TimerCardEditor extends LitElement {
 		} else if (configValue === "slider_max") {
 			const numValue = parseInt(value) || 120;
 			updatedConfig.slider_max = Math.min(Math.max(numValue, 1), 1000);
+		} else if (configValue === "reverse_mode") {
+			updatedConfig.reverse_mode = value;
 		}
 
     // Preserve existing values
@@ -482,7 +495,10 @@ class TimerCardEditor extends LitElement {
 			updatedConfig.power_button_icon = this._config.power_button_icon;
 		}
 		if (this._config.slider_max !== undefined && configValue !== "slider_max") {
-    updatedConfig.slider_max = this._config.slider_max;
+			updatedConfig.slider_max = this._config.slider_max;
+		}
+		if (this._config.reverse_mode !== undefined && configValue !== "reverse_mode") {
+			updatedConfig.reverse_mode = this._config.reverse_mode;
 		}
 
     if (JSON.stringify(this._config) !== JSON.stringify(updatedConfig)) {

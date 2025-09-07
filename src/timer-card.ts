@@ -115,7 +115,8 @@ class TimerCard extends LitElement {
       timer_buttons: this._getValidatedTimerButtons(cfg.timer_buttons),
       card_title: cfg.card_title || null,
 			power_button_icon: cfg.power_button_icon || null,
-			slider_max: cfg.slider_max || 120
+			slider_max: cfg.slider_max || 120,
+			reverse_mode: cfg.reverse_mode || false
     };
 
     if (cfg.timer_instance_id) {
@@ -268,14 +269,33 @@ class TimerCard extends LitElement {
 		if (!entryId) { console.error("Timer-card: Entry ID not found for starting timer."); return; }
 
 		const switchId = this._effectiveSwitchEntity!;
-
-		this.hass.callService("homeassistant", "turn_on", { entity_id: switchId })
-			.then(() => {
-				this.hass!.callService(DOMAIN, "start_timer", { entry_id: entryId, duration: minutes });
-			})
-			.catch(error => {
-				console.error("Timer-card: Error turning on switch or starting timer:", error);
-			});
+		const reverseMode = this._config?.reverse_mode || false;
+		
+		if (reverseMode) {
+			// REVERSE MODE: Ensure switch is OFF, then start timer
+			this.hass.callService("homeassistant", "turn_off", { entity_id: switchId })
+				.then(() => {
+					// Pass reverse mode info to backend via service call data
+					this.hass!.callService(DOMAIN, "start_timer", { 
+						entry_id: entryId, 
+						duration: minutes,
+						reverse_mode: true // NEW: Pass this to backend
+					});
+				})
+				.catch(error => {
+					console.error("Timer-card: Error turning off switch for reverse timer:", error);
+				});
+		} else {
+			// NORMAL MODE: Turn ON switch, then start timer
+			this.hass.callService("homeassistant", "turn_on", { entity_id: switchId })
+				.then(() => {
+					this.hass!.callService(DOMAIN, "start_timer", { entry_id: entryId, duration: minutes });
+				})
+				.catch(error => {
+					console.error("Timer-card: Error turning on switch or starting timer:", error);
+				});
+		}
+		
 		this._notificationSentForCurrentCycle = false;
 	}
 
@@ -635,6 +655,15 @@ class TimerCard extends LitElement {
 			// Save per instance in localStorage
 			const instanceId = this._config?.timer_instance_id || 'default';
 			localStorage.setItem(`simple-timer-slider-${instanceId}`, this._sliderValue.toString());
+	}
+	
+	_getCurrentTimerMode(): string {
+  if (!this._entitiesLoaded || !this.hass || !this._effectiveSensorEntity) {
+    return 'normal';
+  }
+  
+  const sensor = this.hass.states[this._effectiveSensorEntity];
+  return sensor?.attributes?.reverse_mode ? 'reverse' : 'normal';
 	}
 
   render() {
