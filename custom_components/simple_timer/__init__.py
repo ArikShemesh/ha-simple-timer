@@ -138,6 +138,7 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
         vol.Required("entry_id"): cv.string,
         vol.Required("duration"): cv.positive_int,
         vol.Optional("reverse_mode", default=False): cv.boolean,
+        vol.Optional("start_method", default="button"): vol.In(["button", "slider"]),
     })
     SERVICE_CANCEL_TIMER_SCHEMA = vol.Schema({
         vol.Required("entry_id"): cv.string,
@@ -187,6 +188,7 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
         entry_id = call.data["entry_id"]
         duration = call.data["duration"]
         reverse_mode = call.data.get("reverse_mode", False)
+        start_method = call.data.get("start_method", "button")
         
         # Find the sensor by entry_id
         sensor = None
@@ -196,7 +198,7 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
                 break
         
         if sensor:
-            await sensor.async_start_timer(duration, reverse_mode)
+            await sensor.async_start_timer(duration, reverse_mode, start_method)
         else:
             raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
 

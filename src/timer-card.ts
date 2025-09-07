@@ -79,7 +79,6 @@ class TimerCard extends LitElement {
 
   _timeRemaining: string | null = null;
 	_sliderValue: number = 0;
-	_timerStartedViaSlider: boolean = false;
 
   buttons: number[] = [];
   _validationMessages: string[] = [];
@@ -92,6 +91,7 @@ class TimerCard extends LitElement {
 	_longPressTimer: number | null = null;
 	_isLongPress: boolean = false;
 	_touchStartPosition: { x: number; y: number } | null = null;
+	_isCancelling: boolean = false;
 
   static async getConfigElement(): Promise<HTMLElement> {
     await import("./timer-card-editor.js");
@@ -259,7 +259,7 @@ class TimerCard extends LitElement {
     return null;
   }
 
-	_startTimer(minutes: number): void {
+	_startTimer(minutes: number, startMethod: 'button' | 'slider' = 'button'): void {
         this._validationMessages = [];
 		if (!this._entitiesLoaded || !this.hass || !this.hass.callService) {
 				console.error("Timer-card: Cannot start timer. Entities not loaded or callService unavailable.");
@@ -280,7 +280,8 @@ class TimerCard extends LitElement {
 					this.hass!.callService(DOMAIN, "start_timer", { 
 						entry_id: entryId, 
 						duration: minutes,
-						reverse_mode: true // NEW: Pass this to backend
+						reverse_mode: true,
+						start_method: startMethod
 					});
 				})
 				.catch(error => {
@@ -290,7 +291,7 @@ class TimerCard extends LitElement {
 			// NORMAL MODE: Turn ON switch, then start timer
 			this.hass.callService("homeassistant", "turn_on", { entity_id: switchId })
 				.then(() => {
-					this.hass!.callService(DOMAIN, "start_timer", { entry_id: entryId, duration: minutes });
+					this.hass!.callService(DOMAIN, "start_timer", { entry_id: entryId, duration: minutes, start_method: startMethod });
 				})
 				.catch(error => {
 					console.error("Timer-card: Error turning on switch or starting timer:", error);
@@ -300,63 +301,91 @@ class TimerCard extends LitElement {
 		this._notificationSentForCurrentCycle = false;
 	}
 
-	_cancelTimer(): void {
-        this._validationMessages = [];
-		if (!this._entitiesLoaded || !this.hass || !this.hass.callService) {
-				console.error("Timer-card: Cannot cancel timer. Entities not loaded or callService unavailable.");
-				return;
-		}
-		
-		this._timerStartedViaSlider = false;
-		
-		const entryId = this._getEntryId();
-		if (!entryId) { console.error("Timer-card: Entry ID not found for cancelling timer."); return; }
+  _cancelTimer(): void {
+    this._validationMessages = [];
+    if (!this._entitiesLoaded || !this.hass || !this.hass.callService) {
+      console.error("Timer-card: Cannot cancel timer. Entities not loaded or callService unavailable.");
+      return;
+    }
+    
+    // Set flag to prevent immediate restart
+    this._isCancelling = true;
+    
+    const entryId = this._getEntryId();
+    if (!entryId) { 
+      console.error("Timer-card: Entry ID not found for cancelling timer."); 
+      this._isCancelling = false;
+      return; 
+    }
 
-		this.hass.callService(DOMAIN, "cancel_timer", { entry_id: entryId })
-			.then(() => {
-				// Backend handles notification
-			})
-			.catch(error => {
-				console.error("Timer-card: Error cancelling timer:", error);
-			});
+    this.hass.callService(DOMAIN, "cancel_timer", { entry_id: entryId })
+      .then(() => {
+        // Reset flag after a short delay to ensure state has settled
+        setTimeout(() => {
+          this._isCancelling = false;
+        }, 1000);
+      })
+      .catch(error => {
+        console.error("Timer-card: Error cancelling timer:", error);
+        this._isCancelling = false;
+      });
 
-		this._notificationSentForCurrentCycle = false;
-	}
+    this._notificationSentForCurrentCycle = false;
+  }
 
-	_togglePower(): void {
-        this._validationMessages = [];
-		if (!this._entitiesLoaded || !this.hass || !this.hass.states || !this.hass.callService) {
-				console.error("Timer-card: Cannot toggle power. Entities not loaded or services unavailable.");
-				return;
-		}
-		const switchId = this._effectiveSwitchEntity!;
-		const sensorId = this._effectiveSensorEntity!;
+  _togglePower(): void {
+    this._validationMessages = [];
+    if (!this._entitiesLoaded || !this.hass || !this.hass.states || !this.hass.callService) {
+      console.error("Timer-card: Cannot toggle power. Entities not loaded or services unavailable.");
+      return;
+    }
+    
+    // Don't do anything if we're in the middle of cancelling
+    if (this._isCancelling) {
+      return;
+    }
+    
+    const switchId = this._effectiveSwitchEntity!;
+    const sensorId = this._effectiveSensorEntity!;
 
-		const timerSwitch = this.hass.states[switchId];
-		if (!timerSwitch) {
-				console.warn(`Timer-card: Switch entity '${switchId}' not found during toggle.`);
-				return;
-		}
+    const timerSwitch = this.hass.states[switchId];
+    if (!timerSwitch) {
+      console.warn(`Timer-card: Switch entity '${switchId}' not found during toggle.`);
+      return;
+    }
 
-		const sensor = this.hass.states[sensorId];
-		const isTimerActive = sensor && sensor.attributes.timer_state === 'active';
+    const sensor = this.hass.states[sensorId];
+    const isTimerActive = sensor && sensor.attributes.timer_state === 'active';
 
-		if (timerSwitch.state === 'on') {
-				if (isTimerActive) {
-						this._cancelTimer();
-						console.log(`Timer-card: Cancelling active timer for switch: ${switchId}`);
-				} else {
-						this.hass.callService(DOMAIN, "manual_power_toggle", { 
-								entry_id: this._getEntryId(), 
-								action: "turn_off" 
-						});
-						console.log(`Timer-card: Manually turning off switch: ${switchId}`);
-				}
-		} else {
-      // Switch is currently OFF
+    // PRIORITY 1: Check for active timer first (regardless of switch state)
+    if (isTimerActive) {
+      // Check if this is a reverse mode timer
+      const isReverseMode = sensor.attributes.reverse_mode;
+      
+      if (isReverseMode) {
+        // For reverse timers: cancel means "start now instead of waiting"
+        this._cancelTimer();
+        console.log(`Timer-card: Cancelling reverse timer and turning on switch: ${switchId}`);
+      } else {
+        // For normal timers: cancel means "stop and turn off"
+        this._cancelTimer();
+        console.log(`Timer-card: Cancelling normal timer for switch: ${switchId}`);
+      }
+      return;
+    }
+
+    // PRIORITY 2: Handle switch state for non-timer operations
+    if (timerSwitch.state === 'on') {
+      // Switch is on but no timer active - manual turn off
+      this.hass.callService(DOMAIN, "manual_power_toggle", { 
+        entry_id: this._getEntryId(), 
+        action: "turn_off" 
+      });
+      console.log(`Timer-card: Manually turning off switch: ${switchId}`);
+    } else {
+      // Switch is currently OFF and no timer active
       if (this._sliderValue > 0) {
-				this._timerStartedViaSlider = true;
-        this._startTimer(this._sliderValue);
+        this._startTimer(this._sliderValue, 'slider');
         console.log(`Timer-card: Starting timer for ${this._sliderValue} minutes`);
       } else {
         // Manual turn on (infinite until manually turned off)
@@ -373,7 +402,7 @@ class TimerCard extends LitElement {
       }
       this._notificationSentForCurrentCycle = false;
     }
-	}
+  }
 
   _showMoreInfo(): void {
     if (!this._entitiesLoaded || !this.hass) {
@@ -719,6 +748,7 @@ class TimerCard extends LitElement {
     const isTimerActive = sensor.attributes.timer_state === 'active';
     const timerDurationInMinutes = sensor.attributes.timer_duration || 0;
     const isManualOn = isOn && !isTimerActive;
+		const isReverseMode = sensor.attributes.reverse_mode;
 
 		const committedSeconds = parseFloat(sensor.state as string) || 0;
 
@@ -777,7 +807,7 @@ class TimerCard extends LitElement {
 
           <!-- Countdown Display Section -->
           <div class="countdown-section">
-            <div class="countdown-display ${isTimerActive ? 'active' : ''}">
+            <div class="countdown-display ${isTimerActive ? 'active' : ''} ${isReverseMode ? 'reverse' : ''}">
               ${countdownDisplay}
             </div>
           </div>
@@ -813,14 +843,17 @@ class TimerCard extends LitElement {
           <!-- Timer Buttons -->
           <div class="button-grid">
             ${this.buttons.map(minutes => {
-              const isActive = isTimerActive && timerDurationInMinutes === minutes && !this._timerStartedViaSlider;
+              // Only highlight if timer was started via button, NOT slider
+              const isActive = isTimerActive && timerDurationInMinutes === minutes && sensor.attributes.timer_start_method === 'button';
               const isDisabled = isManualOn || (isTimerActive && !isActive);
               return html`
                 <div class="timer-button ${isActive ? 'active' : ''} ${isDisabled ? 'disabled' : ''}" 
-                     @click=${() => { 
-                       if (isActive) this._cancelTimer(); 
-                       else if (!isDisabled) this._startTimer(minutes); 
-                     }}>
+                     @click=${() => {
+												if (isActive) this._cancelTimer(); 
+												else if (!isDisabled) {
+														this._startTimer(minutes, 'button');
+												}
+										}}>
                   <div class="timer-button-value">${minutes}</div>
                   <div class="timer-button-unit">Min</div>
                 </div>

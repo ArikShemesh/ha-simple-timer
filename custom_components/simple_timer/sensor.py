@@ -42,6 +42,7 @@ ATTR_LAST_ON_TIMESTAMP = "last_on_timestamp"
 ATTR_INSTANCE_TITLE = "instance_title"
 ATTR_NEXT_RESET_DATE = "next_reset_date"
 ATTR_RESET_TIME = "reset_time"
+ATTR_TIMER_START_METHOD = "timer_start_method"
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities) -> None:
     """Create a TimerRuntimeSensor for this config entry."""
@@ -93,6 +94,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._watchdog_message = None
         self._timer_update_task = None
         self._is_performing_reset = False
+        self._timer_start_method = None
 
         # Reset scheduling
         self._next_reset_date = None
@@ -192,6 +194,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             ATTR_INSTANCE_TITLE: self.instance_title,
             ATTR_NEXT_RESET_DATE: self._next_reset_date.isoformat() if self._next_reset_date else None,
             ATTR_RESET_TIME: self._reset_time.strftime("%H:%M:%S"),  # NEW: Expose current reset time
+            ATTR_TIMER_START_METHOD: self._timer_start_method,
             "show_seconds": show_seconds_setting,  # Expose show_seconds from config entry
             "reverse_mode": getattr(self, '_timer_reverse_mode', False),
         }
@@ -606,7 +609,8 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._timer_finishes_at = None
         self._timer_duration = 0
         self._timer_start_moment = None
-        self._runtime_at_timer_start = 0  # Reset this too
+        self._runtime_at_timer_start = 0
+        self._timer_start_method = None
         
         # Clean storage
         async with self._storage_lock:
@@ -753,9 +757,11 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         except Exception as e:
             _LOGGER.error(f"Simple Timer: [{self._entry_id}] Error in accumulation task: {e}")
 
-    async def async_start_timer(self, duration_minutes: int, reverse_mode: bool = False) -> None:
+    async def async_start_timer(self, duration_minutes: int, reverse_mode: bool = False, start_method: str = "button") -> None:
         """Start a countdown timer with synchronized accumulation."""
         _LOGGER.info(f"Simple Timer: [{self._entry_id}] Starting {'reverse' if reverse_mode else 'normal'} timer for {duration_minutes} minutes")
+        
+        self._timer_start_method = start_method
         
         # Clear any existing watchdog message
         if self._watchdog_message:
