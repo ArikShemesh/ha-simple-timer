@@ -114,7 +114,8 @@ class TimerCard extends LitElement {
       type: cfg.type || "custom:timer-card",
       timer_buttons: this._getValidatedTimerButtons(cfg.timer_buttons),
       card_title: cfg.card_title || null,
-			power_button_icon: cfg.power_button_icon || null
+			power_button_icon: cfg.power_button_icon || null,
+			slider_max: cfg.slider_max || 120
     };
 
     if (cfg.timer_instance_id) {
@@ -383,7 +384,7 @@ class TimerCard extends LitElement {
 					if (this._entitiesLoaded && this.hass && this._effectiveSensorEntity) {
 							const sensor = this.hass.states[this._effectiveSensorEntity];
 							const lastDuration = sensor?.attributes?.timer_duration || 0;
-							if (lastDuration > 0 && lastDuration <= 300) {
+							if (lastDuration > 0 && lastDuration <= 120) {
 									this._sliderValue = lastDuration;
 							}
 					}
@@ -490,7 +491,8 @@ class TimerCard extends LitElement {
 
 		const activeDuration = sensor.attributes.timer_duration || 0;
 		const hasMatchingButton = this.buttons.includes(activeDuration);
-		const isWithinSliderRange = activeDuration >= 0 && activeDuration <= 300;
+		const sliderMax = this._config?.slider_max || 120;
+		const isWithinSliderRange = activeDuration >= 0 && activeDuration <= sliderMax;
 
 		return {
 			isOrphaned: !hasMatchingButton && !isWithinSliderRange,
@@ -753,10 +755,11 @@ class TimerCard extends LitElement {
           <!-- Slider Row -->
           <div class="slider-row">
             <div class="slider-container">
-              <input 
-                type="range" 
-                min="0" 
-                max="300" 
+              <input
+                type="range"
+                min="0"
+								step="1"
+                max="${this._config?.slider_max || 120}"
                 .value=${this._sliderValue.toString()}
                 @input=${this._handleSliderChange}
                 class="timer-slider"
@@ -765,7 +768,7 @@ class TimerCard extends LitElement {
             </div>
             <div class="power-button-small ${isOn ? 'on' : ''}" 
 								 @click=${this._handlePowerClick}
-								 @mousedown=${this._startLongPress} 
+								 @mousedown=${this._startLongPress}
 								 @mouseup=${this._endLongPress}
 								 @mouseleave=${this._endLongPress}
 								 @touchstart=${this._handleTouchStart}

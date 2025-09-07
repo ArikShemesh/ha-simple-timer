@@ -188,7 +188,8 @@ class TimerCardEditor extends LitElement {
       type: cfg.type || "custom:timer-card",
       timer_buttons: timerButtonsToSet,
       card_title: cfg.card_title || null,
-			power_button_icon: cfg.power_button_icon || null
+			power_button_icon: cfg.power_button_icon || null,
+			slider_max: cfg.slider_max || 120
     };
 
     if (cfg.timer_instance_id) {
@@ -382,6 +383,20 @@ class TimerCardEditor extends LitElement {
 					</ha-textfield>
 				</div>
 				
+				<div class="config-row">
+					<ha-textfield
+						.label=${"Slider Maximum (minutes)"}
+						.value=${this._config?.slider_max?.toString() || "120"}
+						.configValue=${"slider_max"}
+						@input=${this._valueChanged}
+						.placeholder=${"Default: 120"}
+						type="number"
+						min="1"
+						max="1000"
+						.helper=${"Maximum value for the timer slider (1-1000 minutes). Lower values provide better touch precision."}
+					></ha-textfield>
+				</div>
+				
       </div>
 
       <div class="card-config-group">
@@ -449,6 +464,9 @@ class TimerCardEditor extends LitElement {
         }
     } else if (configValue === "power_button_icon") {
 			updatedConfig.power_button_icon = value || null;
+		} else if (configValue === "slider_max") {
+			const numValue = parseInt(value) || 120;
+			updatedConfig.slider_max = Math.min(Math.max(numValue, 1), 1000);
 		}
 
     // Preserve existing values
@@ -462,6 +480,9 @@ class TimerCardEditor extends LitElement {
     }
 		if (this._config.power_button_icon !== undefined && configValue !== "power_button_icon") {
 			updatedConfig.power_button_icon = this._config.power_button_icon;
+		}
+		if (this._config.slider_max !== undefined && configValue !== "slider_max") {
+    updatedConfig.slider_max = this._config.slider_max;
 		}
 
     if (JSON.stringify(this._config) !== JSON.stringify(updatedConfig)) {
