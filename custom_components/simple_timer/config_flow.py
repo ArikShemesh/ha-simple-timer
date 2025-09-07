@@ -2,6 +2,7 @@
 """Config flow for Simple Timer."""
 import voluptuous as vol
 import logging
+from datetime import time
 
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant, callback
@@ -10,6 +11,14 @@ from homeassistant.helpers import selector
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
+
+def _validate_time_string(time_str: str) -> bool:
+    """Validate time string format (HH:MM)."""
+    try:
+        time.fromisoformat(time_str + ":00")
+        return True
+    except ValueError:
+        return False
 
 class SimpleTimerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Simple Timer."""
@@ -141,7 +150,7 @@ class SimpleTimerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_name(self, user_input=None):
         """
-        Second step: Set the name (auto-populated from entity).
+        Second step: Set the name and other configuration options.
         """
         errors = {}
         
@@ -152,26 +161,32 @@ class SimpleTimerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 name = user_input.get("name", "").strip()
                 show_seconds = user_input.get("show_seconds", False)
                 selected_notifications = user_input.get("Select one or more notification entity (optional):", [])
+                reset_time_str = user_input.get("reset_time", "00:00")
                 
-                # Update notification list from multi-select (handles both add and remove)
-                self._notification_entities = selected_notifications if selected_notifications else []
-                _LOGGER.info(f"Simple Timer: Updated notifications to: {self._notification_entities}")
-                
-                # FINAL SUBMIT logic: Save everything
-                if not name:
-                    errors["name"] = "Please enter a name"
+                # Validate reset time
+                if not _validate_time_string(reset_time_str):
+                    errors["reset_time"] = "Invalid time format. Use HH:MM (24-hour format)"
                 else:
-                    _LOGGER.info(f"Simple Timer: FINAL SUBMIT - Creating entry with notifications={self._notification_entities}")
-                    return self.async_create_entry(
-                        title=name,
-                        data={
-                            "name": name,
-                            "switch_entity_id": self._switch_entity_id,
-                            "notification_entities": self._notification_entities,
-                            "show_seconds": show_seconds
-                        }
-                    )
+                    # Update notification list from multi-select (handles both add and remove)
+                    self._notification_entities = selected_notifications if selected_notifications else []
+                    _LOGGER.info(f"Simple Timer: Updated notifications to: {self._notification_entities}")
                     
+                    # FINAL SUBMIT logic: Save everything
+                    if not name:
+                        errors["name"] = "Please enter a name"
+                    else:
+                        _LOGGER.info(f"Simple Timer: FINAL SUBMIT - Creating entry with notifications={self._notification_entities}, reset_time={reset_time_str}")
+                        return self.async_create_entry(
+                            title=name,
+                            data={
+                                "name": name,
+                                "switch_entity_id": self._switch_entity_id,
+                                "notification_entities": self._notification_entities,
+                                "show_seconds": show_seconds,
+                                "reset_time": reset_time_str
+                            }
+                        )
+                        
             except Exception as e:
                 _LOGGER.error(f"Simple Timer: config_flow: Exception in step_name: {e}")
                 errors["base"] = "An error occurred. Please try again."
@@ -211,12 +226,19 @@ class SimpleTimerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
             )
         
+        # Add reset time configuration
+        schema_dict[vol.Optional("reset_time", default="00:00")] = selector.TextSelector(
+            selector.TextSelectorConfig(
+                type=selector.TextSelectorType.TIME
+            )
+        )
+        
         # Add show_seconds at the bottom
         schema_dict[vol.Optional("show_seconds", default=False)] = bool
 
         data_schema = vol.Schema(schema_dict)
 
-        # Create description with current notifications
+        # Create description with current notifications and reset time info
         description_placeholders = {
             "selected_entity": self._switch_entity_id,
             "entity_name": suggested_name
@@ -317,25 +339,30 @@ class SimpleTimerOptionsFlow(config_entries.OptionsFlow):
                 switch_entity_id = user_input.get("switch_entity_id")
                 show_seconds = user_input.get("show_seconds", False)
                 selected_notifications = user_input.get("Select one or more notification entity (optional):", [])
+                reset_time_str = user_input.get("reset_time", "00:00")
                 
-                # Update notification list from multi-select (handles both add and remove)
-                self._notification_entities = selected_notifications if selected_notifications else []
-                _LOGGER.info(f"Simple Timer: Updated notifications to: {self._notification_entities}")
-                
-                # FINAL SUBMIT logic: Save everything
-                if not name:
-                    errors["name"] = "Please enter a name"
-                elif not switch_entity_id:
-                    errors["switch_entity_id"] = "Please select an entity"
+                # Validate reset time
+                if not _validate_time_string(reset_time_str):
+                    errors["reset_time"] = "Invalid time format. Use HH:MM (24-hour format)"
                 else:
-                    # Check if entity exists
-                    entity_state = self.hass.states.get(switch_entity_id)
-                    if entity_state is None:
-                        errors["switch_entity_id"] = "Entity not found"
+                    # Update notification list from multi-select (handles both add and remove)
+                    self._notification_entities = selected_notifications if selected_notifications else []
+                    _LOGGER.info(f"Simple Timer: Updated notifications to: {self._notification_entities}")
+                    
+                    # FINAL SUBMIT logic: Save everything
+                    if not name:
+                        errors["name"] = "Please enter a name"
+                    elif not switch_entity_id:
+                        errors["switch_entity_id"] = "Please select an entity"
                     else:
-                        _LOGGER.info(f"Simple Timer: FINAL SUBMIT - Saving with notifications={self._notification_entities}")
-                        await self._update_config_entry(name, switch_entity_id, show_seconds)
-                        return self.async_create_entry(title="", data={})
+                        # Check if entity exists
+                        entity_state = self.hass.states.get(switch_entity_id)
+                        if entity_state is None:
+                            errors["switch_entity_id"] = "Entity not found"
+                        else:
+                            _LOGGER.info(f"Simple Timer: FINAL SUBMIT - Saving with notifications={self._notification_entities}, reset_time={reset_time_str}")
+                            await self._update_config_entry(name, switch_entity_id, show_seconds, reset_time_str)
+                            return self.async_create_entry(title="", data={})
                         
             except Exception as e:
                 _LOGGER.error(f"Simple Timer: options_flow: Exception: {e}")
@@ -345,6 +372,7 @@ class SimpleTimerOptionsFlow(config_entries.OptionsFlow):
         current_name = self.config_entry.data.get("name") or self.config_entry.title or "Timer"
         current_switch_entity = self.config_entry.data.get("switch_entity_id", "")
         current_show_seconds = self.config_entry.data.get("show_seconds", False)
+        current_reset_time = self.config_entry.data.get("reset_time", "00:00")
 
         # Validate current switch entity
         current_switch_exists = True
@@ -380,6 +408,13 @@ class SimpleTimerOptionsFlow(config_entries.OptionsFlow):
                     mode=selector.SelectSelectorMode.DROPDOWN
                 )
             )
+        
+        # Add reset time configuration
+        schema_dict[vol.Optional("reset_time", default=current_reset_time)] = selector.TextSelector(
+            selector.TextSelectorConfig(
+                type=selector.TextSelectorType.TIME
+            )
+        )
         
         # Add show_seconds at the bottom
         schema_dict[vol.Optional("show_seconds", default=current_show_seconds)] = bool
@@ -421,16 +456,17 @@ class SimpleTimerOptionsFlow(config_entries.OptionsFlow):
                 data=new_data
             )
 
-    async def _update_config_entry(self, name: str, switch_entity_id: str, show_seconds: bool):
+    async def _update_config_entry(self, name: str, switch_entity_id: str, show_seconds: bool, reset_time: str):
         """Update config entry and force immediate sensor sync."""
         new_data = {
             "name": name,
             "switch_entity_id": switch_entity_id,
             "notification_entities": self._notification_entities,
-            "show_seconds": show_seconds
+            "show_seconds": show_seconds,
+            "reset_time": reset_time
         }
         
-        _LOGGER.info(f"Simple Timer: Updating entry {self.config_entry.entry_id} with name='{name}', switch='{switch_entity_id}', notifications={self._notification_entities}, show_seconds={show_seconds}")
+        _LOGGER.info(f"Simple Timer: Updating entry {self.config_entry.entry_id} with name='{name}', switch='{switch_entity_id}', notifications={self._notification_entities}, show_seconds={show_seconds}, reset_time={reset_time}")
         
         # Update both data and title
         self.hass.config_entries.async_update_entry(
@@ -457,10 +493,13 @@ class SimpleTimerOptionsFlow(config_entries.OptionsFlow):
                     # Method 2: Force name change handler
                     await sensor._handle_name_change()
                     
-                    # Method 3: Force state write
+                    # Method 3: Force reset time update
+                    await sensor._update_reset_time()
+                    
+                    # Method 4: Force state write
                     sensor.async_write_ha_state()
                     
-                    # Method 4: Force entity registry update
+                    # Method 5: Force entity registry update
                     from homeassistant.helpers import entity_registry as er
                     entity_registry = er.async_get(self.hass)
                     if entity_registry:
@@ -469,7 +508,7 @@ class SimpleTimerOptionsFlow(config_entries.OptionsFlow):
                             name=sensor.name
                         )
                     
-                    _LOGGER.info(f"Simple Timer: FORCED complete sensor update - new name: '{sensor.name}'")
+                    _LOGGER.info(f"Simple Timer: FORCED complete sensor update - new name: '{sensor.name}', reset_time: '{reset_time}'")
                 else:
                     _LOGGER.warning(f"Simple Timer: Sensor not found in hass.data for entry {self.config_entry.entry_id}")
         except Exception as e:

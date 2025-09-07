@@ -15,7 +15,8 @@ interface HAState {
     timer_finishes_at?: string;
     timer_duration?: number;
     watchdog_message?: string;
-    show_seconds?: boolean; // NEW: This comes from backend now
+    show_seconds?: boolean; // This comes from backend now
+    reset_time?: string; // NEW: Reset time from backend
     [key: string]: any;
   };
   last_changed: string;
@@ -520,7 +521,7 @@ class TimerCard extends LitElement {
 		};
 	}
 
-  // NEW: Get show_seconds from the sensor attributes (backend config)
+  // Get show_seconds from the sensor attributes (backend config)
   _getShowSeconds(): boolean {
     if (!this._entitiesLoaded || !this.hass || !this._effectiveSensorEntity) {
       return false;

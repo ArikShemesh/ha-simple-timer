@@ -28,9 +28,8 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-# Global reset time configuration (hour, minute, second)
-# Default is midnight (0, 0, 0). Can be changed for testing.
-RESET_TIME = time(0, 0, 0)
+# Default reset time configuration (hour, minute, second)
+DEFAULT_RESET_TIME = time(0, 0, 0)
 
 # Sensor state attributes
 ATTR_TIMER_STATE = "timer_state"
@@ -42,6 +41,7 @@ ATTR_SWITCH_ENTITY_ID = "switch_entity_id"
 ATTR_LAST_ON_TIMESTAMP = "last_on_timestamp"
 ATTR_INSTANCE_TITLE = "instance_title"
 ATTR_NEXT_RESET_DATE = "next_reset_date"
+ATTR_RESET_TIME = "reset_time"
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities) -> None:
     """Create a TimerRuntimeSensor for this config entry."""
@@ -72,6 +72,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._last_known_title = entry.title
         self._last_known_data_name = entry.data.get("name")
 
+        # Initialize reset time from config
+        self._reset_time = self._parse_reset_time(entry.data.get("reset_time", "00:00"))
+        self._reset_time_tracker = None  # Track the current reset time listener
+
         # Initialize state and timer variables
         self._state = 0.0
         self._last_on_timestamp = None
@@ -98,6 +102,47 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         # Storage setup
         self._storage_lock = asyncio.Lock()
         self._store = Store(hass, self.STORAGE_VERSION, self.STORAGE_KEY_FORMAT.format(self._entry_id))
+
+    def _parse_reset_time(self, time_str: str) -> time:
+        """Parse reset time string into time object."""
+        try:
+            # Support both HH:MM and HH:MM:SS formats
+            if len(time_str) == 5:  # HH:MM
+                time_str += ":00"
+            return time.fromisoformat(time_str)
+        except (ValueError, TypeError):
+            _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Invalid reset time '{time_str}', using default 00:00:00")
+            return DEFAULT_RESET_TIME
+
+    @property
+    def reset_time(self) -> time:
+        """Get the current reset time."""
+        return self._reset_time
+
+    async def _update_reset_time(self):
+        """Update reset time from config entry and reschedule reset."""
+        new_reset_time_str = self._entry.data.get("reset_time", "00:00")
+        new_reset_time = self._parse_reset_time(new_reset_time_str)
+        
+        if new_reset_time != self._reset_time:
+            old_reset_time = self._reset_time
+            self._reset_time = new_reset_time
+            
+            _LOGGER.info(f"Simple Timer: [{self._entry_id}] Reset time updated from {old_reset_time} to {self._reset_time}")
+            
+            # Cancel existing reset tracker
+            if self._reset_time_tracker:
+                self._reset_time_tracker()
+                self._reset_time_tracker = None
+            
+            # Reschedule reset with new time
+            await self._setup_reset_scheduling({})
+            
+            # Update next reset date
+            self._next_reset_date = self._get_next_reset_datetime()
+            await self._save_next_reset_date()
+            
+            self.async_write_ha_state()
 
     @property
     def instance_title(self) -> str:
@@ -146,6 +191,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             ATTR_LAST_ON_TIMESTAMP: self._last_on_timestamp.isoformat() if self._last_on_timestamp else None,
             ATTR_INSTANCE_TITLE: self.instance_title,
             ATTR_NEXT_RESET_DATE: self._next_reset_date.isoformat() if self._next_reset_date else None,
+            ATTR_RESET_TIME: self._reset_time.strftime("%H:%M:%S"),  # NEW: Expose current reset time
             "show_seconds": show_seconds_setting,  # Expose show_seconds from config entry
             "reverse_mode": getattr(self, '_timer_reverse_mode', False),
         }
@@ -350,17 +396,17 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 _LOGGER.error(f"Simple Timer: [{self._entry_id}] Failed to save next reset date: {e}")
 
     def _get_next_reset_datetime(self, from_date=None):
-        """Calculate the next reset datetime from a given date."""
+        """Calculate the next reset datetime from a given date using configured reset time."""
         if from_date is None:
             from_date = dt_util.now().date()
         
-        reset_datetime = datetime.combine(from_date, RESET_TIME)
+        reset_datetime = datetime.combine(from_date, self._reset_time)
         reset_datetime = dt_util.as_local(reset_datetime)
         
         now = dt_util.now()
         if reset_datetime <= now:
             tomorrow = from_date + timedelta(days=1)
-            reset_datetime = datetime.combine(tomorrow, RESET_TIME)
+            reset_datetime = datetime.combine(tomorrow, self._reset_time)
             reset_datetime = dt_util.as_local(reset_datetime)
         
         return reset_datetime
@@ -395,8 +441,9 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._is_performing_reset = True
         try:
             reset_type = "catch-up" if is_catchup else "scheduled"
+            reset_time_str = self._reset_time.strftime("%H:%M:%S")
             _LOGGER.info(
-                f"Simple Timer: [{self._entry_id}] Performing {reset_type} daily runtime reset. "
+                f"Simple Timer: [{self._entry_id}] Performing {reset_type} daily runtime reset at {reset_time_str}. "
                 f"Current state: {self._state}s"
             )
 
@@ -622,6 +669,11 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         try:
             # For timer-based accumulation, use a more precise approach
             if self._timer_state == "active" and self._timer_start_moment:
+                # Skip accumulation in reverse mode during timer countdown
+                reverse_mode = getattr(self, '_timer_reverse_mode', False)
+                if reverse_mode:
+                    return  # Don't accumulate during reverse timer countdown
+                    
                 runtime_at_start = getattr(self, '_runtime_at_timer_start', self._state)
                 last_whole_second = -1
                 
@@ -715,12 +767,18 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             self._timer_unsub = None
         await self._stop_timer_update_task()
         
-        # Store the runtime at timer start (before we turn on the switch)
-        self._runtime_at_timer_start = self._state
+        # Store the runtime at timer start
+        # For reverse mode, we don't want to count runtime until switch actually turns ON
+        if reverse_mode:
+            self._runtime_at_timer_start = self._state  # Set to current runtime, but don't accumulate until timer finishes
+        else:
+            self._runtime_at_timer_start = self._state
         
         # Handle switch state based on mode
         if reverse_mode:
             # REVERSE MODE: Ensure switch is OFF
+            self._last_on_timestamp = None
+            await self._stop_realtime_accumulation()
             current_switch_state = self.hass.states.get(self._switch_entity_id) if self._switch_entity_id else None
             if current_switch_state and current_switch_state.state == "on":
                 await self.hass.services.async_call(
@@ -750,7 +808,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._timer_reverse_mode = reverse_mode
         
         # Set last_on_timestamp only for normal mode
-        if not reverse_mode and not self._last_on_timestamp:
+        if not reverse_mode and self._is_switch_on() and not self._last_on_timestamp:
             self._last_on_timestamp = timer_start_moment
         
         # Save timer state to storage
@@ -810,15 +868,28 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         # Clean up timer
         await self._cleanup_timer_state()
         
-        # Turn off switch
+        # Handle switch state based on timer mode
+        reverse_mode = getattr(self, '_timer_reverse_mode', False)
         current_switch_state = self.hass.states.get(self._switch_entity_id) if self._switch_entity_id else None
-        if current_switch_state and current_switch_state.state == STATE_ON:
-            await self.hass.services.async_call(
-               "homeassistant", "turn_off", {"entity_id": self._switch_entity_id}, blocking=True
-            )
-            await self._ensure_switch_state("off", "Timer cancellation turn-off")
+
+        if reverse_mode:
+            # In reverse mode, canceling should turn switch ON
+            if current_switch_state and current_switch_state.state != STATE_ON:
+                await self.hass.services.async_call(
+                   "homeassistant", "turn_on", {"entity_id": self._switch_entity_id}, blocking=True
+                )
+                await self._ensure_switch_state("on", "Reverse timer cancellation turn-on")
+                self._last_on_timestamp = dt_util.utcnow()
+                await self._start_realtime_accumulation()
         else:
-            await self._stop_realtime_accumulation()
+            # Normal mode: turn switch OFF
+            if current_switch_state and current_switch_state.state == STATE_ON:
+                await self.hass.services.async_call(
+                   "homeassistant", "turn_off", {"entity_id": self._switch_entity_id}, blocking=True
+                )
+                await self._ensure_switch_state("off", "Timer cancellation turn-off")
+            else:
+                await self._stop_realtime_accumulation()
         
         # Send notification
         await self._send_notification(f"Timer finished – daily usage {formatted_time} {label}")
@@ -849,7 +920,8 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                     )
                     await self._ensure_switch_state("on", "Reverse timer completion turn-on")
                     
-                    # Start accumulating runtime now that switch is ON
+                    # Reset state to not count the timer wait time as usage
+                    # In reverse mode, usage should start from when switch turns ON
                     self._last_on_timestamp = dt_util.utcnow()
                     await self._start_realtime_accumulation()
                 
@@ -936,6 +1008,11 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 self._entry.remove_update_listener(self._handle_config_entry_update)
             except (ValueError, AttributeError):
                 pass
+        
+        # Clean up reset time tracker
+        if self._reset_time_tracker:
+            self._reset_time_tracker()
+            self._reset_time_tracker = None
         
         # Clean up domain data
         if (DOMAIN in self.hass.data and
@@ -1175,7 +1252,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             # Load storage data
             storage_data = await self._load_storage_data()
             
-            # Initialize reset scheduling
+            # Initialize reset scheduling with configurable reset time
             await self._setup_reset_scheduling(storage_data)
             
             # Set up listeners and handlers
@@ -1220,7 +1297,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         return storage_data or {}
 
     async def _setup_reset_scheduling(self, storage_data: dict):
-        """Set up daily reset scheduling."""
+        """Set up daily reset scheduling with configurable reset time."""
         # Initialize next reset date
         self._next_reset_date = self._get_next_reset_datetime()
         
@@ -1240,10 +1317,15 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         if storage_data.get("next_reset_date"):
             await self._check_missed_reset()
 
-        # Set up scheduled reset
-        async_track_time_change(
+        # Set up scheduled reset with configurable time
+        reset_time_str = self._reset_time.strftime("%H:%M:%S")
+        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Scheduling daily reset at {reset_time_str}")
+        
+        self._reset_time_tracker = async_track_time_change(
             self.hass, self._reset_at_scheduled_time, 
-            hour=RESET_TIME.hour, minute=RESET_TIME.minute, second=RESET_TIME.second
+            hour=self._reset_time.hour, 
+            minute=self._reset_time.minute, 
+            second=self._reset_time.second
         )
 
     async def _setup_listeners_and_handlers(self):
@@ -1369,7 +1451,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             await self._start_realtime_accumulation()
 
     async def _handle_config_entry_update(self, hass: HomeAssistant, entry: ConfigEntry):
-        """Handle config entry updates."""
+        """Handle config entry updates including reset time changes."""
         _LOGGER.info(f"Simple Timer: [{self._entry_id}] Config entry updated")
         self._last_known_title = entry.title
         self._last_known_data_name = entry.data.get("name")
@@ -1378,6 +1460,9 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         if new_switch_entity != self._switch_entity_id:
             _LOGGER.info(f"Simple Timer: [{self._entry_id}] Switch entity changed to: {new_switch_entity}")
             await self.async_update_switch_entity(new_switch_entity)
+        
+        # Check for reset time changes
+        await self._update_reset_time()
         
         await self._handle_name_change()
         
