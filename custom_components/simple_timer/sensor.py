@@ -1109,6 +1109,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                     if attrs.get(ATTR_LAST_ON_TIMESTAMP):
                         self._last_on_timestamp = datetime.fromisoformat(attrs[ATTR_LAST_ON_TIMESTAMP])
                     
+                    self._timer_reverse_mode = attrs.get("reverse_mode", False)
+                    if self._timer_reverse_mode:
+                        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Restored reverse mode: {self._timer_reverse_mode}")
+                    
                     # Restore runtime_at_timer_start from storage if timer was active
                     if self._timer_state == "active":
                         async with self._storage_lock:
@@ -1117,8 +1121,13 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                                 if storage_data and "runtime_at_start" in storage_data:
                                     self._runtime_at_timer_start = storage_data["runtime_at_start"]
                                     _LOGGER.info(f"Simple Timer: [{self._entry_id}] Restored runtime_at_timer_start: {self._runtime_at_timer_start}s")
+                                    
+                                # Also restore reverse mode from storage if available (takes precedence)
+                                if "reverse_mode" in storage_data:
+                                    self._timer_reverse_mode = storage_data["reverse_mode"]
+                                    _LOGGER.info(f"Simple Timer: [{self._entry_id}] Restored reverse mode from storage: {self._timer_reverse_mode}")
                             except Exception as e:
-                                _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Could not restore runtime_at_start: {e}")
+                                _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Could not restore runtime_at_start or reverse_mode: {e}")
                         
                 except (ValueError, TypeError) as e:
                     _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Could not restore state: {e}")
@@ -1264,9 +1273,36 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             # Set up listeners and handlers
             await self._setup_listeners_and_handlers()
             
-            # Handle active timers
-            if self._timer_state == "active" and self._timer_finishes_at:
-                await self._handle_active_timer_restoration(storage_data)
+            # Check for any timer that needs restoration (active OR expired)
+            if storage_data.get("finishes_at"):
+                _LOGGER.info(f"Simple Timer: [{self._entry_id}] Found timer data in storage - checking if restoration needed")
+                try:
+                    stored_finish_time = datetime.fromisoformat(storage_data["finishes_at"])
+                    now = dt_util.utcnow()
+                    remaining_time = (stored_finish_time - now).total_seconds()
+                    reverse_mode = storage_data.get("reverse_mode", False)
+                    
+                    _LOGGER.info(f"Simple Timer: [{self._entry_id}] Timer check - remaining: {remaining_time}s, reverse: {reverse_mode}")
+                    
+                    if remaining_time <= 0:
+                        # Timer expired while offline - handle based on mode
+                        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Expired timer detected - forcing restoration")
+                        
+                        # Temporarily set timer state as active to trigger restoration
+                        self._timer_state = "active"
+                        self._timer_finishes_at = stored_finish_time
+                        self._timer_reverse_mode = reverse_mode
+                        
+                        await self._handle_active_timer_restoration(storage_data)
+                    elif self._timer_state == "active" and self._timer_finishes_at:
+                        # Regular active timer restoration
+                        await self._handle_active_timer_restoration(storage_data)
+                    else:
+                        _LOGGER.info(f"Simple Timer: [{self._entry_id}] No active timer restoration needed")
+                except Exception as e:
+                    _LOGGER.error(f"Simple Timer: [{self._entry_id}] Error during timer restoration check: {e}")
+            else:
+                _LOGGER.info(f"Simple Timer: [{self._entry_id}] No timer data in storage")
 
             # Start accumulation if needed
             await self._start_accumulation_if_needed()
@@ -1341,46 +1377,73 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
     async def _handle_active_timer_restoration(self, storage_data: dict):
         """Handle restoration of active timers with stored timer start time."""
-        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Restoring active timer")
+        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Starting timer restoration")
         
         # Restore timer start moment if available
         if storage_data.get("timer_start"):
             try:
                 self._timer_start_moment = datetime.fromisoformat(storage_data["timer_start"])
+                _LOGGER.info(f"Simple Timer: [{self._entry_id}] Restored timer_start_moment: {self._timer_start_moment}")
             except (ValueError, TypeError):
                 self._timer_start_moment = None
+                _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Failed to restore timer_start_moment")
+        
+        # Restore reverse mode from storage
+        reverse_mode = storage_data.get("reverse_mode", False)
+        self._timer_reverse_mode = reverse_mode
+        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Restored reverse_mode from storage: {reverse_mode}")
         
         now = dt_util.utcnow()
         remaining_time = (self._timer_finishes_at - now).total_seconds()
+        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Remaining time: {remaining_time} seconds")
         
         if remaining_time <= 0:
-            # Timer expired while offline
-            _LOGGER.info(f"Simple Timer: [{self._entry_id}] Timer expired during offline period")
-            await self._handle_expired_timer()
+            # Timer expired while offline - handle based on mode
+            _LOGGER.info(f"Simple Timer: [{self._entry_id}] Timer expired during offline period ({'REVERSE' if reverse_mode else 'NORMAL'} mode)")
+            
+            if reverse_mode:
+                await self._handle_expired_reverse_timer()
+            else:
+                await self._handle_expired_timer()
         else:
             # Timer still active
-            _LOGGER.info(f"Simple Timer: [{self._entry_id}] Restoring active timer with {int(remaining_time)} seconds remaining")
+            _LOGGER.info(f"Simple Timer: [{self._entry_id}] Timer still active with {int(remaining_time)} seconds remaining")
             await self._restore_active_timer(now)
+        
+        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Timer restoration completed")
 
     async def _handle_expired_timer(self):
         """Handle timer that expired while HA was offline."""
         await asyncio.sleep(2)  # Safety delay
         
-        # Load runtime_at_start from storage first
+        # Load timer data from storage including reverse mode
+        reverse_mode = False
         async with self._storage_lock:
             try:
                 data = await self._store.async_load()
-                if data and "runtime_at_start" in data:
-                    self._runtime_at_timer_start = data["runtime_at_start"]
-                    _LOGGER.info(f"Simple Timer: [{self._entry_id}] Restored runtime_at_start for expired timer: {self._runtime_at_timer_start}s")
+                if data:
+                    if "runtime_at_start" in data:
+                        self._runtime_at_timer_start = data["runtime_at_start"]
+                        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Restored runtime_at_start for expired timer: {self._runtime_at_timer_start}s")
+                    if "reverse_mode" in data:
+                        reverse_mode = data["reverse_mode"]
+                        self._timer_reverse_mode = reverse_mode
+                        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Restored reverse mode for expired timer: {reverse_mode}")
             except Exception as e:
-                _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Could not load runtime_at_start: {e}")
+                _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Could not load timer data: {e}")
         
-        # Set runtime to be the timer start runtime plus the full timer duration
-        if self._timer_duration > 0 and hasattr(self, '_runtime_at_timer_start'):
-            expected_runtime = self._timer_duration * 60  # Whole seconds
-            self._state = self._runtime_at_timer_start + expected_runtime
-            _LOGGER.info(f"Simple Timer: [{self._entry_id}] Set runtime for expired timer: {self._state}s (start: {self._runtime_at_timer_start}s + duration: {expected_runtime}s)")
+        # Handle runtime calculation based on timer mode
+        if reverse_mode:
+            # For reverse mode: timer was counting down, device should now turn ON
+            # Runtime should start from when timer finishes (now), not include countdown period
+            _LOGGER.info(f"Simple Timer: [{self._entry_id}] Reverse mode timer expired - device will turn ON now")
+            # Don't add the timer duration to runtime since device was OFF during countdown
+        else:
+            # For normal mode: device was ON during timer, add full duration to runtime
+            if self._timer_duration > 0 and hasattr(self, '_runtime_at_timer_start'):
+                expected_runtime = self._timer_duration * 60  # Whole seconds
+                self._state = self._runtime_at_timer_start + expected_runtime
+                _LOGGER.info(f"Simple Timer: [{self._entry_id}] Set runtime for expired normal timer: {self._state}s (start: {self._runtime_at_timer_start}s + duration: {expected_runtime}s)")
         
         # Add watchdog message
         self._watchdog_message = "Warning: Home assistant was offline during a running timer! Usage time may be unsynchronized."
@@ -1393,19 +1456,111 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         # Clean up timer state
         await self._cleanup_timer_state()
         
-        # Turn off switch
-        if self._switch_entity_id:
-            try:
-                await self.hass.services.async_call(
-                    "homeassistant", "turn_off", {"entity_id": self._switch_entity_id}, blocking=True
-                )
-                await self._ensure_switch_state("off", "Expired timer turn-off")
-            except Exception as e:
-                _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Could not turn off switch: {e}")
+        # Handle switch state based on timer mode
+        if reverse_mode:
+            # For reverse mode: timer finished, turn switch ON and start accumulation
+            if self._switch_entity_id:
+                try:
+                    await self.hass.services.async_call(
+                        "homeassistant", "turn_on", {"entity_id": self._switch_entity_id}, blocking=True
+                    )
+                    await self._ensure_switch_state("on", "Expired reverse timer turn-on")
+                    
+                    # Start accumulation since device is now ON
+                    self._last_on_timestamp = dt_util.utcnow()
+                    await self._start_realtime_accumulation()
+                    
+                except Exception as e:
+                    _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Could not turn on switch: {e}")
+            
+            # Send notification
+            await asyncio.sleep(1)
+            await self._send_notification(f"Delayed start timer completed - device turned ON")
+        else:
+            # For normal mode: timer finished, turn switch OFF
+            if self._switch_entity_id:
+                try:
+                    await self.hass.services.async_call(
+                        "homeassistant", "turn_off", {"entity_id": self._switch_entity_id}, blocking=True
+                    )
+                    await self._ensure_switch_state("off", "Expired timer turn-off")
+                except Exception as e:
+                    _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Could not turn off switch: {e}")
+            
+            # Send notification
+            await asyncio.sleep(1)
+            await self._send_notification(f"Timer was turned off - daily usage {formatted_time} {label}")
+
+    async def _handle_expired_reverse_timer(self):
+        """Handle reverse mode timer that expired while HA was offline."""
+        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Handling expired reverse timer")
         
-        # Send notification
-        await asyncio.sleep(1)
-        await self._send_notification(f"Timer was turned off - daily usage {formatted_time} {label}")
+        try:
+            # Set a flag to prevent the cancellation handler from running its logic
+            self._is_finishing_normally = True
+            
+            # Add watchdog message before cleanup
+            self._watchdog_message = "Warning: Home assistant was offline during a running timer! Usage time may be unsynchronized."
+            
+            # Turn switch ON first (delayed start completed)
+            if self._switch_entity_id:
+                
+                # Check current switch state first
+                current_state = self.hass.states.get(self._switch_entity_id)
+                if current_state:
+                    pass  # State exists
+                else:
+                    _LOGGER.error(f"Simple Timer: [{self._entry_id}] Switch entity not found in hass.states!")
+                
+                try:
+                    await self.hass.services.async_call(
+                        "homeassistant", "turn_on", {"entity_id": self._switch_entity_id}, blocking=True
+                    )
+                    
+                    # Wait and check if it worked
+                    await asyncio.sleep(2)
+                    updated_state = self.hass.states.get(self._switch_entity_id)
+                    if updated_state:
+                        pass  # State updated successfully
+                    else:
+                        _LOGGER.error(f"Simple Timer: [{self._entry_id}] Could not get updated switch state!")
+                    
+                    await self._ensure_switch_state("on", "Expired reverse timer completion turn-on")
+                    
+                except Exception as switch_error:
+                    _LOGGER.error(f"Simple Timer: [{self._entry_id}] ERROR turning switch ON: {switch_error}")
+                    import traceback
+                    _LOGGER.error(f"Simple Timer: [{self._entry_id}] Switch error traceback: {traceback.format_exc()}")
+                    raise
+                
+                # Set timestamp and start accumulation BEFORE cleanup
+                self._last_on_timestamp = dt_util.utcnow()
+                
+            else:
+                _LOGGER.error(f"Simple Timer: [{self._entry_id}] No switch entity configured!")
+            
+            # Clean up timer state AFTER switch is turned on
+            await self._cleanup_timer_state()
+            
+            # Start accumulation after cleanup
+            if self._switch_entity_id and self._last_on_timestamp:
+                await self._start_realtime_accumulation()
+            else:
+                _LOGGER.error(f"Simple Timer: [{self._entry_id}] Cannot start accumulation - switch_entity: {self._switch_entity_id}, last_on: {self._last_on_timestamp}")
+            
+            await self._send_notification(f"Delayed start timer completed - device turned ON")
+            
+            self.async_write_ha_state()
+            
+            _LOGGER.info(f"Simple Timer: [{self._entry_id}] Expired reverse timer handling completed successfully")
+            
+        except Exception as e:
+            _LOGGER.error(f"Simple Timer: [{self._entry_id}] Error handling expired reverse timer: {e}")
+            import traceback
+            _LOGGER.error(f"Simple Timer: [{self._entry_id}] Error traceback: {traceback.format_exc()}")
+        finally:
+            # Always unset the flag
+            self._is_finishing_normally = False
 
     async def _restore_active_timer(self, now: datetime):
         """Restore an active timer after restart."""
@@ -1422,6 +1577,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                     if "runtime_at_start" in data:
                         self._runtime_at_timer_start = data["runtime_at_start"]
                         _LOGGER.info(f"Simple Timer: [{self._entry_id}] Restored runtime_at_start from storage: {self._runtime_at_timer_start}s")
+                    # Ensure reverse mode is restored from storage
+                    if "reverse_mode" in data:
+                        self._timer_reverse_mode = data["reverse_mode"]
+                        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Restored reverse mode from storage: {self._timer_reverse_mode}")
             except Exception as e:
                 _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Could not load timer data: {e}")
         
@@ -1430,20 +1589,58 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         if last_state and last_state.state != "unavailable":
             offline_seconds = (now - last_state.last_updated).total_seconds()
             if offline_seconds > 0:
-                # Add offline time to the current state
-                self._state += int(offline_seconds)
+                # For reverse mode, we don't add offline time since device was OFF
+                reverse_mode = getattr(self, '_timer_reverse_mode', False)
+                if not reverse_mode:
+                    # Add offline time to the current state only for normal timers
+                    self._state += int(offline_seconds)
+                    _LOGGER.info(f"Simple Timer: [{self._entry_id}] Added {int(offline_seconds)}s offline time to runtime")
+                else:
+                    _LOGGER.info(f"Simple Timer: [{self._entry_id}] Reverse mode timer - not adding offline time during countdown")
+                
                 self._watchdog_message = "Warning: Home assistant was offline during a running timer! Usage time may be unsynchronized."
-                _LOGGER.info(f"Simple Timer: [{self._entry_id}] Added {int(offline_seconds)}s offline time to runtime")
         
         # Restore timer tracking
         self._timer_unsub = async_track_point_in_utc_time(
             self.hass, self._async_timer_finished, self._timer_finishes_at
         )
         await self._start_timer_update_task()
-        await self._ensure_switch_state("on", "Active timer state verification on restart")
+        
+        # Handle switch state based on timer mode
+        reverse_mode = getattr(self, '_timer_reverse_mode', False)
+        if reverse_mode:
+            # For reverse mode, ensure switch stays OFF during countdown
+            await self._ensure_switch_state("off", "Reverse timer state verification on restart")
+        else:
+            # For normal mode, ensure switch is ON
+            await self._ensure_switch_state("on", "Active timer state verification on restart")
 
     async def _start_accumulation_if_needed(self):
         """Start accumulation if switch is on."""
+        # Check if we have an active reverse mode timer
+        reverse_mode_active = (
+            self._timer_state == "active" and 
+            getattr(self, '_timer_reverse_mode', False)
+        )
+        
+        if reverse_mode_active:
+            # For reverse mode timers, ensure switch stays OFF during countdown
+            if self._switch_entity_id:
+                current_switch_state = self.hass.states.get(self._switch_entity_id)
+                if current_switch_state and current_switch_state.state == "on":
+                    # Switch should be OFF during reverse timer countdown
+                    _LOGGER.info(f"Simple Timer: [{self._entry_id}] Ensuring switch stays OFF during reverse timer countdown")
+                    try:
+                        await self.hass.services.async_call(
+                            "homeassistant", "turn_off", {"entity_id": self._switch_entity_id}, blocking=True
+                        )
+                    except Exception as e:
+                        _LOGGER.error(f"Simple Timer: [{self._entry_id}] Failed to turn off switch during reverse timer: {e}")
+            
+            # Don't start accumulation during reverse timer countdown
+            return
+        
+        # Normal behavior for non-reverse timers
         if self._is_switch_on() and not self._last_on_timestamp:
             self._last_on_timestamp = dt_util.utcnow()
             await self._start_realtime_accumulation()
