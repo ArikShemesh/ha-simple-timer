@@ -144,9 +144,8 @@ class TimerCardEditor extends LitElement {
 
     if (instances.length === 0) {
         console.info(`TimerCardEditor: No Simple Timer integration instances found by scanning hass.states.`);
-    } else {
-        console.info("TimerCardEditor: Found Simple Timer instances by scanning states:", instances);
     }
+		
     return instances;
   }
 	
@@ -166,7 +165,6 @@ class TimerCardEditor extends LitElement {
         });
 
         validatedButtons.sort((a, b) => a - b);
-        console.log(`TimerCardEditor: Using ${validatedButtons.length} timer buttons from config:`, validatedButtons);
         return validatedButtons;
     }
 
@@ -180,7 +178,6 @@ class TimerCardEditor extends LitElement {
 	}
 
   async setConfig(cfg: TimerCardConfig): Promise<void> {
-    console.log(`TimerCardEditor: setConfig called with:`, cfg);
     const oldConfig = { ...this._config };
 
     const timerButtonsToSet = this._getValidatedTimerButtons(cfg.timer_buttons);
@@ -196,7 +193,6 @@ class TimerCardEditor extends LitElement {
 
     if (cfg.timer_instance_id) {
         newConfigData.timer_instance_id = cfg.timer_instance_id;
-        console.info(`TimerCardEditor: setConfig PRESERVING existing timer_instance_id: '${cfg.timer_instance_id}'`);
     } else {
         console.info(`TimerCardEditor: setConfig - no timer_instance_id in config, will remain unset`);
     }
@@ -208,10 +204,7 @@ class TimerCardEditor extends LitElement {
     this._config = newConfigData;
     this._configFullyLoaded = true;
     
-    console.log(`TimerCardEditor: setConfig result:`, this._config);
-    
     if (JSON.stringify(oldConfig) !== JSON.stringify(this._config)) {
-        console.log(`TimerCardEditor: Config changed, dispatching config-changed event`);
         this.dispatchEvent(
             new CustomEvent("config-changed", { detail: { config: this._config } })
         );
@@ -235,7 +228,6 @@ class TimerCardEditor extends LitElement {
       super.updated(changedProperties);
       if (changedProperties.has("hass") && this.hass) {
           if ((changedProperties.get("hass") as any)?.states !== this.hass.states || this._timerInstancesOptions.length === 0) {
-               console.log("TimerCardEditor: hass.states changed or instances not yet fetched, re-fetching instances.");
                this._fetchTimerInstances();
           }
       }
@@ -243,13 +235,10 @@ class TimerCardEditor extends LitElement {
 
   async _fetchTimerInstances() {
       if (this.hass) {
-          console.log(`TimerCardEditor: _fetchTimerInstances called. Config loaded: ${this._configFullyLoaded}, Current config timer_instance_id: '${this._config?.timer_instance_id}'`);
-          
+				
           this._timerInstancesOptions = await this._getSimpleTimerInstances();
-          console.log(`TimerCardEditor: Found ${this._timerInstancesOptions.length} instances:`, this._timerInstancesOptions);
           
           if (!this._configFullyLoaded) {
-              console.info(`TimerCardEditor: Config not fully loaded yet, skipping any auto-selection logic`);
               this.requestUpdate();
               return;
           }
@@ -276,8 +265,6 @@ class TimerCardEditor extends LitElement {
                           composed: true,
                       }),
                   );
-              } else {
-                  console.info(`TimerCardEditor: PRESERVING existing valid instance: '${this._config.timer_instance_id}'`);
               }
           } else {
               console.info(`TimerCardEditor: No timer_instance_id configured or no instances available. User must manually select.`);

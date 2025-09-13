@@ -111,36 +111,55 @@ class TimerCard extends LitElement {
   }
 
   setConfig(cfg: TimerCardConfig): void {
-    this._config = {
-      type: cfg.type || "custom:timer-card",
-      timer_buttons: this._getValidatedTimerButtons(cfg.timer_buttons),
-      card_title: cfg.card_title || null,
-			power_button_icon: cfg.power_button_icon || null,
-			slider_max: cfg.slider_max || 120,
-			reverse_mode: cfg.reverse_mode || false
-    };
+		const newSliderMax = cfg.slider_max && cfg.slider_max > 0 && cfg.slider_max <= 1000 ? cfg.slider_max : 120;
+		const instanceId = cfg.timer_instance_id || 'default';
 
-    if (cfg.timer_instance_id) {
-        this._config.timer_instance_id = cfg.timer_instance_id;
+		this._config = {
+			type: cfg.type || "custom:timer-card",
+			timer_buttons: this._getValidatedTimerButtons(cfg.timer_buttons),
+			card_title: cfg.card_title || null,
+			power_button_icon: cfg.power_button_icon || null,
+			slider_max: newSliderMax,
+			reverse_mode: cfg.reverse_mode || false,
+			timer_instance_id: instanceId,
+			entity: cfg.entity,
+			sensor_entity: cfg.sensor_entity
+		};
+		
+		if (cfg.timer_instance_id) {
+			this._config.timer_instance_id = cfg.timer_instance_id;
     }
     if (cfg.entity) {
-        this._config.entity = cfg.entity;
+			this._config.entity = cfg.entity;
     }
     if (cfg.sensor_entity) {
-        this._config.sensor_entity = cfg.sensor_entity;
-    }
+			this._config.sensor_entity = cfg.sensor_entity;
+		}
 
-    // Set buttons from validated config - could be empty array
-    this.buttons = [...this._config.timer_buttons];
+		// Always initialize from localStorage
+		const saved = localStorage.getItem(`simple-timer-slider-${instanceId}`);
+		let parsed = saved ? parseInt(saved) : NaN;
+		if (isNaN(parsed) || parsed <= 0) {
+			parsed = newSliderMax;
+		}
 
-    this._liveRuntimeSeconds = 0;
-    this._notificationSentForCurrentCycle = false;
+		// Clamp if needed
+		if (parsed > newSliderMax) {
+			parsed = newSliderMax;
+		}
 
-    this._effectiveSwitchEntity = null;
-    this._effectiveSensorEntity = null;
-    this._entitiesLoaded = false;
-    console.log(`TimerCard: setConfig completed. Configured instance ID: ${this._config.timer_instance_id}, Buttons: ${this.buttons.length}, Power Icon: ${this._config.power_button_icon}`);
-  }
+		this._sliderValue = parsed;
+		localStorage.setItem(`simple-timer-slider-${instanceId}`, this._sliderValue.toString());
+
+		this.requestUpdate();
+
+		this.buttons = [...this._config.timer_buttons];
+		this._liveRuntimeSeconds = 0;
+		this._notificationSentForCurrentCycle = false;
+		this._effectiveSwitchEntity = null;
+		this._effectiveSensorEntity = null;
+		this._entitiesLoaded = false;
+	}
 
   _getValidatedTimerButtons(configButtons: any): number[] {
     let validatedTimerButtons: number[] = [];
@@ -427,7 +446,7 @@ class TimerCard extends LitElement {
 			const savedValue = localStorage.getItem(`simple-timer-slider-${instanceId}`);
 			
 			if (savedValue) {
-					this._sliderValue = parseInt(savedValue);
+					//this._sliderValue = parseInt(savedValue);
 			} else {
 					// Fall back to last timer duration for this instance
 					this._determineEffectiveEntities();
@@ -679,12 +698,11 @@ class TimerCard extends LitElement {
 	}
 	
 	_handleSliderChange(event: Event): void {
-			const slider = event.target as HTMLInputElement;
-			this._sliderValue = parseInt(slider.value);
-			
-			// Save per instance in localStorage
-			const instanceId = this._config?.timer_instance_id || 'default';
-			localStorage.setItem(`simple-timer-slider-${instanceId}`, this._sliderValue.toString());
+		const slider = event.target as HTMLInputElement;
+		this._sliderValue = parseInt(slider.value);
+
+		const instanceId = this._config?.timer_instance_id || 'default';
+		localStorage.setItem(`simple-timer-slider-${instanceId}`, this._sliderValue.toString());
 	}
 	
 	_getCurrentTimerMode(): string {
@@ -699,7 +717,7 @@ class TimerCard extends LitElement {
   render() {
     let message: string | null = null;
     let isWarning = false;
-
+		
     if (!this.hass) {
         message = "Home Assistant object (hass) not available. Card cannot load.";
         isWarning = true;
