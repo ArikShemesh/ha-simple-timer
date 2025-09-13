@@ -82,6 +82,7 @@ class TimerCardEditor extends LitElement {
   _configFullyLoaded: boolean = false; // Track if we've received a complete config
 
   private _timerInstancesOptions: Array<{ value: string; label: string }> = [];
+	private _tempSliderMaxValue: string | null = null;
 
   constructor() {
     super();
@@ -329,8 +330,8 @@ class TimerCardEditor extends LitElement {
     if (!this.hass) return html``;
 
     const timerInstances = this._timerInstancesOptions || [];
-
     const instanceOptions = [{ value: "", label: "None" }];
+		const v = this._tempSliderMaxValue ?? String(this._config.slider_max ?? 120);
     
     if (timerInstances.length > 0) {
         instanceOptions.push(...timerInstances);
@@ -386,16 +387,20 @@ class TimerCardEditor extends LitElement {
 				
 				<div class="config-row">
 					<ha-textfield
-						.label=${"Slider Maximum (minutes)"}
-						.value=${this._config?.slider_max?.toString() || "120"}
-						.configValue=${"slider_max"}
-						@input=${this._valueChanged}
-						.placeholder=${"Default: 120"}
+						label="Slider maximum (1–1000)"
 						type="number"
 						min="1"
 						max="1000"
-						.helper=${"Maximum value for the timer slider (1-1000 minutes). Lower values provide better touch precision."}
-					></ha-textfield>
+						inputmode="numeric"
+						value=${v}
+						helper="Enter a number between 1 and 1000"
+						validationMessage="Must be 1–1000"
+						?invalid=${this._isSliderMaxInvalid()}
+						@input=${this._onSliderMaxInput}
+						@change=${this._handleSliderMaxBlur}
+						@blur=${this._handleSliderMaxBlur}
+						@keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') this._handleSliderMaxBlur(e as any); }}
+					/>
 				</div>
 				
 				<div class="config-row">
@@ -433,6 +438,20 @@ class TimerCardEditor extends LitElement {
       </div>
     `;
   }
+	
+	private _onSliderMaxInput(ev: Event) {
+		const target = ev.currentTarget as HTMLInputElement;
+		this._tempSliderMaxValue = target.value;     // do NOT clamp here
+		this.requestUpdate();                        // makes ?invalid update live
+	}
+	
+	private _isSliderMaxInvalid(): boolean {
+		const raw = this._tempSliderMaxValue ?? String(this._config.slider_max ?? "");
+		if (raw === "") return true;                 // empty = invalid while editing
+		const n = Number(raw);
+		if (!Number.isFinite(n)) return true;
+		return !(n >= 1 && n <= 1000);               // enforce 1–1000 (no negatives)
+	}
 
   _valueChanged(ev: Event): void {
     ev.stopPropagation();
@@ -474,10 +493,7 @@ class TimerCardEditor extends LitElement {
             updatedConfig.timer_instance_id = null;
         }
     } else if (configValue === "power_button_icon") {
-			updatedConfig.power_button_icon = value || null;
-		} else if (configValue === "slider_max") {
-			const numValue = parseInt(value) || 120;
-			updatedConfig.slider_max = Math.min(Math.max(numValue, 1), 1000);
+				updatedConfig.power_button_icon = value || null;
 		} else if (configValue === "reverse_mode") {
 			updatedConfig.reverse_mode = value;
 		}
@@ -519,6 +535,34 @@ class TimerCardEditor extends LitElement {
         this.requestUpdate();
     }
   }
+	
+	private _handleSliderMaxBlur(ev: Event) {
+		const target = ev.currentTarget as HTMLInputElement;
+		const raw = (target.value ?? "").trim();
+		const n = Number(raw);
+		const isInvalid = !raw || !Number.isFinite(n) || n < 1 || n > 1000;
+
+		const newMax = isInvalid ? 120 : Math.trunc(n);
+		target.value = String(newMax);
+		this._tempSliderMaxValue = null;
+
+		// Clamp existing timer buttons to newMax
+		let newButtons = [...(this._config.timer_buttons || [])];
+		newButtons = newButtons.filter(val => val <= newMax);
+
+		const updated: TimerCardConfig = {
+			...this._config,
+			slider_max: newMax,
+			timer_buttons: newButtons
+		};
+
+		this._config = updated;
+
+		this.dispatchEvent(new CustomEvent("config-changed", {
+			detail: { config: updated }, bubbles: true, composed: true
+		}));
+		this.requestUpdate();
+	}
 
   static get styles() {
     return editorCardStyles;
