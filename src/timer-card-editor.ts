@@ -188,7 +188,8 @@ class TimerCardEditor extends LitElement {
       card_title: cfg.card_title || null,
 			power_button_icon: cfg.power_button_icon || null,
 			slider_max: cfg.slider_max || 120,
-			reverse_mode: cfg.reverse_mode || false
+			reverse_mode: cfg.reverse_mode || false,
+			show_daily_usage: cfg.show_daily_usage !== false
     };
 
     if (cfg.timer_instance_id) {
@@ -400,6 +401,16 @@ class TimerCardEditor extends LitElement {
 					</ha-formfield>
 				</div>
 				
+				<div class="config-row">
+					<ha-formfield .label=${"Show Daily Usage"}>
+						<ha-switch
+							.checked=${this._config?.show_daily_usage !== false} // Default to true
+							.configValue=${"show_daily_usage"}
+							@change=${this._valueChanged}
+						></ha-switch>
+					</ha-formfield>
+				</div>
+				
       </div>
 
       <div class="card-config-group">
@@ -483,6 +494,8 @@ class TimerCardEditor extends LitElement {
 				updatedConfig.power_button_icon = value || null;
 		} else if (configValue === "reverse_mode") {
 			updatedConfig.reverse_mode = value;
+		} else if (configValue === "show_daily_usage") {
+			updatedConfig.show_daily_usage = value;
 		}
 
     // Preserve existing values

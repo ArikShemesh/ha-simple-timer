@@ -48,6 +48,7 @@ export const cardStyles = css`
 				text-align: center;
 				padding: 0 !important;
 				display: flex;
+				flex-direction: column;
 				align-items: center;
 				justify-content: center;
 			}
@@ -67,6 +68,14 @@ export const cardStyles = css`
 			
 			.countdown-display.active.reverse {
 				color: #f2ba5a;
+			}
+
+			.daily-usage-display {
+				font-size: 14px;
+				font-weight: 500;
+				color: var(--secondary-text-color);
+				margin-top: -18px;
+				text-align: center;
 			}
       
       .slider-row {
@@ -174,8 +183,8 @@ export const cardStyles = css`
       }
       
       .power-button-small {
-					width: 80px;
-					height: 65px;
+					width: 55px;
+					height: 50px;
 					flex-shrink: 0;
 					box-sizing: border-box;
 					border-radius: 12px;
@@ -198,10 +207,17 @@ export const cardStyles = css`
 							inset 0 1px 0 rgba(255, 255, 255, 0.2),
 							inset 0 -1px 0 rgba(0, 0, 0, 0.3);
 					
-					color: #f5f5f5;
-					font-size: 18px;
-					--mdc-icon-size: 24px;
+					color: var(--primary-color);
+					--mdc-icon-size: 36px;
 					padding: 4px;
+			}
+			
+			.power-button-small ha-icon[icon] {
+					color: var(--primary-color);
+			}
+
+			.power-button-small.reverse ha-icon[icon] {
+					color: #f2ba5a;
 			}
 			
 			.power-button-small::before {
@@ -223,7 +239,7 @@ export const cardStyles = css`
 							0 5px 15px rgba(0, 0, 0, 0.4),
 							inset 0 1px 0 rgba(255, 255, 255, 0.25),
 							inset 0 -1px 0 rgba(0, 0, 0, 0.3);
-					color: #ffffff;
+					color: var(--primary-color);
 			}
 			
 			.power-button-small:active {
@@ -236,14 +252,10 @@ export const cardStyles = css`
 							inset 0 -1px 0 rgba(0, 0, 0, 0.4);
 			}
 			
-			.power-button-small ha-icon[icon] {
-					transform: translateY(-3px);
-			}
-      
       .power-button-small.on {
 					background-color: #2a89d1;
 					border: 2px solid #4da3e0;
-					color: white;
+					color: var(--primary-color);
 					box-shadow: 
 							0 0 0 2px rgba(42, 137, 209, 0.3),
 							0 0 12px rgba(42, 137, 209, 0.6);
@@ -263,12 +275,23 @@ export const cardStyles = css`
 							0 0 20px rgba(42, 137, 209, 0.8); }
 			}
 			
-			.power-usage-text {
-				font-size: 14px;
-				font-weight: 500;
-				margin-top: 2px;
-				line-height: 1;
-				text-align: center;
+			.power-button-small.on.reverse {
+					background-color: #f2ba5a;
+					border: 2px solid #f4c474;
+					color: #f2ba5a;
+					box-shadow: 
+							0 0 0 2px rgba(242, 186, 90, 0.3),
+							0 0 12px rgba(242, 186, 90, 0.6);
+					animation: pulse-orange 2s infinite;
+			}
+
+			@keyframes pulse-orange {
+					0%, 100% { box-shadow: 
+							0 0 0 2px rgba(242, 186, 90, 0.3),
+							0 0 12px rgba(242, 186, 90, 0.6); }
+					50% { box-shadow: 
+							0 0 0 4px rgba(242, 186, 90, 0.5),
+							0 0 20px rgba(242, 186, 90, 0.8); }
 			}
       
       .button-grid {

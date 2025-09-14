@@ -121,6 +121,7 @@ class TimerCard extends LitElement {
 			power_button_icon: cfg.power_button_icon || null,
 			slider_max: newSliderMax,
 			reverse_mode: cfg.reverse_mode || false,
+			show_daily_usage: cfg.show_daily_usage !== false,
 			timer_instance_id: instanceId,
 			entity: cfg.entity,
 			sensor_entity: cfg.sensor_entity
@@ -781,7 +782,7 @@ class TimerCard extends LitElement {
       const hours = Math.floor(totalSecondsInt / 3600);
       const minutes = Math.floor((totalSecondsInt % 3600) / 60);
       const seconds = totalSecondsInt % 60;
-      dailyUsageFormatted = `Daily Usage: ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+      dailyUsageFormatted = `Daily usage: ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
       
       // Countdown display - show active countdown or 00:00:00
       countdownDisplay = this._timeRemaining || '00:00:00';
@@ -790,7 +791,7 @@ class TimerCard extends LitElement {
       const totalMinutes = Math.floor(committedSeconds / 60);
       const hours = Math.floor(totalMinutes / 60);
       const minutes = totalMinutes % 60;
-      dailyUsageFormatted = `Daily Usage: ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+      dailyUsageFormatted = `Daily usage: ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
       
       // Countdown display - show active countdown or 00:00
       countdownDisplay = this._timeRemaining || '00:00';
@@ -828,6 +829,19 @@ class TimerCard extends LitElement {
             <div class="countdown-display ${isTimerActive ? 'active' : ''} ${isReverseMode ? 'reverse' : ''}">
               ${countdownDisplay}
             </div>
+						${this._config?.show_daily_usage !== false ? html`
+							<div class="daily-usage-display"
+									 @click=${this._handleUsageClick}
+									 @mousedown=${this._startLongPress}
+									 @mouseup=${this._endLongPress}
+									 @mouseleave=${this._endLongPress}
+									 @touchstart=${this._handleTouchStart}
+									 @touchend=${this._handleTouchEnd}
+									 @touchcancel=${this._endLongPress}
+									 title="Click to show more info, hold to reset daily usage">
+								${dailyUsageFormatted}
+            </div>
+						` : ''}
           </div>
 
           <!-- Slider Row -->
@@ -844,17 +858,10 @@ class TimerCard extends LitElement {
               />
               <span class="slider-label">${this._sliderValue} min</span>
             </div>
-            <div class="power-button-small ${isOn ? 'on' : ''}" 
+            <div class="power-button-small ${isTimerActive && isReverseMode ? 'on reverse' : isOn ? 'on' : this._config?.reverse_mode ? 'reverse' : ''}" 
 								 @click=${this._handlePowerClick}
-								 @mousedown=${this._startLongPress}
-								 @mouseup=${this._endLongPress}
-								 @mouseleave=${this._endLongPress}
-								 @touchstart=${this._handleTouchStart}
-								 @touchend=${this._handleTouchEnd}
-								 @touchcancel=${this._endLongPress}
-								 title="Click to toggle power, hold to reset daily usage">
+								 title="Click to toggle power">
 							${this._config?.power_button_icon ? html`<ha-icon icon="${this._config.power_button_icon}"></ha-icon>` : ''}
-							<div class="power-usage-text">${dailyUsageFormatted.replace('Daily Usage: ', '')}</div>
 						</div>
           </div>
 
