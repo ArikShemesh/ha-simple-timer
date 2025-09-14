@@ -516,6 +516,9 @@ class TimerCardEditor extends LitElement {
 		if (this._config.reverse_mode !== undefined && configValue !== "reverse_mode") {
 			updatedConfig.reverse_mode = this._config.reverse_mode;
 		}
+		if (this._config.show_daily_usage !== undefined && configValue !== "show_daily_usage") {
+			updatedConfig.show_daily_usage = this._config.show_daily_usage;
+		}
 
     if (JSON.stringify(this._config) !== JSON.stringify(updatedConfig)) {
         this._config = updatedConfig;

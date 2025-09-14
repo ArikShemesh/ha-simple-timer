@@ -802,9 +802,9 @@ class TimerCard extends LitElement {
 
 		return html`
       <ha-card>
-        <div class="card-header">
-					<div class="card-title">${this._config?.card_title || ''}</div>
-        </div>
+        <div class="card-header ${this._config?.card_title ? 'has-title' : ''}">
+						<div class="card-title">${this._config?.card_title || ''}</div>
+				</div>
 
         ${watchdogMessage ? html`
           <div class="status-message warning watchdog-banner">

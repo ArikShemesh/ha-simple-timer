@@ -21,15 +21,22 @@ export const cardStyles = css`
         border-radius: 12px 12px 0 0;
 				margin-bottom: 0px;
       }
+			
+			.card-header.has-title {
+					margin-bottom: -15px;
+			}
+			
       .card-title {
         flex-grow: 1;
         white-space: pre-wrap;
         word-break: break-word;
       }
+			
       .placeholder { 
         padding: 16px; 
         background-color: var(--secondary-background-color); 
       }
+			
       .warning { 
         padding: 16px; 
         color: white; 
@@ -44,7 +51,6 @@ export const cardStyles = css`
 			}
       
       .countdown-section {
-				min-height: 60px;
 				text-align: center;
 				padding: 0 !important;
 				display: flex;
