@@ -7,6 +7,10 @@ interface TimerCardConfig {
   sensor_entity?: string | null;
   timer_buttons: number[];
   card_title?: string | null;
+	power_button_icon?: string | null;
+	slider_max?: number;
+	reverse_mode?: boolean;
+	show_daily_usage?: boolean;
 }
 
 // Define the structure for a Home Assistant state object

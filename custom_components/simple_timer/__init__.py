@@ -98,45 +98,6 @@ async def init_resource(hass: HomeAssistant, url: str, ver: str) -> bool:
         add_extra_js_url(hass, url2)
 
     return True
-    """Add extra JS module for lovelace mode YAML and new lovelace resource
-    for mode GUI. It's better to add extra JS for all modes, because it has
-    random url to avoid problems with the cache. But chromecast don't support
-    extra JS urls and can't load custom card.
-    """
-    resources: ResourceStorageCollection = hass.data["lovelace"].resources
-    # force load storage
-    await resources.async_get_info()
-
-    url2 = f"{url}?v={ver}"
-
-    for item in resources.async_items():
-        if not item.get("url", "").startswith(url):
-            continue
-
-        # no need to update
-        if item["url"].endswith(ver):
-            return False
-
-        _LOGGER.debug(f"Update lovelace resource to: {url2}")
-
-        if isinstance(resources, ResourceStorageCollection):
-            await resources.async_update_item(
-                item["id"], {"res_type": "module", "url": url2}
-            )
-        else:
-            # not the best solution, but what else can we do
-            item["url"] = url2
-
-        return True
-
-    if isinstance(resources, ResourceStorageCollection):
-        _LOGGER.debug(f"Add new lovelace resource: {url2}")
-        await resources.async_create_item({"res_type": "module", "url": url2})
-    else:
-        _LOGGER.debug(f"Add extra JS module: {url2}")
-        add_extra_js_url(hass, url2)
-
-    return True
 
 # Configuration schema for YAML setup (required by hassfest)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -176,6 +137,8 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
     SERVICE_START_TIMER_SCHEMA = vol.Schema({
         vol.Required("entry_id"): cv.string,
         vol.Required("duration"): cv.positive_int,
+        vol.Optional("reverse_mode", default=False): cv.boolean,
+        vol.Optional("start_method", default="button"): vol.In(["button", "slider"]),
     })
     SERVICE_CANCEL_TIMER_SCHEMA = vol.Schema({
         vol.Required("entry_id"): cv.string,
@@ -199,6 +162,9 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
         vol.Required("entry_id"): cv.string,
         vol.Optional("message", default="Test notification"): cv.string,
     })
+    SERVICE_RESET_DAILY_USAGE_SCHEMA = vol.Schema({
+    vol.Required("entry_id"): cv.string,
+    })
 
     async def test_notification(call: ServiceCall):
         """Test notification functionality."""
@@ -221,6 +187,8 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
         """Handle the service call to start the device timer."""
         entry_id = call.data["entry_id"]
         duration = call.data["duration"]
+        reverse_mode = call.data.get("reverse_mode", False)
+        start_method = call.data.get("start_method", "button")
         
         # Find the sensor by entry_id
         sensor = None
@@ -230,7 +198,7 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
                 break
         
         if sensor:
-            await sensor.async_start_timer(duration)
+            await sensor.async_start_timer(duration, reverse_mode, start_method)
         else:
             raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
 
@@ -312,6 +280,22 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
             await sensor.async_manual_power_toggle(action)
         else:
             raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
+            
+    async def reset_daily_usage(call: ServiceCall):
+        """Handle manual daily usage reset."""
+        entry_id = call.data["entry_id"]
+        
+        # Find the sensor by entry_id
+        sensor = None
+        for stored_entry_id, entry_data in hass.data[DOMAIN].items():
+            if stored_entry_id == entry_id and "sensor" in entry_data:
+                sensor = entry_data["sensor"]
+                break
+        
+        if sensor:
+            await sensor.async_reset_daily_usage()
+        else:
+            raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
 
     # Register all services
     hass.services.async_register(
@@ -331,6 +315,9 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
     )
     hass.services.async_register(
     DOMAIN, "test_notification", test_notification, schema=SERVICE_TEST_NOTIFICATION_SCHEMA
+    )
+    hass.services.async_register(
+    DOMAIN, "reset_daily_usage", reset_daily_usage, schema=SERVICE_RESET_DAILY_USAGE_SCHEMA
     )
 
     hass.data[DOMAIN]["services_registered"] = True

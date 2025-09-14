@@ -18,6 +18,13 @@ start_timer:
           min: 1
           max: 1000
           unit_of_measurement: "minutes"
+    reverse_mode:
+      name: Reverse Mode
+      description: If true, starts a delayed timer (device turns ON when timer finishes).
+      required: false
+      default: false
+      selector:
+        boolean:
 
 cancel_timer:
   name: Cancel Timer
@@ -78,3 +85,32 @@ manual_power_toggle:
           options:
             - turn_on
             - turn_off
+
+reset_daily_usage:
+  name: Reset Daily Usage
+  description: Manually reset daily usage time to zero
+  fields:
+    entry_id:
+      name: Entry ID
+      description: The config entry ID of the simple timer sensor
+      required: true
+      selector:
+        text:
+
+test_notification:
+  name: Test Notification
+  description: Test the notification functionality for a timer instance
+  fields:
+    entry_id:
+      name: Entry ID
+      description: The config entry ID of the simple timer sensor
+      required: true
+      selector:
+        text:
+    message:
+      name: Message
+      description: Test message to send
+      required: false
+      default: "Test notification"
+      selector:
+        text:
