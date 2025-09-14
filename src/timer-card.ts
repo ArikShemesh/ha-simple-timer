@@ -627,6 +627,7 @@ class TimerCard extends LitElement {
 	
 	_handleTouchEnd(event: TouchEvent): void {
 			event.preventDefault();
+			event.stopPropagation();
 			
 			if (this._longPressTimer) {
 					window.clearTimeout(this._longPressTimer);
@@ -646,7 +647,7 @@ class TimerCard extends LitElement {
 			
 			// Only trigger if it's not a long press AND the touch didn't move much
 			if (!this._isLongPress && !hasMoved) {
-					this._togglePower();
+					this._showMoreInfo();
 			}
 			
 			this._isLongPress = false;
@@ -655,6 +656,7 @@ class TimerCard extends LitElement {
 
 	_handleTouchStart(event: TouchEvent): void {
 			event.preventDefault();
+			event.stopPropagation();
 			this._isLongPress = false;
 			
 			// Record the initial touch position
