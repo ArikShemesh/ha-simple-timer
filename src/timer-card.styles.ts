@@ -206,8 +206,8 @@ export const cardStyles = css`
   }
 
   .power-button-small {
-      width: 55px;
-      height: 50px;
+      width: 65px;
+      height: 60px;
       flex-shrink: 0;
       box-sizing: border-box;
       border-radius: 12px;
