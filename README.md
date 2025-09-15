@@ -6,18 +6,17 @@ A simple Home Assistant integration that turns entities on and off with a precis
 
 <a href="https://coff.ee/codemakor" target="_blank"><img src="https://www.buymeacoffee.com/assets/img/custom_images/white_img.png" alt="Buy Me A Coffee" style="height: auto !important;width: auto !important;" ></a>
 
-### Card Overview
-![image](https://github.com/ArikShemesh/ha-simple-timer/blob/main/images/simple_timer_card.png)
+![image](https://github.com/ArikShemesh/ha-simple-timer/blob/main/images/simple_timer_dashboard.png)
 
 ### Configuration
-![image](https://github.com/ArikShemesh/ha-simple-timer/blob/main/images/simple_timer_card_editor.png)
+![image](https://github.com/ArikShemesh/ha-simple-timer/blob/main/images/simple_timer_card_configuration.png)
 
 ## ✨ Key Features
 🚀 **Out-of-the-box**, pre-packaged timer solution, eliminating manual creation of multiple Home Assistant entities, sensors, and automations.
 
 🕐 **Precise Timer Control** - Set countdown timers from 1-1000 minutes for any switch, input_boolean, light, or fan
 
-📊 **Daily Runtime Tracking** - Automatically tracks and displays daily usage time in HH:MM format
+📊 **Daily Runtime Tracking** - Automatically tracks and displays daily usage time
 
 🔄 **Smart Auto-Cancel** - Timer automatically cancels if the controlled device is turned off externally
 
@@ -26,6 +25,8 @@ A simple Home Assistant integration that turns entities on and off with a precis
 🔔 **Notification Support** - Optional notifications for timer start, finish, and cancellation events
 
 🌙 **Midnight Reset** - Daily usage statistics reset automatically at midnight
+
+⏰ **Delayed Start Timers** - Turns devices ON when timer completes and keeps them on indefinitely until manually turned off
 
 ## 🏠 Perfect For
 
@@ -53,26 +54,6 @@ Use this link to open the repository in HACS and click on Download
 3. **Restart Home Assistant**
 
 **That's it!** The timer card is automatically installed and ready to use - no additional steps required.
-
-## 🎉 What's New in v1.1.5
-
-✨ **Automatic Card Installation** - The timer card is now automatically installed and configured when you install the integration! No more manual file copying or resource configuration needed.
-
-🔄 **Automatic Updates** - When you update the integration, the timer card is automatically updated with proper cache busting.
-
-📁 **Simplified Structure** - The frontend card is now bundled directly with the integration files.
-
-## 🔧 Behind the Scenes (v1.1.5)
-
-When the integration loads, it automatically:
-- 📂 **Copies** the timer card file from the integration to `config/www/simple-timer/timer-card.js`
-- 🔗 **Registers** the static path to serve the card file
-- 📋 **Adds/updates** the Lovelace resource with proper versioning (`/local/simple-timer/timer-card.js?v=1.1.5`)
-- 🔄 **Handles updates** by automatically updating the resource URL with new versions
-
-You can verify the automatic installation by checking:
-- **File location:** `config/www/simple-timer/timer-card.js` (automatically created)
-- **Resources:** Settings → Dashboards → Resources (automatically added)
 
 ## ⚙️ Configuration
 
@@ -116,16 +97,24 @@ type: custom:timer-card
 timer_instance_id: your_instance_entry_id
 timer_buttons: [15, 30, 60, 90, 120, 150]
 card_title: "Kitchen Timer"
+slider_max: 120
+reverse_mode: true
+show_daily_usage: true
+power_icon: "mdi:power"
 ```
 
 ### Configuration Options
 
-Option                | Type     | Required | Default                  | Description
-----------------------|----------|----------|--------------------------|-------------------------------------------------------
-`type`                | string   | ✅       | -                        | Must be `custom:timer-card`
-`timer_instance_id`   | string   | ✅       | -                        | Entry ID of your timer instance
-`timer_buttons`       | array    | ❌       | [15,30,60,90,120,150]    | Timer duration buttons (1-1000 minutes)
-`card_title`          | string   | ❌       | -                        | Custom title for the card
+Option                | Type     | Default                  | Description
+----------------------|----------|--------------------------|-------------------------------------------------------
+`type`                | string   | -                        | Must be `custom:timer-card`
+`timer_instance_id`   | string   | -                        | Entry ID of your timer instance
+`timer_buttons`       | array    | [15,30,60,90,120,150]    | Timer duration buttons (1-1000 minutes)
+`card_title`          | string   | -                        | Custom title for the card
+`slider_max`          | integer  | 120                      | Slider max value (1-1000 minutes)
+`reverse_mode`        | boolean  | false                    | Enable or disabled the delayed start feature
+`show_daily_usage`    | boolean  | false                    | Display or hide the daily usage
+`power_icon`          | mdi      | mdi:power                | Set the power button icon
 
 ## ❓ Frequently Asked Questions
 
@@ -136,7 +125,7 @@ Yes! Add multiple integrations for different devices.
 Yes, active timers resume automatically with offline time compensation.
 
 ### Can I customize the timer buttons?
-Yes, configure `timer_buttons: [5, 10, 15, 30, 45, 60]` in the card YAML.
+Yes, configure any timer value between 1-1000 `timer_buttons: [7, 13, 25, 1000]` in the card YAML.
 
 ### Why does my usage show a warning message?
 This appears when HA was offline during a timer to indicate potential time sync issues.
