@@ -20,385 +20,393 @@ const $=globalThis,x=$.trustedTypes,S=x?x.createPolicy("lit-html",{createHTML:t=
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */class ot extends w{constructor(){super(...arguments),this.renderOptions={host:this},this._$Do=void 0}createRenderRoot(){const t=super.createRenderRoot();return this.renderOptions.renderBefore??=t.firstChild,t}update(t){const e=this.render();this.hasUpdated||(this.renderOptions.isConnected=this.isConnected),super.update(t),this._$Do=((t,e,i)=>{const s=i?.renderBefore??e;let n=s._$litPart$;if(void 0===n){const t=i?.renderBefore??null;s._$litPart$=n=new Z(e.insertBefore(k(),t),t,void 0,i??{})}return n._$AI(t),n})(e,this.renderRoot,this.renderOptions)}connectedCallback(){super.connectedCallback(),this._$Do?.setConnected(!0)}disconnectedCallback(){super.disconnectedCallback(),this._$Do?.setConnected(!1)}render(){return z}}ot._$litElement$=!0,ot.finalized=!0,nt.litElementHydrateSupport?.({LitElement:ot});const rt=nt.litElementPolyfillSupport;rt?.({LitElement:ot}),(nt.litElementVersions??=[]).push("4.2.0");const at=o`
-      :host { display: block; }
-      ha-card {
-        padding: 0;
-        position: relative;
-      }
-			
-      .card-header {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        font-size: 1.5em;
-        font-weight: bold;
-        text-align: center;
-        padding: 0px;
-        color: var(--primary-text-color);
-        border-radius: 12px 12px 0 0;
-				margin-bottom: 0px;
-      }
-			
-			.card-header.has-title {
-					margin-bottom: -15px;
-			}
-			
-      .card-title {
-        flex-grow: 1;
-        white-space: pre-wrap;
-        word-break: break-word;
-      }
-			
-      .placeholder { 
-        padding: 16px; 
-        background-color: var(--secondary-background-color); 
-      }
-			
-      .warning { 
-        padding: 16px; 
-        color: white; 
-        background-color: var(--error-color); 
-      }
-      
-      /* New layout styles */
-      .card-content {
-				padding: 12px !important;
-				padding-top: 0px !important;
-				margin: 0 !important;
-			}
-      
-      .countdown-section {
-				text-align: center;
-				padding: 0 !important;
-				display: flex;
-				flex-direction: column;
-				align-items: center;
-				justify-content: center;
-			}
-      
-      .countdown-display {
-				font-size: 48px;
-				font-weight: bold;
-				color: var(--primary-text-color);
-				font-family: 'Roboto Mono', monospace;
-				margin: 0 !important;
-				padding: 0 !important;
-			}
-      
-      .countdown-display.active {
-        color: var(--primary-color);
-      }
-			
-			.countdown-display.active.reverse {
-				color: #f2ba5a;
-			}
+  :host {
+    display: block;
+  }
 
-			.daily-usage-display {
-				font-size: 14px;
-				font-weight: 500;
-				color: var(--secondary-text-color);
-				margin-top: -18px;
-				text-align: center;
-			}
-      
-      .slider-row {
-				display: flex;
-				align-items: center;
-				gap: 4px;
-				margin-bottom: 15px;
-				flex-wrap: wrap;
-				justify-content: center;
-			}
-      
-      .slider-container {
-        flex: 0 0 75%;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-      
-      .timer-slider {
-				flex: 1;
-				height: 20px;
-				-webkit-appearance: none;
-				appearance: none;
-				background: var(--secondary-background-color);
-				border-radius: 20px;
-				outline: none;
-			}
-      
-      .timer-slider::-webkit-slider-thumb {
-				-webkit-appearance: none;
-				appearance: none;
-				width: 30px;
-				height: 30px;
-				border-radius: 50%;
-				background: #2ab69c;
-				cursor: pointer;
-				border: 2px solid #4bd9bf;
-				box-shadow: 
-					0 0 0 2px rgba(75, 217, 191, 0.3),
-					0 0 8px rgba(42, 182, 156, 0.4),
-					0 2px 4px rgba(0, 0, 0, 0.2);
-				transition: all 0.2s ease;
-			}
-			
-			.timer-slider::-webkit-slider-thumb:hover {
-				background: #239584;
-				border: 2px solid #4bd9bf;
-				box-shadow: 
-					0 0 0 3px rgba(75, 217, 191, 0.4),
-					0 0 12px rgba(42, 182, 156, 0.6),
-					0 2px 6px rgba(0, 0, 0, 0.3);
-				transform: scale(1.05);
-			}
-			
-			.timer-slider::-webkit-slider-thumb:active {
-				background: #1e7e6f;
-				border: 2px solid #4bd9bf;
-				box-shadow: 
-					0 0 0 4px rgba(75, 217, 191, 0.5),
-					0 0 16px rgba(42, 182, 156, 0.7),
-					0 2px 8px rgba(0, 0, 0, 0.4);
-				transform: scale(0.98);
-			}
-      
-      .timer-slider::-moz-range-thumb {
-				width: 30px;
-				height: 30px;
-				border-radius: 50%;
-				background: #2ab69c;
-				cursor: pointer;
-				border: 2px solid #4bd9bf;
-				box-shadow: 
-					0 0 0 2px rgba(75, 217, 191, 0.3),
-					0 0 8px rgba(42, 182, 156, 0.4),
-					0 2px 4px rgba(0, 0, 0, 0.2);
-				transition: all 0.2s ease;
-			}
-			
-			.timer-slider::-moz-range-thumb:hover {
-				background: #239584;
-				border: 2px solid #4bd9bf;
-				box-shadow: 
-					0 0 0 3px rgba(75, 217, 191, 0.4),
-					0 0 12px rgba(42, 182, 156, 0.6),
-					0 2px 6px rgba(0, 0, 0, 0.3);
-				transform: scale(1.05);
-			}
+  ha-card {
+    padding: 0;
+    position: relative;
+  }
 
-			.timer-slider::-moz-range-thumb:active {
-				background: #1e7e6f;
-				border: 2px solid #4bd9bf;
-				box-shadow: 
-					0 0 0 4px rgba(75, 217, 191, 0.5),
-					0 0 16px rgba(42, 182, 156, 0.7),
-					0 2px 8px rgba(0, 0, 0, 0.4);
-				transform: scale(0.98);
-			}
-      
-      .slider-label {
-        font-size: 16px;
-        font-weight: 500;
-        color: var(--primary-text-color);
-        min-width: 60px;
-        text-align: left;
-      }
-      
-      .power-button-small {
-					width: 55px;
-					height: 50px;
-					flex-shrink: 0;
-					box-sizing: border-box;
-					border-radius: 12px;
-					display: flex;
-					flex-direction: column;
-					align-items: center;
-					justify-content: center;
-					cursor: pointer;
-					transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-					position: relative;
-					
-					background: 
-							radial-gradient(circle at 30% 30%, rgba(255,255,255,0.15) 0%, transparent 50%),
-							linear-gradient(135deg, #525252 0%, #424242 25%, #363636 75%, #2a2a2a 100%);
-					border: 2px solid transparent;
-					background-clip: padding-box;
-					box-shadow: 
-							0 8px 25px rgba(0, 0, 0, 0.4),
-							0 3px 10px rgba(0, 0, 0, 0.3),
-							inset 0 1px 0 rgba(255, 255, 255, 0.2),
-							inset 0 -1px 0 rgba(0, 0, 0, 0.3);
-					
-					color: var(--primary-color);
-					--mdc-icon-size: 36px;
-					padding: 4px;
-			}
-			
-			.power-button-small ha-icon[icon] {
-					color: var(--primary-color);
-			}
+  .card-header {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 1.5em;
+    font-weight: bold;
+    text-align: center;
+    padding: 0px;
+    color: var(--primary-text-color);
+    border-radius: 12px 12px 0 0;
+    margin-bottom: 0px;
+  }
 
-			.power-button-small.reverse ha-icon[icon] {
-					color: #f2ba5a;
-			}
-			
-			.power-button-small::before {
-					content: '';
-					position: absolute;
-					inset: -2px;
-					border-radius: 14px;
-					background: linear-gradient(135deg, rgba(255,255,255,0.3), rgba(255,255,255,0.1), rgba(0,0,0,0.2));
-					z-index: -1;
-			}
-			
-			.power-button-small:hover {
-					transform: translateY(-2px);
-					background: 
-							radial-gradient(circle at 30% 30%, rgba(255,255,255,0.2) 0%, transparent 50%),
-							linear-gradient(135deg, #5a5a5a 0%, #4a4a4a 25%, #3e3e3e 75%, #323232 100%);
-					box-shadow: 
-							0 12px 35px rgba(0, 0, 0, 0.5),
-							0 5px 15px rgba(0, 0, 0, 0.4),
-							inset 0 1px 0 rgba(255, 255, 255, 0.25),
-							inset 0 -1px 0 rgba(0, 0, 0, 0.3);
-					color: var(--primary-color);
-			}
-			
-			.power-button-small:active {
-					transform: translateY(0px);
-					transition: all 0.1s;
-					box-shadow: 
-							0 4px 15px rgba(0, 0, 0, 0.4),
-							0 2px 5px rgba(0, 0, 0, 0.3),
-							inset 0 1px 0 rgba(255, 255, 255, 0.15),
-							inset 0 -1px 0 rgba(0, 0, 0, 0.4);
-			}
-			
-      .power-button-small.on {
-					background-color: #2a89d1;
-					border: 2px solid #4da3e0;
-					color: var(--primary-color);
-					box-shadow: 
-							0 0 0 2px rgba(42, 137, 209, 0.3),
-							0 0 12px rgba(42, 137, 209, 0.6);
-					animation: pulse 2s infinite;
-			}
-			
-			.power-button-small.on::before {
-					display: none;
-			}
+  .card-header.has-title {
+      margin-bottom: -15px;
+  }
+    
+  .card-title {
+    font-family: 'Roboto', sans-serif;
+    font-weight: 500;
+    font-size: 1.7rem;
+    color: rgba(160,160,160,0.7);
+    text-align: left;
+    margin: 0;
+    padding: 0 8px;
+  }
 
-			@keyframes pulse {
-					0%, 100% { box-shadow: 
-							0 0 0 2px rgba(42, 137, 209, 0.3),
-							0 0 12px rgba(42, 137, 209, 0.6); }
-					50% { box-shadow: 
-							0 0 0 4px rgba(42, 137, 209, 0.5),
-							0 0 20px rgba(42, 137, 209, 0.8); }
-			}
-			
-			.power-button-small.on.reverse {
-					background-color: #f2ba5a;
-					border: 2px solid #f4c474;
-					color: #f2ba5a;
-					box-shadow: 
-							0 0 0 2px rgba(242, 186, 90, 0.3),
-							0 0 12px rgba(242, 186, 90, 0.6);
-					animation: pulse-orange 2s infinite;
-			}
+  .placeholder { 
+    padding: 16px; 
+    background-color: var(--secondary-background-color); 
+  }
+    
+  .warning { 
+    padding: 16px; 
+    color: white; 
+    background-color: var(--error-color); 
+  }
 
-			@keyframes pulse-orange {
-					0%, 100% { box-shadow: 
-							0 0 0 2px rgba(242, 186, 90, 0.3),
-							0 0 12px rgba(242, 186, 90, 0.6); }
-					50% { box-shadow: 
-							0 0 0 4px rgba(242, 186, 90, 0.5),
-							0 0 20px rgba(242, 186, 90, 0.8); }
-			}
+  /* New layout styles */
+  .card-content {
+    padding: 12px !important;
+    padding-top: 0px !important;
+    margin: 0 !important;
+  }
+
+  .countdown-section {
+    text-align: center;
+    padding: 0 !important;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .countdown-display {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 3.5rem;
+    font-weight: bold;
+    width: 100%;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+    padding: 4px 0;
+    min-height: 3.5rem;
+    box-sizing: border-box;
+  }
+    
+  .countdown-display.active {
+    color: var(--primary-color);
+  }
+
+  .countdown-display.active.reverse {
+    color: #f2ba5a;
+  }
+
+  .daily-usage-display {
+    font-size: 1rem;
+    color: var(--secondary-text-color);
+    text-align: center;
+    margin-top: -8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .slider-container {
+    flex: 0 0 75%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .timer-slider {
+    flex: 1;
+    height: 20px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: var(--secondary-background-color);
+    border-radius: 20px;
+    outline: none;
+  }
+
+  .timer-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: #2ab69c;
+    cursor: pointer;
+    border: 2px solid #4bd9bf;
+    box-shadow: 
+      0 0 0 2px rgba(75, 217, 191, 0.3),
+      0 0 8px rgba(42, 182, 156, 0.4),
+      0 2px 4px rgba(0, 0, 0, 0.2);
+    transition: all 0.2s ease;
+  }
+
+  .timer-slider::-webkit-slider-thumb:hover {
+    background: #239584;
+    border: 2px solid #4bd9bf;
+    box-shadow: 
+      0 0 0 3px rgba(75, 217, 191, 0.4),
+      0 0 12px rgba(42, 182, 156, 0.6),
+      0 2px 6px rgba(0, 0, 0, 0.3);
+    transform: scale(1.05);
+  }
+
+  .timer-slider::-webkit-slider-thumb:active {
+    background: #1e7e6f;
+    border: 2px solid #4bd9bf;
+    box-shadow: 
+      0 0 0 4px rgba(75, 217, 191, 0.5),
+      0 0 16px rgba(42, 182, 156, 0.7),
+      0 2px 8px rgba(0, 0, 0, 0.4);
+    transform: scale(0.98);
+  }
+
+  .timer-slider::-moz-range-thumb {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: #2ab69c;
+    cursor: pointer;
+    border: 2px solid #4bd9bf;
+    box-shadow: 
+      0 0 0 2px rgba(75, 217, 191, 0.3),
+      0 0 8px rgba(42, 182, 156, 0.4),
+      0 2px 4px rgba(0, 0, 0, 0.2);
+    transition: all 0.2s ease;
+  }
+
+  .timer-slider::-moz-range-thumb:hover {
+    background: #239584;
+    border: 2px solid #4bd9bf;
+    box-shadow: 
+      0 0 0 3px rgba(75, 217, 191, 0.4),
+      0 0 12px rgba(42, 182, 156, 0.6),
+      0 2px 6px rgba(0, 0, 0, 0.3);
+    transform: scale(1.05);
+  }
+
+  .timer-slider::-moz-range-thumb:active {
+    background: #1e7e6f;
+    border: 2px solid #4bd9bf;
+    box-shadow: 
+      0 0 0 4px rgba(75, 217, 191, 0.5),
+      0 0 16px rgba(42, 182, 156, 0.7),
+      0 2px 8px rgba(0, 0, 0, 0.4);
+    transform: scale(0.98);
+  }
+
+  .slider-label {
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--primary-text-color);
+    min-width: 60px;
+    text-align: left;
+  }
+
+  .power-button-small {
+      width: 65px;
+      height: 60px;
+      flex-shrink: 0;
+      box-sizing: border-box;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;     
+      background-color: var(--secondary-background-color);
+      border: 2px solid transparent;
+      background-clip: padding-box;
+      box-shadow: 
+          0 8px 25px rgba(0, 0, 0, 0.4),
+          0 3px 10px rgba(0, 0, 0, 0.3),
+          inset 0 1px 0 rgba(255, 255, 255, 0.2),
+          inset 0 -1px 0 rgba(0, 0, 0, 0.3);
       
-      .button-grid {
-        display: flex;
-				flex-wrap: wrap;
-        gap: 8px;
-        justify-content: center;
-      }
-      
-      .timer-button {
-        width: 80px;
-        height: 65px;
-        border-radius: 12px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        transition: background-color 0.2s, opacity 0.2s;
-        text-align: center;
-        background-color: var(--secondary-background-color);
-        color: var(--primary-text-color);
-      }
-      
-      .timer-button:hover {
-        box-shadow: 0 0 8px rgba(42, 182, 156, 1);
-      }
-      
-			.timer-button.active {
-				color: white;
-				box-shadow: 0 0 8px rgba(42, 182, 156, 1);
-			}
-      
-      .timer-button.active:hover {
-				box-shadow: 0 0 12px rgba(42, 182, 156, 0.6);
-			}
-      
-      .timer-button.disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-      }
-      
-      .timer-button.disabled:hover {
-				box-shadow: none;
-				opacity: 0.5;
-      }
-      
-      .timer-button-value {
-        font-size: 20px;
-        font-weight: 600;
-        line-height: 1;
-      }
-      
-      .timer-button-unit {
-        font-size: 12px;
-        font-weight: 400;
-        margin-top: 2px;
-      }
-      
-      .status-message {
-        display: flex;
-        align-items: center;
-        padding: 8px 12px;
-        margin: 0 0 12px 0;
-        border-radius: 8px;
-        border: 1px solid var(--warning-color);
-        background-color: rgba(var(--rgb-warning-color), 0.1);
-      }
-      
-      .status-icon {
-        color: var(--warning-color);
-        margin-right: 8px;
-      }
-      
-      .status-text {
-        font-size: 14px;
-        color: var(--primary-text-color);
-      }
-      
-      .watchdog-banner {
-        margin: 0 0 12px 0;
-        border-radius: 0;
-      }
-`,lt="simple_timer",ct=[15,30,60,90,120,150];console.info("%c SIMPLE-TIMER-CARD %c v1.2.0 ","color: orange; font-weight: bold; background: black","color: white; font-weight: bold; background: dimgray");customElements.define("timer-card",class extends ot{constructor(){super(...arguments),this._countdownInterval=null,this._liveRuntimeSeconds=0,this._timeRemaining=null,this._sliderValue=0,this.buttons=[],this._validationMessages=[],this._notificationSentForCurrentCycle=!1,this._entitiesLoaded=!1,this._effectiveSwitchEntity=null,this._effectiveSensorEntity=null,this._longPressTimer=null,this._isLongPress=!1,this._touchStartPosition=null,this._isCancelling=!1}static get properties(){return{hass:{type:Object},_config:{type:Object},_timeRemaining:{state:!0},_sliderValue:{state:!0},_entitiesLoaded:{state:!0},_effectiveSwitchEntity:{state:!0},_effectiveSensorEntity:{state:!0},_validationMessages:{state:!0}}}static async getConfigElement(){return await Promise.resolve().then(function(){return pt}),document.createElement("timer-card-editor")}static getStubConfig(t){return console.log("TimerCard: Generating stub config - NO auto-selection will be performed"),{type:"custom:timer-card",timer_instance_id:null,timer_buttons:[...ct],card_title:"Simple Timer",power_button_icon:"mdi:power"}}setConfig(t){const e=t.slider_max&&t.slider_max>0&&t.slider_max<=1e3?t.slider_max:120,i=t.timer_instance_id||"default";this._config={type:t.type||"custom:timer-card",timer_buttons:this._getValidatedTimerButtons(t.timer_buttons),card_title:t.card_title||null,power_button_icon:t.power_button_icon||null,slider_max:e,reverse_mode:t.reverse_mode||!1,show_daily_usage:!1!==t.show_daily_usage,timer_instance_id:i,entity:t.entity,sensor_entity:t.sensor_entity},t.timer_instance_id&&(this._config.timer_instance_id=t.timer_instance_id),t.entity&&(this._config.entity=t.entity),t.sensor_entity&&(this._config.sensor_entity=t.sensor_entity);const s=localStorage.getItem(`simple-timer-slider-${i}`);let n=s?parseInt(s):NaN;(isNaN(n)||n<=0)&&(n=e),n>e&&(n=e),this._sliderValue=n,localStorage.setItem(`simple-timer-slider-${i}`,this._sliderValue.toString()),this.requestUpdate(),this.buttons=[...this._config.timer_buttons],this._liveRuntimeSeconds=0,this._notificationSentForCurrentCycle=!1,this._effectiveSwitchEntity=null,this._effectiveSensorEntity=null,this._entitiesLoaded=!1}_getValidatedTimerButtons(t){let e=[];if(this._validationMessages=[],Array.isArray(t)){const i=[],s=new Set,n=[];t.forEach(t=>{const o=Number(t);Number.isInteger(o)&&o>0&&o<=1e3?s.has(o)?n.push(o):(s.add(o),e.push(o)):i.push(t)});const o=[];return i.length>0&&o.push(`Invalid timer values ignored: ${i.join(", ")}. Only positive integers up to 1000 are allowed.`),n.length>0&&o.push(`Duplicate timer values were removed: ${[...new Set(n)].join(", ")}.`),this._validationMessages=o,e.sort((t,e)=>t-e),e}return null==t||(console.warn(`TimerCard: Invalid timer_buttons type (${typeof t}):`,t,"- using empty array"),this._validationMessages=[`Invalid timer_buttons configuration. Expected array, got ${typeof t}.`]),[]}_determineEffectiveEntities(){var t,e;let i=null,s=null,n=!1;if(this.hass&&this.hass.states){if(null===(t=this._config)||void 0===t?void 0:t.timer_instance_id){const t=this._config.timer_instance_id,e=Object.keys(this.hass.states).filter(t=>t.startsWith("sensor.")).find(e=>{const i=this.hass.states[e];return i.attributes.entry_id===t&&"string"==typeof i.attributes.switch_entity_id});if(e){s=e,i=this.hass.states[e].attributes.switch_entity_id,i&&this.hass.states[i]?n=!0:console.warn(`TimerCard: Configured instance '${t}' sensor '${s}' links to missing or invalid switch '${i}'.`)}else console.warn(`TimerCard: Configured timer_instance_id '${t}' does not have a corresponding simple_timer sensor found.`)}if(!n&&(null===(e=this._config)||void 0===e?void 0:e.sensor_entity)){const t=this.hass.states[this._config.sensor_entity];t&&"string"==typeof t.attributes.entry_id&&"string"==typeof t.attributes.switch_entity_id?(s=this._config.sensor_entity,i=t.attributes.switch_entity_id,i&&this.hass.states[i]?(n=!0,console.info(`TimerCard: Using manually configured sensor_entity: Sensor '${s}', Switch '${i}'.`)):console.warn(`TimerCard: Manually configured sensor '${s}' links to missing or invalid switch '${i}'.`)):console.warn(`TimerCard: Manually configured sensor_entity '${this._config.sensor_entity}' not found or missing required attributes.`)}this._effectiveSwitchEntity===i&&this._effectiveSensorEntity===s||(this._effectiveSwitchEntity=i,this._effectiveSensorEntity=s,this.requestUpdate()),this._entitiesLoaded=n}else this._entitiesLoaded=!1}_getEntryId(){if(!this._effectiveSensorEntity||!this.hass||!this.hass.states)return console.error("Timer-card: _getEntryId called without a valid effective sensor entity."),null;const t=this.hass.states[this._effectiveSensorEntity];return t&&t.attributes.entry_id?t.attributes.entry_id:(console.error("Could not determine entry_id from effective sensor_entity attributes:",this._effectiveSensorEntity),null)}_startTimer(t,e="button"){var i;if(this._validationMessages=[],!this._entitiesLoaded||!this.hass||!this.hass.callService)return void console.error("Timer-card: Cannot start timer. Entities not loaded or callService unavailable.");const s=this._getEntryId();if(!s)return void console.error("Timer-card: Entry ID not found for starting timer.");const n=this._effectiveSwitchEntity;(null===(i=this._config)||void 0===i?void 0:i.reverse_mode)||!1?this.hass.callService("homeassistant","turn_off",{entity_id:n}).then(()=>{this.hass.callService(lt,"start_timer",{entry_id:s,duration:t,reverse_mode:!0,start_method:e})}).catch(t=>{console.error("Timer-card: Error turning off switch for reverse timer:",t)}):this.hass.callService("homeassistant","turn_on",{entity_id:n}).then(()=>{this.hass.callService(lt,"start_timer",{entry_id:s,duration:t,start_method:e})}).catch(t=>{console.error("Timer-card: Error turning on switch or starting timer:",t)}),this._notificationSentForCurrentCycle=!1}_cancelTimer(){if(this._validationMessages=[],!this._entitiesLoaded||!this.hass||!this.hass.callService)return void console.error("Timer-card: Cannot cancel timer. Entities not loaded or callService unavailable.");this._isCancelling=!0;const t=this._getEntryId();if(!t)return console.error("Timer-card: Entry ID not found for cancelling timer."),void(this._isCancelling=!1);this.hass.callService(lt,"cancel_timer",{entry_id:t}).then(()=>{setTimeout(()=>{this._isCancelling=!1},1e3)}).catch(t=>{console.error("Timer-card: Error cancelling timer:",t),this._isCancelling=!1}),this._notificationSentForCurrentCycle=!1}_togglePower(){if(this._validationMessages=[],!(this._entitiesLoaded&&this.hass&&this.hass.states&&this.hass.callService))return void console.error("Timer-card: Cannot toggle power. Entities not loaded or services unavailable.");if(this._isCancelling)return;const t=this._effectiveSwitchEntity,e=this._effectiveSensorEntity,i=this.hass.states[t];if(!i)return void console.warn(`Timer-card: Switch entity '${t}' not found during toggle.`);const s=this.hass.states[e];if(s&&"active"===s.attributes.timer_state){return void(s.attributes.reverse_mode?(this._cancelTimer(),console.log(`Timer-card: Cancelling reverse timer and turning on switch: ${t}`)):(this._cancelTimer(),console.log(`Timer-card: Cancelling normal timer for switch: ${t}`)))}"on"===i.state?(this.hass.callService(lt,"manual_power_toggle",{entry_id:this._getEntryId(),action:"turn_off"}),console.log(`Timer-card: Manually turning off switch: ${t}`)):(this._sliderValue>0?(this._startTimer(this._sliderValue,"slider"),console.log(`Timer-card: Starting timer for ${this._sliderValue} minutes`)):this.hass.callService(lt,"manual_power_toggle",{entry_id:this._getEntryId(),action:"turn_on"}).then(()=>{console.log(`Timer-card: Manually turning on switch (infinite): ${t}`)}).catch(t=>{console.error("Timer-card: Error manually turning on switch:",t)}),this._notificationSentForCurrentCycle=!1)}_showMoreInfo(){if(!this._entitiesLoaded||!this.hass)return void console.error("Timer-card: Cannot show more info. Entities not loaded.");const t=this._effectiveSensorEntity,e=new CustomEvent("hass-more-info",{bubbles:!0,composed:!0,detail:{entityId:t}});this.dispatchEvent(e)}connectedCallback(){var t,e;super.connectedCallback();const i=(null===(t=this._config)||void 0===t?void 0:t.timer_instance_id)||"default";if(localStorage.getItem(`simple-timer-slider-${i}`));else if(this._determineEffectiveEntities(),this._entitiesLoaded&&this.hass&&this._effectiveSensorEntity){const t=this.hass.states[this._effectiveSensorEntity],i=(null===(e=null==t?void 0:t.attributes)||void 0===e?void 0:e.timer_duration)||0;i>0&&i<=120&&(this._sliderValue=i)}this._determineEffectiveEntities(),this._updateLiveRuntime(),this._updateCountdown()}disconnectedCallback(){super.disconnectedCallback(),this._stopCountdown(),this._stopLiveRuntime(),this._longPressTimer&&window.clearTimeout(this._longPressTimer)}updated(t){(t.has("hass")||t.has("_config"))&&(this._determineEffectiveEntities(),this._updateLiveRuntime(),this._updateCountdown())}_updateLiveRuntime(){this._liveRuntimeSeconds=0}_stopLiveRuntime(){this._liveRuntimeSeconds=0}_updateCountdown(){if(!this._entitiesLoaded||!this.hass||!this.hass.states)return void this._stopCountdown();const t=this.hass.states[this._effectiveSensorEntity];if(!t||"active"!==t.attributes.timer_state)return this._stopCountdown(),void(this._notificationSentForCurrentCycle=!1);if(!this._countdownInterval){const e=t.attributes.timer_finishes_at;if(void 0===e)return console.warn("Timer-card: timer_finishes_at is undefined for active timer. Stopping countdown."),void this._stopCountdown();const i=new Date(e).getTime(),s=()=>{const t=(new Date).getTime(),e=Math.max(0,Math.round((i-t)/1e3));if(this._getShowSeconds()){const t=Math.floor(e/3600),i=Math.floor(e%3600/60),s=e%60;this._timeRemaining=`${t.toString().padStart(2,"0")}:${i.toString().padStart(2,"0")}:${s.toString().padStart(2,"0")}`}else{const t=Math.floor(e/60),i=e%60;this._timeRemaining=`${t.toString().padStart(2,"0")}:${i.toString().padStart(2,"0")}`}0===e&&(this._stopCountdown(),this._notificationSentForCurrentCycle||(this._notificationSentForCurrentCycle=!0))};this._countdownInterval=window.setInterval(s,500),s()}}_stopCountdown(){this._countdownInterval&&(window.clearInterval(this._countdownInterval),this._countdownInterval=null),this._timeRemaining=null}_hasOrphanedTimer(){var t;if(!this._entitiesLoaded||!this.hass||!this._effectiveSensorEntity)return{isOrphaned:!1};const e=this.hass.states[this._effectiveSensorEntity];if(!e||"active"!==e.attributes.timer_state)return{isOrphaned:!1};const i=e.attributes.timer_duration||0,s=this.buttons.includes(i),n=(null===(t=this._config)||void 0===t?void 0:t.slider_max)||120;return{isOrphaned:!s&&!(i>=0&&i<=n),duration:i}}_getShowSeconds(){var t;if(!this._entitiesLoaded||!this.hass||!this._effectiveSensorEntity)return!1;const e=this.hass.states[this._effectiveSensorEntity];return(null===(t=null==e?void 0:e.attributes)||void 0===t?void 0:t.show_seconds)||!1}_handleUsageClick(t){t.preventDefault(),this._isLongPress||this._showMoreInfo(),this._isLongPress=!1}_startLongPress(t){t.preventDefault(),this._isLongPress=!1,this._longPressTimer=window.setTimeout(()=>{this._isLongPress=!0,this._resetUsage(),"vibrate"in navigator&&navigator.vibrate(50)},800)}_endLongPress(t){t&&t.preventDefault(),this._longPressTimer&&(window.clearTimeout(this._longPressTimer),this._longPressTimer=null)}_handlePowerClick(t){"click"!==t.type||this._isLongPress||(t.preventDefault(),t.stopPropagation(),this._togglePower()),this._isLongPress=!1}_handleTouchEnd(t){t.preventDefault(),t.stopPropagation(),this._longPressTimer&&(window.clearTimeout(this._longPressTimer),this._longPressTimer=null);let e=!1;if(this._touchStartPosition&&t.changedTouches[0]){const i=t.changedTouches[0],s=Math.abs(i.clientX-this._touchStartPosition.x),n=Math.abs(i.clientY-this._touchStartPosition.y),o=10;e=s>o||n>o}this._isLongPress||e||this._showMoreInfo(),this._isLongPress=!1,this._touchStartPosition=null}_handleTouchStart(t){t.preventDefault(),t.stopPropagation(),this._isLongPress=!1;const e=t.touches[0];this._touchStartPosition={x:e.clientX,y:e.clientY},this._longPressTimer=window.setTimeout(()=>{this._isLongPress=!0,this._resetUsage(),"vibrate"in navigator&&navigator.vibrate(50)},800)}_resetUsage(){if(this._validationMessages=[],!this._entitiesLoaded||!this.hass||!this.hass.callService)return void console.error("Timer-card: Cannot reset usage. Entities not loaded or callService unavailable.");const t=this._getEntryId();t?confirm("Reset daily usage to 00:00?\n\nThis action cannot be undone.")&&this.hass.callService(lt,"reset_daily_usage",{entry_id:t}).then(()=>{console.log("Timer-card: Daily usage reset successfully")}).catch(t=>{console.error("Timer-card: Error resetting daily usage:",t)}):console.error("Timer-card: Entry ID not found for resetting usage.")}_handleSliderChange(t){var e;const i=t.target;this._sliderValue=parseInt(i.value);const s=(null===(e=this._config)||void 0===e?void 0:e.timer_instance_id)||"default";localStorage.setItem(`simple-timer-slider-${s}`,this._sliderValue.toString())}_getCurrentTimerMode(){var t;if(!this._entitiesLoaded||!this.hass||!this._effectiveSensorEntity)return"normal";const e=this.hass.states[this._effectiveSensorEntity];return(null===(t=null==e?void 0:e.attributes)||void 0===t?void 0:t.reverse_mode)?"reverse":"normal"}render(){var t,e,i,s,n,o,r,a;let l=null,c=!1;if(this.hass){if(!this._entitiesLoaded)if(null===(t=this._config)||void 0===t?void 0:t.timer_instance_id){const t=Object.values(this.hass.states).find(t=>t.attributes.entry_id===this._config.timer_instance_id&&t.entity_id.startsWith("sensor."));t?"string"==typeof t.attributes.switch_entity_id&&t.attributes.switch_entity_id&&this.hass.states[t.attributes.switch_entity_id]?(l="Loading Timer Control Card. Please wait...",c=!1):(l=`Timer Control Instance '${this._config.timer_instance_id}' linked to missing or invalid switch '${t.attributes.switch_entity_id}'. Please check instance configuration.`,c=!0):(l=`Timer Control Instance '${this._config.timer_instance_id}' not found. Please select a valid instance in the card editor.`,c=!0)}else if(null===(e=this._config)||void 0===e?void 0:e.sensor_entity){const t=this.hass.states[this._config.sensor_entity];t?"string"==typeof t.attributes.switch_entity_id&&t.attributes.switch_entity_id&&this.hass.states[t.attributes.switch_entity_id]?(l="Loading Timer Control Card. Please wait...",c=!1):(l=`Configured Timer Control Sensor '${this._config.sensor_entity}' is invalid or its linked switch '${t.attributes.switch_entity_id}' is missing. Please select a valid instance.`,c=!0):(l=`Configured Timer Control Sensor '${this._config.sensor_entity}' not found. Please select a valid instance in the card editor.`,c=!0)}else l="Select a Timer Control Instance from the dropdown in the card editor to link this card.",c=!1}else l="Home Assistant object (hass) not available. Card cannot load.",c=!0;if(l)return V`<ha-card><div class="${c?"warning":"placeholder"}">${l}</div></ha-card>`;const d=this.hass.states[this._effectiveSwitchEntity],h=this.hass.states[this._effectiveSensorEntity],u="on"===d.state,_="active"===h.attributes.timer_state,p=h.attributes.timer_duration||0,g=u&&!_,m=h.attributes.reverse_mode,f=parseFloat(h.state)||0;let v,b;if(this._getShowSeconds()){const t=Math.floor(f),e=Math.floor(t/3600),i=Math.floor(t%3600/60),s=t%60;v=`Daily usage: ${e.toString().padStart(2,"0")}:${i.toString().padStart(2,"0")}:${s.toString().padStart(2,"0")}`,b=this._timeRemaining||"00:00:00"}else{const t=Math.floor(f/60),e=t%60;v=`Daily usage: ${Math.floor(t/60).toString().padStart(2,"0")}:${e.toString().padStart(2,"0")}`,b=this._timeRemaining||"00:00"}const y=h.attributes.watchdog_message,w=this._hasOrphanedTimer();return V`
+      color: var(--primary-color);
+      --mdc-icon-size: 36px;
+      padding: 4px;
+  }
+
+  .power-button-small ha-icon[icon] {
+      color: var(--primary-color);
+  }
+
+  .power-button-small.reverse ha-icon[icon] {
+      color: #f2ba5a;
+  }
+
+  .power-button-small::before {
+      content: '';
+      position: absolute;
+      inset: -2px;
+      border-radius: 14px;
+      z-index: -1;
+  }
+
+  .power-button-small:hover {
+      transform: translateY(-2px);
+      box-shadow: 
+          0 12px 35px rgba(0, 0, 0, 0.5),
+          0 5px 15px rgba(0, 0, 0, 0.4),
+          inset 0 1px 0 rgba(255, 255, 255, 0.25),
+          inset 0 -1px 0 rgba(0, 0, 0, 0.3);
+      color: var(--primary-color);
+  }
+
+  .power-button-small:active {
+      transform: translateY(0px);
+      transition: all 0.1s;
+      box-shadow: 
+          0 4px 15px rgba(0, 0, 0, 0.4),
+          0 2px 5px rgba(0, 0, 0, 0.3),
+          inset 0 1px 0 rgba(255, 255, 255, 0.15),
+          inset 0 -1px 0 rgba(0, 0, 0, 0.4);
+  }
+
+  .power-button-small.on {
+      border: 2px solid #4da3e0;
+      color: var(--primary-color);
+      box-shadow: 
+          0 0 0 2px rgba(42, 137, 209, 0.3),
+          0 0 12px rgba(42, 137, 209, 0.6);
+      animation: pulse 2s infinite;
+  }
+
+  .power-button-small.on::before {
+      display: none;
+  }
+
+  @keyframes pulse {
+      0%, 100% { box-shadow: 
+          0 0 0 2px rgba(42, 137, 209, 0.3),
+          0 0 12px rgba(42, 137, 209, 0.6); }
+      50% { box-shadow: 
+          0 0 0 4px rgba(42, 137, 209, 0.5),
+          0 0 20px rgba(42, 137, 209, 0.8); }
+  }
+
+  .power-button-small.on.reverse {
+      border: 2px solid #f4c474;
+      color: #f2ba5a;
+      box-shadow: 
+          0 0 0 2px rgba(242, 186, 90, 0.3),
+          0 0 12px rgba(242, 186, 90, 0.6);
+      animation: pulse-orange 2s infinite;
+  }
+
+  @keyframes pulse-orange {
+      0%, 100% { box-shadow: 
+          0 0 0 2px rgba(242, 186, 90, 0.3),
+          0 0 12px rgba(242, 186, 90, 0.6); }
+      50% { box-shadow: 
+          0 0 0 4px rgba(242, 186, 90, 0.5),
+          0 0 20px rgba(242, 186, 90, 0.8); }
+  }
+
+  .button-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+  }
+
+  .timer-button {
+    width: 80px;
+    height: 65px;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.2s, opacity 0.2s;
+    text-align: center;
+    background-color: var(--secondary-background-color);
+    color: var(--primary-text-color);
+  }
+
+  .timer-button:hover {
+    box-shadow: 0 0 8px rgba(42, 182, 156, 1);
+  }
+
+  .timer-button.active {
+    color: white;
+    box-shadow: 0 0 8px rgba(42, 182, 156, 1);
+  }
+
+  .timer-button.active:hover {
+    box-shadow: 0 0 12px rgba(42, 182, 156, 0.6);
+  }
+
+  .timer-button.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .timer-button.disabled:hover {
+    box-shadow: none;
+    opacity: 0.5;
+  }
+
+  .timer-button-value {
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 1;
+  }
+
+  .timer-button-unit {
+    font-size: 12px;
+    font-weight: 400;
+    margin-top: 2px;
+  }
+
+  .status-message {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    margin: 0 0 12px 0;
+    border-radius: 8px;
+    border: 1px solid var(--warning-color);
+    background-color: rgba(var(--rgb-warning-color), 0.1);
+  }
+
+  .status-icon {
+    color: var(--warning-color);
+    margin-right: 8px;
+  }
+
+  .status-text {
+    font-size: 14px;
+    color: var(--primary-text-color);
+  }
+
+  .watchdog-banner {
+    margin: 0 0 12px 0;
+    border-radius: 0;
+  }
+  `,lt="simple_timer",ct=[15,30,60,90,120,150];console.info("%c SIMPLE-TIMER-CARD %c v1.2.0 ","color: orange; font-weight: bold; background: black","color: white; font-weight: bold; background: dimgray");customElements.define("timer-card",class extends ot{constructor(){super(...arguments),this._countdownInterval=null,this._liveRuntimeSeconds=0,this._timeRemaining=null,this._sliderValue=0,this.buttons=[],this._validationMessages=[],this._notificationSentForCurrentCycle=!1,this._entitiesLoaded=!1,this._effectiveSwitchEntity=null,this._effectiveSensorEntity=null,this._longPressTimer=null,this._isLongPress=!1,this._touchStartPosition=null,this._isCancelling=!1}static get properties(){return{hass:{type:Object},_config:{type:Object},_timeRemaining:{state:!0},_sliderValue:{state:!0},_entitiesLoaded:{state:!0},_effectiveSwitchEntity:{state:!0},_effectiveSensorEntity:{state:!0},_validationMessages:{state:!0}}}static async getConfigElement(){return await Promise.resolve().then(function(){return pt}),document.createElement("timer-card-editor")}static getStubConfig(t){return console.log("TimerCard: Generating stub config - NO auto-selection will be performed"),{type:"custom:timer-card",timer_instance_id:null,timer_buttons:[...ct],card_title:"Simple Timer",power_button_icon:"mdi:power"}}setConfig(t){const e=t.slider_max&&t.slider_max>0&&t.slider_max<=1e3?t.slider_max:120,i=t.timer_instance_id||"default";this._config={type:t.type||"custom:timer-card",timer_buttons:this._getValidatedTimerButtons(t.timer_buttons),card_title:t.card_title||null,power_button_icon:t.power_button_icon||null,slider_max:e,reverse_mode:t.reverse_mode||!1,show_daily_usage:!1!==t.show_daily_usage,timer_instance_id:i,entity:t.entity,sensor_entity:t.sensor_entity},t.timer_instance_id&&(this._config.timer_instance_id=t.timer_instance_id),t.entity&&(this._config.entity=t.entity),t.sensor_entity&&(this._config.sensor_entity=t.sensor_entity);const s=localStorage.getItem(`simple-timer-slider-${i}`);let n=s?parseInt(s):NaN;(isNaN(n)||n<=0)&&(n=e),n>e&&(n=e),this._sliderValue=n,localStorage.setItem(`simple-timer-slider-${i}`,this._sliderValue.toString()),this.requestUpdate(),this.buttons=[...this._config.timer_buttons],this._liveRuntimeSeconds=0,this._notificationSentForCurrentCycle=!1,this._effectiveSwitchEntity=null,this._effectiveSensorEntity=null,this._entitiesLoaded=!1}_getValidatedTimerButtons(t){let e=[];if(this._validationMessages=[],Array.isArray(t)){const i=[],s=new Set,n=[];t.forEach(t=>{const o=Number(t);Number.isInteger(o)&&o>0&&o<=1e3?s.has(o)?n.push(o):(s.add(o),e.push(o)):i.push(t)});const o=[];return i.length>0&&o.push(`Invalid timer values ignored: ${i.join(", ")}. Only positive integers up to 1000 are allowed.`),n.length>0&&o.push(`Duplicate timer values were removed: ${[...new Set(n)].join(", ")}.`),this._validationMessages=o,e.sort((t,e)=>t-e),e}return null==t||(console.warn(`TimerCard: Invalid timer_buttons type (${typeof t}):`,t,"- using empty array"),this._validationMessages=[`Invalid timer_buttons configuration. Expected array, got ${typeof t}.`]),[]}_determineEffectiveEntities(){var t,e;let i=null,s=null,n=!1;if(this.hass&&this.hass.states){if(null===(t=this._config)||void 0===t?void 0:t.timer_instance_id){const t=this._config.timer_instance_id,e=Object.keys(this.hass.states).filter(t=>t.startsWith("sensor.")).find(e=>{const i=this.hass.states[e];return i.attributes.entry_id===t&&"string"==typeof i.attributes.switch_entity_id});if(e){s=e,i=this.hass.states[e].attributes.switch_entity_id,i&&this.hass.states[i]?n=!0:console.warn(`TimerCard: Configured instance '${t}' sensor '${s}' links to missing or invalid switch '${i}'.`)}else console.warn(`TimerCard: Configured timer_instance_id '${t}' does not have a corresponding simple_timer sensor found.`)}if(!n&&(null===(e=this._config)||void 0===e?void 0:e.sensor_entity)){const t=this.hass.states[this._config.sensor_entity];t&&"string"==typeof t.attributes.entry_id&&"string"==typeof t.attributes.switch_entity_id?(s=this._config.sensor_entity,i=t.attributes.switch_entity_id,i&&this.hass.states[i]?(n=!0,console.info(`TimerCard: Using manually configured sensor_entity: Sensor '${s}', Switch '${i}'.`)):console.warn(`TimerCard: Manually configured sensor '${s}' links to missing or invalid switch '${i}'.`)):console.warn(`TimerCard: Manually configured sensor_entity '${this._config.sensor_entity}' not found or missing required attributes.`)}this._effectiveSwitchEntity===i&&this._effectiveSensorEntity===s||(this._effectiveSwitchEntity=i,this._effectiveSensorEntity=s,this.requestUpdate()),this._entitiesLoaded=n}else this._entitiesLoaded=!1}_getEntryId(){if(!this._effectiveSensorEntity||!this.hass||!this.hass.states)return console.error("Timer-card: _getEntryId called without a valid effective sensor entity."),null;const t=this.hass.states[this._effectiveSensorEntity];return t&&t.attributes.entry_id?t.attributes.entry_id:(console.error("Could not determine entry_id from effective sensor_entity attributes:",this._effectiveSensorEntity),null)}_startTimer(t,e="button"){var i;if(this._validationMessages=[],!this._entitiesLoaded||!this.hass||!this.hass.callService)return void console.error("Timer-card: Cannot start timer. Entities not loaded or callService unavailable.");const s=this._getEntryId();if(!s)return void console.error("Timer-card: Entry ID not found for starting timer.");const n=this._effectiveSwitchEntity;(null===(i=this._config)||void 0===i?void 0:i.reverse_mode)||!1?this.hass.callService("homeassistant","turn_off",{entity_id:n}).then(()=>{this.hass.callService(lt,"start_timer",{entry_id:s,duration:t,reverse_mode:!0,start_method:e})}).catch(t=>{console.error("Timer-card: Error turning off switch for reverse timer:",t)}):this.hass.callService("homeassistant","turn_on",{entity_id:n}).then(()=>{this.hass.callService(lt,"start_timer",{entry_id:s,duration:t,start_method:e})}).catch(t=>{console.error("Timer-card: Error turning on switch or starting timer:",t)}),this._notificationSentForCurrentCycle=!1}_cancelTimer(){if(this._validationMessages=[],!this._entitiesLoaded||!this.hass||!this.hass.callService)return void console.error("Timer-card: Cannot cancel timer. Entities not loaded or callService unavailable.");this._isCancelling=!0;const t=this._getEntryId();if(!t)return console.error("Timer-card: Entry ID not found for cancelling timer."),void(this._isCancelling=!1);this.hass.callService(lt,"cancel_timer",{entry_id:t}).then(()=>{setTimeout(()=>{this._isCancelling=!1},1e3)}).catch(t=>{console.error("Timer-card: Error cancelling timer:",t),this._isCancelling=!1}),this._notificationSentForCurrentCycle=!1}_togglePower(){if(this._validationMessages=[],!(this._entitiesLoaded&&this.hass&&this.hass.states&&this.hass.callService))return void console.error("Timer-card: Cannot toggle power. Entities not loaded or services unavailable.");if(this._isCancelling)return;const t=this._effectiveSwitchEntity,e=this._effectiveSensorEntity,i=this.hass.states[t];if(!i)return void console.warn(`Timer-card: Switch entity '${t}' not found during toggle.`);const s=this.hass.states[e];if(s&&"active"===s.attributes.timer_state){return void(s.attributes.reverse_mode?(this._cancelTimer(),console.log(`Timer-card: Cancelling reverse timer and turning on switch: ${t}`)):(this._cancelTimer(),console.log(`Timer-card: Cancelling normal timer for switch: ${t}`)))}"on"===i.state?(this.hass.callService(lt,"manual_power_toggle",{entry_id:this._getEntryId(),action:"turn_off"}),console.log(`Timer-card: Manually turning off switch: ${t}`)):(this._sliderValue>0?(this._startTimer(this._sliderValue,"slider"),console.log(`Timer-card: Starting timer for ${this._sliderValue} minutes`)):this.hass.callService(lt,"manual_power_toggle",{entry_id:this._getEntryId(),action:"turn_on"}).then(()=>{console.log(`Timer-card: Manually turning on switch (infinite): ${t}`)}).catch(t=>{console.error("Timer-card: Error manually turning on switch:",t)}),this._notificationSentForCurrentCycle=!1)}_showMoreInfo(){if(!this._entitiesLoaded||!this.hass)return void console.error("Timer-card: Cannot show more info. Entities not loaded.");const t=this._effectiveSensorEntity,e=new CustomEvent("hass-more-info",{bubbles:!0,composed:!0,detail:{entityId:t}});this.dispatchEvent(e)}connectedCallback(){var t,e;super.connectedCallback();const i=(null===(t=this._config)||void 0===t?void 0:t.timer_instance_id)||"default";if(localStorage.getItem(`simple-timer-slider-${i}`));else if(this._determineEffectiveEntities(),this._entitiesLoaded&&this.hass&&this._effectiveSensorEntity){const t=this.hass.states[this._effectiveSensorEntity],i=(null===(e=null==t?void 0:t.attributes)||void 0===e?void 0:e.timer_duration)||0;i>0&&i<=120&&(this._sliderValue=i)}this._determineEffectiveEntities(),this._updateLiveRuntime(),this._updateCountdown()}disconnectedCallback(){super.disconnectedCallback(),this._stopCountdown(),this._stopLiveRuntime(),this._longPressTimer&&window.clearTimeout(this._longPressTimer)}updated(t){(t.has("hass")||t.has("_config"))&&(this._determineEffectiveEntities(),this._updateLiveRuntime(),this._updateCountdown())}_updateLiveRuntime(){this._liveRuntimeSeconds=0}_stopLiveRuntime(){this._liveRuntimeSeconds=0}_updateCountdown(){if(!this._entitiesLoaded||!this.hass||!this.hass.states)return void this._stopCountdown();const t=this.hass.states[this._effectiveSensorEntity];if(!t||"active"!==t.attributes.timer_state)return this._stopCountdown(),void(this._notificationSentForCurrentCycle=!1);if(!this._countdownInterval){const e=t.attributes.timer_finishes_at;if(void 0===e)return console.warn("Timer-card: timer_finishes_at is undefined for active timer. Stopping countdown."),void this._stopCountdown();const i=new Date(e).getTime(),s=()=>{const t=(new Date).getTime(),e=Math.max(0,Math.round((i-t)/1e3));if(this._getShowSeconds()){const t=Math.floor(e/3600),i=Math.floor(e%3600/60),s=e%60;this._timeRemaining=`${t.toString().padStart(2,"0")}:${i.toString().padStart(2,"0")}:${s.toString().padStart(2,"0")}`}else{const t=Math.floor(e/60),i=e%60;this._timeRemaining=`${t.toString().padStart(2,"0")}:${i.toString().padStart(2,"0")}`}0===e&&(this._stopCountdown(),this._notificationSentForCurrentCycle||(this._notificationSentForCurrentCycle=!0))};this._countdownInterval=window.setInterval(s,500),s()}}_stopCountdown(){this._countdownInterval&&(window.clearInterval(this._countdownInterval),this._countdownInterval=null),this._timeRemaining=null}_hasOrphanedTimer(){var t;if(!this._entitiesLoaded||!this.hass||!this._effectiveSensorEntity)return{isOrphaned:!1};const e=this.hass.states[this._effectiveSensorEntity];if(!e||"active"!==e.attributes.timer_state)return{isOrphaned:!1};const i=e.attributes.timer_duration||0,s=this.buttons.includes(i),n=(null===(t=this._config)||void 0===t?void 0:t.slider_max)||120;return{isOrphaned:!s&&!(i>=0&&i<=n),duration:i}}_getShowSeconds(){var t;if(!this._entitiesLoaded||!this.hass||!this._effectiveSensorEntity)return!1;const e=this.hass.states[this._effectiveSensorEntity];return(null===(t=null==e?void 0:e.attributes)||void 0===t?void 0:t.show_seconds)||!1}_handleUsageClick(t){t.preventDefault(),this._isLongPress||this._showMoreInfo(),this._isLongPress=!1}_startLongPress(t){t.preventDefault(),this._isLongPress=!1,this._longPressTimer=window.setTimeout(()=>{this._isLongPress=!0,this._resetUsage(),"vibrate"in navigator&&navigator.vibrate(50)},800)}_endLongPress(t){t&&t.preventDefault(),this._longPressTimer&&(window.clearTimeout(this._longPressTimer),this._longPressTimer=null)}_handlePowerClick(t){"click"!==t.type||this._isLongPress||(t.preventDefault(),t.stopPropagation(),this._togglePower()),this._isLongPress=!1}_handleTouchEnd(t){t.preventDefault(),t.stopPropagation(),this._longPressTimer&&(window.clearTimeout(this._longPressTimer),this._longPressTimer=null);let e=!1;if(this._touchStartPosition&&t.changedTouches[0]){const i=t.changedTouches[0],s=Math.abs(i.clientX-this._touchStartPosition.x),n=Math.abs(i.clientY-this._touchStartPosition.y),o=10;e=s>o||n>o}this._isLongPress||e||this._showMoreInfo(),this._isLongPress=!1,this._touchStartPosition=null}_handleTouchStart(t){t.preventDefault(),t.stopPropagation(),this._isLongPress=!1;const e=t.touches[0];this._touchStartPosition={x:e.clientX,y:e.clientY},this._longPressTimer=window.setTimeout(()=>{this._isLongPress=!0,this._resetUsage(),"vibrate"in navigator&&navigator.vibrate(50)},800)}_resetUsage(){if(this._validationMessages=[],!this._entitiesLoaded||!this.hass||!this.hass.callService)return void console.error("Timer-card: Cannot reset usage. Entities not loaded or callService unavailable.");const t=this._getEntryId();t?confirm("Reset daily usage to 00:00?\n\nThis action cannot be undone.")&&this.hass.callService(lt,"reset_daily_usage",{entry_id:t}).then(()=>{console.log("Timer-card: Daily usage reset successfully")}).catch(t=>{console.error("Timer-card: Error resetting daily usage:",t)}):console.error("Timer-card: Entry ID not found for resetting usage.")}_handleSliderChange(t){var e;const i=t.target;this._sliderValue=parseInt(i.value);const s=(null===(e=this._config)||void 0===e?void 0:e.timer_instance_id)||"default";localStorage.setItem(`simple-timer-slider-${s}`,this._sliderValue.toString())}_getCurrentTimerMode(){var t;if(!this._entitiesLoaded||!this.hass||!this._effectiveSensorEntity)return"normal";const e=this.hass.states[this._effectiveSensorEntity];return(null===(t=null==e?void 0:e.attributes)||void 0===t?void 0:t.reverse_mode)?"reverse":"normal"}render(){var t,e,i,s,n,o,r,a;let l=null,c=!1;if(this.hass){if(!this._entitiesLoaded)if(null===(t=this._config)||void 0===t?void 0:t.timer_instance_id){const t=Object.values(this.hass.states).find(t=>t.attributes.entry_id===this._config.timer_instance_id&&t.entity_id.startsWith("sensor."));t?"string"==typeof t.attributes.switch_entity_id&&t.attributes.switch_entity_id&&this.hass.states[t.attributes.switch_entity_id]?(l="Loading Timer Control Card. Please wait...",c=!1):(l=`Timer Control Instance '${this._config.timer_instance_id}' linked to missing or invalid switch '${t.attributes.switch_entity_id}'. Please check instance configuration.`,c=!0):(l=`Timer Control Instance '${this._config.timer_instance_id}' not found. Please select a valid instance in the card editor.`,c=!0)}else if(null===(e=this._config)||void 0===e?void 0:e.sensor_entity){const t=this.hass.states[this._config.sensor_entity];t?"string"==typeof t.attributes.switch_entity_id&&t.attributes.switch_entity_id&&this.hass.states[t.attributes.switch_entity_id]?(l="Loading Timer Control Card. Please wait...",c=!1):(l=`Configured Timer Control Sensor '${this._config.sensor_entity}' is invalid or its linked switch '${t.attributes.switch_entity_id}' is missing. Please select a valid instance.`,c=!0):(l=`Configured Timer Control Sensor '${this._config.sensor_entity}' not found. Please select a valid instance in the card editor.`,c=!0)}else l="Select a Timer Control Instance from the dropdown in the card editor to link this card.",c=!1}else l="Home Assistant object (hass) not available. Card cannot load.",c=!0;if(l)return V`<ha-card><div class="${c?"warning":"placeholder"}">${l}</div></ha-card>`;const d=this.hass.states[this._effectiveSwitchEntity],h=this.hass.states[this._effectiveSensorEntity],u="on"===d.state,_="active"===h.attributes.timer_state,p=h.attributes.timer_duration||0,g=u&&!_,m=h.attributes.reverse_mode,f=parseFloat(h.state)||0;let v,b;if(this._getShowSeconds()){const t=Math.floor(f),e=Math.floor(t/3600),i=Math.floor(t%3600/60),s=t%60;v=`Daily usage: ${e.toString().padStart(2,"0")}:${i.toString().padStart(2,"0")}:${s.toString().padStart(2,"0")}`,b=this._timeRemaining||"00:00:00"}else{const t=Math.floor(f/60),e=t%60;v=`Daily usage: ${Math.floor(t/60).toString().padStart(2,"0")}:${e.toString().padStart(2,"0")}`,b=this._timeRemaining||"00:00"}const y=h.attributes.watchdog_message,w=this._hasOrphanedTimer();return V`
       <ha-card>
         <div class="card-header ${(null===(i=this._config)||void 0===i?void 0:i.card_title)?"has-title":""}">
 						<div class="card-title">${(null===(s=this._config)||void 0===s?void 0:s.card_title)||""}</div>
@@ -554,7 +562,7 @@ const $=globalThis,x=$.trustedTypes,S=x?x.createPolicy("lit-html",{createHTML:t=
         display: flex;
         align-items: center;
       }
-`,ht="instance_title",ut=[15,30,60,90,120,150];class _t extends ot{constructor(){super(),this._configFullyLoaded=!1,this._timerInstancesOptions=[],this._tempSliderMaxValue=null,this._allTimerOptions=[1,15,30,45,60,75,90,105,120,135,150,165,180],this._config={type:"custom:timer-card",timer_buttons:[...ut],timer_instance_id:null,card_title:null}}async _getSimpleTimerInstances(){if(!this.hass||!this.hass.states)return console.warn("TimerCardEditor: hass.states not available when trying to fetch instances from states."),[];const t=new Map;for(const e in this.hass.states){const i=this.hass.states[e];if(e.startsWith("sensor.")&&e.includes("runtime")&&i.attributes.entry_id&&"string"==typeof i.attributes.entry_id&&i.attributes.switch_entity_id&&"string"==typeof i.attributes.switch_entity_id){const s=i.attributes.entry_id,n=i.attributes[ht];let o=`Timer Control (${s.substring(0,8)})`;console.debug(`TimerCardEditor: Processing sensor ${e} (Entry: ${s})`),console.debug(`TimerCardEditor: Found raw attribute '${ht}': ${n}`),console.debug("TimerCardEditor: Type of raw attribute: "+typeof n),n&&"string"==typeof n&&""!==n.trim()?(o=n.trim(),console.debug(`TimerCardEditor: Using '${ht}' for label: "${o}"`)):console.warn(`TimerCardEditor: Sensor '${e}' has no valid '${ht}' attribute. Falling back to entry ID based label: "${o}".`),t.has(s)?console.debug(`TimerCardEditor: Skipping duplicate entry_id: ${s}`):(t.set(s,{value:s,label:o}),console.debug(`TimerCardEditor: Added instance: ${o} (${s}) from sensor: ${e}`))}}const e=Array.from(t.values());return e.sort((t,e)=>t.label.localeCompare(e.label)),0===e.length&&console.info("TimerCardEditor: No Simple Timer integration instances found by scanning hass.states."),e}_getValidatedTimerButtons(t){if(Array.isArray(t)){const e=[],i=new Set;return t.forEach(t=>{const s=Number(t);Number.isInteger(s)&&s>0&&s<=1e3&&(i.has(s)||(e.push(s),i.add(s)))}),e.sort((t,e)=>t-e),e}return null==t?(console.log("TimerCardEditor: No timer_buttons in config, using empty array."),[]):(console.warn(`TimerCardEditor: Invalid timer_buttons type (${typeof t}):`,t,"- using empty array"),[])}async setConfig(t){const e=Object.assign({},this._config),i=this._getValidatedTimerButtons(t.timer_buttons),s={type:t.type||"custom:timer-card",timer_buttons:i,card_title:t.card_title||null,power_button_icon:t.power_button_icon||null,slider_max:t.slider_max||120,reverse_mode:t.reverse_mode||!1,show_daily_usage:!1!==t.show_daily_usage};t.timer_instance_id?s.timer_instance_id=t.timer_instance_id:console.info("TimerCardEditor: setConfig - no timer_instance_id in config, will remain unset"),t.entity&&(s.entity=t.entity),t.sensor_entity&&(s.sensor_entity=t.sensor_entity),this._config=s,this._configFullyLoaded=!0,JSON.stringify(e)!==JSON.stringify(this._config)?this.dispatchEvent(new CustomEvent("config-changed",{detail:{config:this._config}})):console.log("TimerCardEditor: Config unchanged, not dispatching event"),this.requestUpdate()}connectedCallback(){super.connectedCallback(),this.hass?this._fetchTimerInstances():console.warn("TimerCardEditor: hass not available on connectedCallback. Deferring instance fetch.")}updated(t){var e;super.updated(t),t.has("hass")&&this.hass&&((null===(e=t.get("hass"))||void 0===e?void 0:e.states)===this.hass.states&&0!==this._timerInstancesOptions.length||this._fetchTimerInstances())}async _fetchTimerInstances(){var t;if(this.hass){if(this._timerInstancesOptions=await this._getSimpleTimerInstances(),!this._configFullyLoaded)return void this.requestUpdate();if((null===(t=this._config)||void 0===t?void 0:t.timer_instance_id)&&this._timerInstancesOptions.length>0){if(!this._timerInstancesOptions.some(t=>t.value===this._config.timer_instance_id)){console.warn(`TimerCardEditor: Previously configured instance '${this._config.timer_instance_id}' no longer exists. User will need to select a new instance.`);const t=Object.assign(Object.assign({},this._config),{timer_instance_id:null});this._config=t,this.dispatchEvent(new CustomEvent("config-changed",{detail:{config:this._config},bubbles:!0,composed:!0}))}}else console.info("TimerCardEditor: No timer_instance_id configured or no instances available. User must manually select.");this.requestUpdate()}}_handleTimerCheckboxChange(t){var e,i,s,n,o,r;const a=t.target,l=parseInt(a.value),c=a.checked;let d=Array.isArray(null===(e=this._config)||void 0===e?void 0:e.timer_buttons)?[...this._config.timer_buttons]:[];c?d.includes(l)||d.push(l):d=d.filter(t=>t!==l),d.sort((t,e)=>t-e);const h={type:this._config.type,timer_buttons:d};(null===(i=this._config)||void 0===i?void 0:i.timer_instance_id)&&(h.timer_instance_id=this._config.timer_instance_id),(null===(s=this._config)||void 0===s?void 0:s.entity)&&(h.entity=this._config.entity),(null===(n=this._config)||void 0===n?void 0:n.sensor_entity)&&(h.sensor_entity=this._config.sensor_entity),(null===(o=this._config)||void 0===o?void 0:o.card_title)&&(h.card_title=this._config.card_title),(null===(r=this._config)||void 0===r?void 0:r.power_button_icon)&&(h.power_button_icon=this._config.power_button_icon),this._config=h,this.dispatchEvent(new CustomEvent("config-changed",{detail:{config:this._config},bubbles:!0,composed:!0})),this.requestUpdate()}render(){var t,e,i,s,n,o,r,a,l,c;if(!this.hass)return V``;const d=this._timerInstancesOptions||[],h=[{value:"",label:"None"}],u=null!==(t=this._tempSliderMaxValue)&&void 0!==t?t:String(null!==(e=this._config.slider_max)&&void 0!==e?e:120);return d.length>0?h.push(...d):h.push({value:"none_found",label:"No Simple Timer Instances Found"}),V`
+`,ht="instance_title",ut=[15,30,60,90,120,150];class _t extends ot{constructor(){super(),this._configFullyLoaded=!1,this._timerInstancesOptions=[],this._tempSliderMaxValue=null,this._allTimerOptions=[1,15,30,45,60,75,90,105,120,135,150,165,180],this._config={type:"custom:timer-card",timer_buttons:[...ut],timer_instance_id:null,card_title:null}}async _getSimpleTimerInstances(){if(!this.hass||!this.hass.states)return console.warn("TimerCardEditor: hass.states not available when trying to fetch instances from states."),[];const t=new Map;for(const e in this.hass.states){const i=this.hass.states[e];if(e.startsWith("sensor.")&&e.includes("runtime")&&i.attributes.entry_id&&"string"==typeof i.attributes.entry_id&&i.attributes.switch_entity_id&&"string"==typeof i.attributes.switch_entity_id){const s=i.attributes.entry_id,n=i.attributes[ht];let o=`Timer Control (${s.substring(0,8)})`;console.debug(`TimerCardEditor: Processing sensor ${e} (Entry: ${s})`),console.debug(`TimerCardEditor: Found raw attribute '${ht}': ${n}`),console.debug("TimerCardEditor: Type of raw attribute: "+typeof n),n&&"string"==typeof n&&""!==n.trim()?(o=n.trim(),console.debug(`TimerCardEditor: Using '${ht}' for label: "${o}"`)):console.warn(`TimerCardEditor: Sensor '${e}' has no valid '${ht}' attribute. Falling back to entry ID based label: "${o}".`),t.has(s)?console.debug(`TimerCardEditor: Skipping duplicate entry_id: ${s}`):(t.set(s,{value:s,label:o}),console.debug(`TimerCardEditor: Added instance: ${o} (${s}) from sensor: ${e}`))}}const e=Array.from(t.values());return e.sort((t,e)=>t.label.localeCompare(e.label)),0===e.length&&console.info("TimerCardEditor: No Simple Timer integration instances found by scanning hass.states."),e}_getValidatedTimerButtons(t){if(Array.isArray(t)){const e=[],i=new Set;return t.forEach(t=>{const s=Number(t);Number.isInteger(s)&&s>0&&s<=1e3&&(i.has(s)||(e.push(s),i.add(s)))}),e.sort((t,e)=>t-e),e}return null==t?(console.log("TimerCardEditor: No timer_buttons in config, using empty array."),[]):(console.warn(`TimerCardEditor: Invalid timer_buttons type (${typeof t}):`,t,"- using empty array"),[])}async setConfig(t){const e=Object.assign({},this._config),i=this._getValidatedTimerButtons(t.timer_buttons),s={type:t.type||"custom:timer-card",timer_buttons:i,card_title:t.card_title||null,power_button_icon:t.power_button_icon||null,slider_max:t.slider_max||120,reverse_mode:t.reverse_mode||!1,show_daily_usage:!1!==t.show_daily_usage};t.timer_instance_id?s.timer_instance_id=t.timer_instance_id:console.info("TimerCardEditor: setConfig - no timer_instance_id in config, will remain unset"),t.entity&&(s.entity=t.entity),t.sensor_entity&&(s.sensor_entity=t.sensor_entity),this._config=s,this._configFullyLoaded=!0,JSON.stringify(e)!==JSON.stringify(this._config)?this.dispatchEvent(new CustomEvent("config-changed",{detail:{config:this._config}})):console.log("TimerCardEditor: Config unchanged, not dispatching event"),this.requestUpdate()}connectedCallback(){super.connectedCallback(),this.hass?this._fetchTimerInstances():console.warn("TimerCardEditor: hass not available on connectedCallback. Deferring instance fetch.")}updated(t){var e;super.updated(t),t.has("hass")&&this.hass&&((null===(e=t.get("hass"))||void 0===e?void 0:e.states)===this.hass.states&&0!==this._timerInstancesOptions.length||this._fetchTimerInstances())}async _fetchTimerInstances(){var t;if(this.hass){if(this._timerInstancesOptions=await this._getSimpleTimerInstances(),!this._configFullyLoaded)return void this.requestUpdate();if((null===(t=this._config)||void 0===t?void 0:t.timer_instance_id)&&this._timerInstancesOptions.length>0){if(!this._timerInstancesOptions.some(t=>t.value===this._config.timer_instance_id)){console.warn(`TimerCardEditor: Previously configured instance '${this._config.timer_instance_id}' no longer exists. User will need to select a new instance.`);const t=Object.assign(Object.assign({},this._config),{timer_instance_id:null});this._config=t,this.dispatchEvent(new CustomEvent("config-changed",{detail:{config:this._config},bubbles:!0,composed:!0}))}}else console.info("TimerCardEditor: No timer_instance_id configured or no instances available. User must manually select.");this.requestUpdate()}}_handleTimerCheckboxChange(t){var e,i,s,n,o,r,a,l,c;const d=t.target,h=parseInt(d.value),u=d.checked;let _=Array.isArray(null===(e=this._config)||void 0===e?void 0:e.timer_buttons)?[...this._config.timer_buttons]:[];u?_.includes(h)||_.push(h):_=_.filter(t=>t!==h),_.sort((t,e)=>t-e);const p={type:this._config.type,timer_buttons:_};(null===(i=this._config)||void 0===i?void 0:i.timer_instance_id)&&(p.timer_instance_id=this._config.timer_instance_id),(null===(s=this._config)||void 0===s?void 0:s.entity)&&(p.entity=this._config.entity),(null===(n=this._config)||void 0===n?void 0:n.sensor_entity)&&(p.sensor_entity=this._config.sensor_entity),(null===(o=this._config)||void 0===o?void 0:o.card_title)&&(p.card_title=this._config.card_title),(null===(r=this._config)||void 0===r?void 0:r.power_button_icon)&&(p.power_button_icon=this._config.power_button_icon),void 0!==(null===(a=this._config)||void 0===a?void 0:a.show_daily_usage)&&(p.show_daily_usage=this._config.show_daily_usage),void 0!==(null===(l=this._config)||void 0===l?void 0:l.slider_max)&&(p.slider_max=this._config.slider_max),void 0!==(null===(c=this._config)||void 0===c?void 0:c.reverse_mode)&&(p.reverse_mode=this._config.reverse_mode),this._config=p,this.dispatchEvent(new CustomEvent("config-changed",{detail:{config:this._config},bubbles:!0,composed:!0})),this.requestUpdate()}render(){var t,e,i,s,n,o,r,a,l,c;if(!this.hass)return V``;const d=this._timerInstancesOptions||[],h=[{value:"",label:"None"}],u=null!==(t=this._tempSliderMaxValue)&&void 0!==t?t:String(null!==(e=this._config.slider_max)&&void 0!==e?e:120);return d.length>0?h.push(...d):h.push({value:"none_found",label:"No Simple Timer Instances Found"}),V`
       <div class="card-config">
         <div class="config-row">
           <ha-textfield

@@ -302,6 +302,9 @@ class TimerCardEditor extends LitElement {
     if (this._config?.sensor_entity) updatedConfig.sensor_entity = this._config.sensor_entity;
     if (this._config?.card_title) updatedConfig.card_title = this._config.card_title;
 		if (this._config?.power_button_icon) updatedConfig.power_button_icon = this._config.power_button_icon;
+    if (this._config?.show_daily_usage !== undefined) updatedConfig.show_daily_usage = this._config.show_daily_usage;
+    if (this._config?.slider_max !== undefined) updatedConfig.slider_max = this._config.slider_max;
+    if (this._config?.reverse_mode !== undefined) updatedConfig.reverse_mode = this._config.reverse_mode;
 
     this._config = updatedConfig;
     this.dispatchEvent(
