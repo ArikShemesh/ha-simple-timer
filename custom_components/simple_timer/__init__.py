@@ -2,6 +2,7 @@
 import voluptuous as vol
 import logging
 import os
+import json
 import shutil
 import asyncio
 import homeassistant.helpers.config_validation as cv
@@ -163,8 +164,9 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
         vol.Optional("message", default="Test notification"): cv.string,
     })
     SERVICE_RESET_DAILY_USAGE_SCHEMA = vol.Schema({
-    vol.Required("entry_id"): cv.string,
+        vol.Required("entry_id"): cv.string,
     })
+    SERVICE_RELOAD_RESOURCES_SCHEMA = vol.Schema({})
 
     async def test_notification(call: ServiceCall):
         """Test notification functionality."""
@@ -296,6 +298,43 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
             await sensor.async_reset_daily_usage()
         else:
             raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
+            
+    async def reload_resources(call: ServiceCall):
+        """Reload frontend resources with current manifest version."""
+        try:
+            _LOGGER.info("Simple Timer: Reloading resources")
+            
+            # Copy updated files
+            await copy_frontend_files(hass)
+            
+            # Read version from manifest using async executor to avoid blocking
+            def read_manifest():
+                manifest_path = os.path.join(os.path.dirname(__file__), "manifest.json")
+                with open(manifest_path, 'r') as f:
+                    manifest = json.load(f)
+                    return manifest.get('version', '1.0.0')
+            
+            version = await hass.async_add_executor_job(read_manifest)
+            
+            # Re-register resource with new version
+            await init_resource(hass, "/local/simple-timer/timer-card.js", version)
+            
+            _LOGGER.info(f"Simple Timer: Resources updated to version {version}")
+            
+            # Send notification
+            await hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "message": f"Simple Timer resources reloaded with version {version}. Please refresh your browser (Ctrl+Shift+R).",
+                    "title": "Simple Timer Resources Updated",
+                    "notification_id": "simple_timer_resource_reload"
+                }
+            )
+            
+        except Exception as e:
+            _LOGGER.error(f"Simple Timer: Resource reload failed: {e}")
+            raise
 
     # Register all services
     hass.services.async_register(
@@ -314,10 +353,13 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
         DOMAIN, "manual_power_toggle", manual_power_toggle, schema=SERVICE_MANUAL_POWER_TOGGLE_SCHEMA
     )
     hass.services.async_register(
-    DOMAIN, "test_notification", test_notification, schema=SERVICE_TEST_NOTIFICATION_SCHEMA
+        DOMAIN, "test_notification", test_notification, schema=SERVICE_TEST_NOTIFICATION_SCHEMA
     )
     hass.services.async_register(
-    DOMAIN, "reset_daily_usage", reset_daily_usage, schema=SERVICE_RESET_DAILY_USAGE_SCHEMA
+        DOMAIN, "reset_daily_usage", reset_daily_usage, schema=SERVICE_RESET_DAILY_USAGE_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, "reload_resources", reload_resources, schema=vol.Schema({})
     )
 
     hass.data[DOMAIN]["services_registered"] = True

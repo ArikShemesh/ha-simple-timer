@@ -114,3 +114,8 @@ test_notification:
       default: "Test notification"
       selector:
         text:
+        
+reload_resources:
+  name: Reload Frontend Resources
+  description: Manually reload and update the Simple Timer card frontend resources with the current version
+  fields: {}
