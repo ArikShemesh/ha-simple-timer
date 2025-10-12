@@ -1,3 +1,4 @@
 {
-  "name": "Simple Timer"
+  "name": "Simple Timer",
+  "hide_default_branch": true
 }
