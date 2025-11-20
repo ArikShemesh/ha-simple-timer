@@ -1,4 +1,5 @@
 {
   "name": "Simple Timer",
-  "hide_default_branch": true
+  "content_in_root": false,
+  "render_readme": true
 }

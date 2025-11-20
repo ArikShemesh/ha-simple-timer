@@ -82,7 +82,7 @@ class TimerCardEditor extends LitElement {
   _configFullyLoaded: boolean = false; // Track if we've received a complete config
 
   private _timerInstancesOptions: Array<{ value: string; label: string }> = [];
-	private _tempSliderMaxValue: string | null = null;
+  private _tempSliderMaxValue: string | null = null;
 
   constructor() {
     super();
@@ -92,6 +92,52 @@ class TimerCardEditor extends LitElement {
       timer_instance_id: null,
       card_title: null
     };
+  }
+  
+  private _getComputedCSSVariable(variableName: string, fallback: string = "#000000"): string {
+    try {
+      // Get the computed style from the document root or this element
+      const computedStyle = getComputedStyle(document.documentElement);
+      const value = computedStyle.getPropertyValue(variableName).trim();
+      
+      // If we got a value and it's a valid color, return it
+      if (value && value !== '') {
+        // Handle both hex colors and rgb/rgba
+        return value;
+      }
+    } catch (e) {
+      console.warn(`Failed to get CSS variable ${variableName}:`, e);
+    }
+    
+    return fallback;
+  }
+  
+  private _rgbToHex(rgb: string): string {
+    // Handle rgb(r, g, b) or rgba(r, g, b, a)
+    const match = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);
+    if (match) {
+      const r = parseInt(match[1]);
+      const g = parseInt(match[2]);
+      const b = parseInt(match[3]);
+      return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+    }
+    return rgb; // Return as-is if already hex or invalid
+  }
+
+  private _getThemeColorHex(variableName: string, fallback: string = "#000000"): string {
+    const value = this._getComputedCSSVariable(variableName, fallback);
+    
+    // If it's already a hex color, return it
+    if (value.startsWith('#')) {
+      return value;
+    }
+    
+    // If it's rgb/rgba, convert to hex
+    if (value.startsWith('rgb')) {
+      return this._rgbToHex(value);
+    }
+    
+    return fallback;
   }
 
   async _getSimpleTimerInstances(): Promise<Array<{ value: string; label: string }>> {
@@ -145,11 +191,11 @@ class TimerCardEditor extends LitElement {
     if (instances.length === 0) {
         console.info(`TimerCardEditor: No Simple Timer integration instances found by scanning hass.states.`);
     }
-		
+    
     return instances;
   }
-	
-	_getValidatedTimerButtons(configButtons: any): number[] {
+  
+  _getValidatedTimerButtons(configButtons: any): number[] {
     if (Array.isArray(configButtons)) {
         const validatedButtons: number[] = [];
         const seen = new Set<number>();
@@ -175,7 +221,7 @@ class TimerCardEditor extends LitElement {
 
     console.warn(`TimerCardEditor: Invalid timer_buttons type (${typeof configButtons}):`, configButtons, `- using empty array`);
     return [];
-	}
+  }
 
   async setConfig(cfg: TimerCardConfig): Promise<void> {
     const oldConfig = { ...this._config };
@@ -186,10 +232,16 @@ class TimerCardEditor extends LitElement {
       type: cfg.type || "custom:timer-card",
       timer_buttons: timerButtonsToSet,
       card_title: cfg.card_title || null,
-			power_button_icon: cfg.power_button_icon || null,
-			slider_max: cfg.slider_max || 120,
-			reverse_mode: cfg.reverse_mode || false,
-			show_daily_usage: cfg.show_daily_usage !== false
+      power_button_icon: cfg.power_button_icon || null,
+      slider_max: cfg.slider_max || 120,
+      reverse_mode: cfg.reverse_mode || false,
+      show_daily_usage: cfg.show_daily_usage !== false,
+      slider_thumb_color: cfg.slider_thumb_color || null,
+      slider_background_color: cfg.slider_background_color || null,
+      timer_button_font_color: cfg.timer_button_font_color || null,
+      timer_button_background_color: cfg.timer_button_background_color || null,
+      power_button_background_color: cfg.power_button_background_color || null,
+      power_button_icon_color: cfg.power_button_icon_color || null 
     };
 
     if (cfg.timer_instance_id) {
@@ -236,7 +288,7 @@ class TimerCardEditor extends LitElement {
 
   async _fetchTimerInstances() {
       if (this.hass) {
-				
+        
           this._timerInstancesOptions = await this._getSimpleTimerInstances();
           
           if (!this._configFullyLoaded) {
@@ -301,10 +353,16 @@ class TimerCardEditor extends LitElement {
     if (this._config?.entity) updatedConfig.entity = this._config.entity;
     if (this._config?.sensor_entity) updatedConfig.sensor_entity = this._config.sensor_entity;
     if (this._config?.card_title) updatedConfig.card_title = this._config.card_title;
-		if (this._config?.power_button_icon) updatedConfig.power_button_icon = this._config.power_button_icon;
+    if (this._config?.power_button_icon) updatedConfig.power_button_icon = this._config.power_button_icon;
     if (this._config?.show_daily_usage !== undefined) updatedConfig.show_daily_usage = this._config.show_daily_usage;
     if (this._config?.slider_max !== undefined) updatedConfig.slider_max = this._config.slider_max;
     if (this._config?.reverse_mode !== undefined) updatedConfig.reverse_mode = this._config.reverse_mode;
+    if (this._config?.slider_thumb_color !== undefined) updatedConfig.slider_thumb_color = this._config.slider_thumb_color;
+    if (this._config?.slider_background_color !== undefined) updatedConfig.slider_background_color = this._config.slider_background_color;
+    if (this._config?.timer_button_font_color !== undefined) updatedConfig.timer_button_font_color = this._config.timer_button_font_color;
+    if (this._config?.timer_button_background_color !== undefined) updatedConfig.timer_button_background_color = this._config.timer_button_background_color;
+    if (this._config?.power_button_background_color !== undefined) updatedConfig.power_button_background_color = this._config.power_button_background_color;
+    if (this._config?.power_button_icon_color !== undefined) updatedConfig.power_button_icon_color = this._config.power_button_icon_color;  
 
     this._config = updatedConfig;
     this.dispatchEvent(
@@ -322,13 +380,21 @@ class TimerCardEditor extends LitElement {
 
     const timerInstances = this._timerInstancesOptions || [];
     const instanceOptions = [{ value: "", label: "None" }];
-		const v = this._tempSliderMaxValue ?? String(this._config.slider_max ?? 120);
+    const v = this._tempSliderMaxValue ?? String(this._config.slider_max ?? 120);
     
     if (timerInstances.length > 0) {
-        instanceOptions.push(...timerInstances);
+      instanceOptions.push(...timerInstances);
     } else {
-        instanceOptions.push({ value: "none_found", label: "No Simple Timer Instances Found" });
+      instanceOptions.push({ value: "none_found", label: "No Simple Timer Instances Found" });
     }
+
+    // Get actual theme colors for defaults
+    const defaultSliderThumbColor = "#2ab69c";
+    const defaultSliderBackgroundColor = this._getThemeColorHex('--secondary-background-color', '#424242');
+    const defaultTimerButtonFontColor = this._getThemeColorHex('--primary-text-color', '#ffffff');
+    const defaultTimerButtonBackgroundColor = this._getThemeColorHex('--secondary-background-color', '#424242');
+    const defaultPowerButtonBackgroundColor = this._getThemeColorHex('--secondary-background-color', '#424242');
+    const defaultPowerButtonIconColor = this._getThemeColorHex('--primary-color', '#03a9f4');
 
     return html`
       <div class="card-config">
@@ -360,60 +426,240 @@ class TimerCardEditor extends LitElement {
             `)}
           </ha-select>
         </div>
-				
-				<div class="config-row">
-					<ha-textfield
-						.label=${"Power Button Icon (optional)"}
-						.value=${this._config?.power_button_icon || ""}
-						.configValue=${"power_button_icon"}
-						@input=${this._valueChanged}
-						.placeholder=${"e.g., mdi:power, mdi:lightbulb, or leave empty for no icon"}
-						.helper=${"Enter any MDI icon name (mdi:icon-name) or leave empty to hide icon"}
-					>
-						${this._config?.power_button_icon ? html`
-							<ha-icon icon="${this._config.power_button_icon}" slot="leadingIcon"></ha-icon>
-						` : ''}
-					</ha-textfield>
-				</div>
-				
-				<div class="config-row">
-					<ha-textfield
-						label="Slider maximum (1–1000)"
-						type="number"
-						min="1"
-						max="1000"
-						inputmode="numeric"
-						value=${v}
-						helper="Enter a number between 1 and 1000"
-						validationMessage="Must be 1–1000"
-						?invalid=${this._isSliderMaxInvalid()}
-						@input=${this._onSliderMaxInput}
-						@change=${this._handleSliderMaxBlur}
-						@blur=${this._handleSliderMaxBlur}
-						@keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') this._handleSliderMaxBlur(e as any); }}
-					/>
-				</div>
-				
-				<div class="config-row">
-					<ha-formfield .label=${"Reverse Mode (Delayed Start)"}>
-						<ha-switch
-							.checked=${this._config?.reverse_mode || false}
-							.configValue=${"reverse_mode"}
-							@change=${this._valueChanged}
-						></ha-switch>
-					</ha-formfield>
-				</div>
-				
-				<div class="config-row">
-					<ha-formfield .label=${"Show Daily Usage"}>
-						<ha-switch
-							.checked=${this._config?.show_daily_usage !== false} // Default to true
-							.configValue=${"show_daily_usage"}
-							@change=${this._valueChanged}
-						></ha-switch>
-					</ha-formfield>
-				</div>
-				
+        
+        <div class="config-row">
+          <ha-textfield
+            .label=${"Power Button Icon (optional)"}
+            .value=${this._config?.power_button_icon || ""}
+            .configValue=${"power_button_icon"}
+            @input=${this._valueChanged}
+            .placeholder=${"e.g., mdi:power, mdi:lightbulb, or leave empty for no icon"}
+            .helper=${"Enter any MDI icon name (mdi:icon-name) or leave empty to hide icon"}
+          >
+            ${this._config?.power_button_icon ? html`
+              <ha-icon icon="${this._config.power_button_icon}" slot="leadingIcon"></ha-icon>
+            ` : ''}
+          </ha-textfield>
+        </div>
+        
+        <div class="config-row">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <!-- Slider Thumb Color -->
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <input
+                type="color"
+                value=${this._config?.slider_thumb_color || defaultSliderThumbColor}
+                @input=${(ev: Event) => {
+                  const target = ev.target as HTMLInputElement;
+                  this._valueChanged({
+                    target: { 
+                      configValue: "slider_thumb_color", 
+                      value: target.value 
+                    },
+                    stopPropagation: () => {}
+                  } as any);
+                }}
+                style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
+              />
+              <ha-textfield
+                .label=${"Slider Thumb Color"}
+                .value=${this._config?.slider_thumb_color || ""}
+                .configValue=${"slider_thumb_color"}
+                @input=${this._valueChanged}
+                .placeholder=${"Theme default"}
+                .helper=${"Leave empty to use default (#2ab69c)"}
+                style="flex: 1; min-width: 0;"
+              ></ha-textfield>
+            </div>
+            
+            <!-- Slider Background Color -->
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <input
+                type="color"
+                value=${this._config?.slider_background_color || defaultSliderBackgroundColor}
+                @input=${(ev: Event) => {
+                  const target = ev.target as HTMLInputElement;
+                  this._valueChanged({
+                    target: { 
+                      configValue: "slider_background_color", 
+                      value: target.value 
+                    },
+                    stopPropagation: () => {}
+                  } as any);
+                }}
+                style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
+              />
+              <ha-textfield
+                .label=${"Slider Background Color"}
+                .value=${this._config?.slider_background_color || ""}
+                .configValue=${"slider_background_color"}
+                @input=${this._valueChanged}
+                .placeholder=${"Theme default"}
+                .helper=${"Leave empty to use theme color"}
+                style="flex: 1; min-width: 0;"
+              ></ha-textfield>
+            </div>
+          </div>
+        </div>
+        
+        <div class="config-row">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <!-- Timer Button Font Color -->
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <input
+                type="color"
+                value=${this._config?.timer_button_font_color || defaultTimerButtonFontColor}
+                @input=${(ev: Event) => {
+                  const target = ev.target as HTMLInputElement;
+                  this._valueChanged({
+                    target: { 
+                      configValue: "timer_button_font_color", 
+                      value: target.value 
+                    },
+                    stopPropagation: () => {}
+                  } as any);
+                }}
+                style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
+              />
+              <ha-textfield
+                .label=${"Timer Button Font Color"}
+                .value=${this._config?.timer_button_font_color || ""}
+                .configValue=${"timer_button_font_color"}
+                @input=${this._valueChanged}
+                .placeholder=${"Theme default"}
+                .helper=${"Leave empty to use theme color"}
+                style="flex: 1; min-width: 0;"
+              ></ha-textfield>
+            </div>
+            
+            <!-- Timer Button Background Color -->
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <input
+                type="color"
+                value=${this._config?.timer_button_background_color || defaultTimerButtonBackgroundColor}
+                @input=${(ev: Event) => {
+                  const target = ev.target as HTMLInputElement;
+                  this._valueChanged({
+                    target: { 
+                      configValue: "timer_button_background_color", 
+                      value: target.value 
+                    },
+                    stopPropagation: () => {}
+                  } as any);
+                }}
+                style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
+              />
+              <ha-textfield
+                .label=${"Timer Button Background Color"}
+                .value=${this._config?.timer_button_background_color || ""}
+                .configValue=${"timer_button_background_color"}
+                @input=${this._valueChanged}
+                .placeholder=${"Theme default"}
+                .helper=${"Leave empty to use theme color"}
+                style="flex: 1; min-width: 0;"
+              ></ha-textfield>
+            </div>
+          </div>
+        </div>
+        
+        <div class="config-row">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <!-- Power Button Background Color -->
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <input
+                type="color"
+                value=${this._config?.power_button_background_color || defaultPowerButtonBackgroundColor}
+                @input=${(ev: Event) => {
+                  const target = ev.target as HTMLInputElement;
+                  this._valueChanged({
+                    target: { 
+                      configValue: "power_button_background_color", 
+                      value: target.value 
+                    },
+                    stopPropagation: () => {}
+                  } as any);
+                }}
+                style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
+              />
+              <ha-textfield
+                .label=${"Power Button Background"}
+                .value=${this._config?.power_button_background_color || ""}
+                .configValue=${"power_button_background_color"}
+                @input=${this._valueChanged}
+                .placeholder=${"Theme default"}
+                .helper=${"Leave empty to use theme color"}
+                style="flex: 1; min-width: 0;"
+              ></ha-textfield>
+            </div>
+            
+            <!-- Power Button Icon Color -->
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <input
+                type="color"
+                value=${this._config?.power_button_icon_color || defaultPowerButtonIconColor}
+                @input=${(ev: Event) => {
+                  const target = ev.target as HTMLInputElement;
+                  this._valueChanged({
+                    target: { 
+                      configValue: "power_button_icon_color", 
+                      value: target.value 
+                    },
+                    stopPropagation: () => {}
+                  } as any);
+                }}
+                style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
+              />
+              <ha-textfield
+                .label=${"Power Button Icon Color"}
+                .value=${this._config?.power_button_icon_color || ""}
+                .configValue=${"power_button_icon_color"}
+                @input=${this._valueChanged}
+                .placeholder=${"Theme default"}
+                .helper=${"Leave empty to use theme color"}
+                style="flex: 1; min-width: 0;"
+              ></ha-textfield>
+            </div>
+          </div>
+        </div>
+        
+        <div class="config-row">
+          <ha-textfield
+            label="Slider maximum (1–1000)"
+            type="number"
+            min="1"
+            max="1000"
+            inputmode="numeric"
+            value=${v}
+            helper="Enter a number between 1 and 1000"
+            validationMessage="Must be 1–1000"
+            ?invalid=${this._isSliderMaxInvalid()}
+            @input=${this._onSliderMaxInput}
+            @change=${this._handleSliderMaxBlur}
+            @blur=${this._handleSliderMaxBlur}
+            @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') this._handleSliderMaxBlur(e as any); }}
+          />
+        </div>
+        
+        <div class="config-row">
+          <ha-formfield .label=${"Reverse Mode (Delayed Start)"}>
+            <ha-switch
+              .checked=${this._config?.reverse_mode || false}
+              .configValue=${"reverse_mode"}
+              @change=${this._valueChanged}
+            ></ha-switch>
+          </ha-formfield>
+        </div>
+        
+        <div class="config-row">
+          <ha-formfield .label=${"Show Daily Usage"}>
+            <ha-switch
+              .checked=${this._config?.show_daily_usage !== false}
+              .configValue=${"show_daily_usage"}
+              @change=${this._valueChanged}
+            ></ha-switch>
+          </ha-formfield>
+        </div>
+        
       </div>
 
       <div class="card-config-group">
@@ -439,20 +685,20 @@ class TimerCardEditor extends LitElement {
       </div>
     `;
   }
-	
-	private _onSliderMaxInput(ev: Event) {
-		const target = ev.currentTarget as HTMLInputElement;
-		this._tempSliderMaxValue = target.value;     // do NOT clamp here
-		this.requestUpdate();                        // makes ?invalid update live
-	}
-	
-	private _isSliderMaxInvalid(): boolean {
-		const raw = this._tempSliderMaxValue ?? String(this._config.slider_max ?? "");
-		if (raw === "") return true;                 // empty = invalid while editing
-		const n = Number(raw);
-		if (!Number.isFinite(n)) return true;
-		return !(n >= 1 && n <= 1000);               // enforce 1–1000 (no negatives)
-	}
+  
+  private _onSliderMaxInput(ev: Event) {
+    const target = ev.currentTarget as HTMLInputElement;
+    this._tempSliderMaxValue = target.value;     // do NOT clamp here
+    this.requestUpdate();                        // makes ?invalid update live
+  }
+  
+  private _isSliderMaxInvalid(): boolean {
+    const raw = this._tempSliderMaxValue ?? String(this._config.slider_max ?? "");
+    if (raw === "") return true;                 // empty = invalid while editing
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return true;
+    return !(n >= 1 && n <= 1000);               // enforce 1–1000 (no negatives)
+  }
 
   _valueChanged(ev: Event): void {
     ev.stopPropagation();
@@ -494,12 +740,24 @@ class TimerCardEditor extends LitElement {
             updatedConfig.timer_instance_id = null;
         }
     } else if (configValue === "power_button_icon") {
-				updatedConfig.power_button_icon = value || null;
-		} else if (configValue === "reverse_mode") {
-			updatedConfig.reverse_mode = value;
-		} else if (configValue === "show_daily_usage") {
-			updatedConfig.show_daily_usage = value;
-		}
+        updatedConfig.power_button_icon = value || null;
+    } else if (configValue === "slider_thumb_color") {
+        updatedConfig.slider_thumb_color = value || null;
+    } else if (configValue === "slider_background_color") {
+        updatedConfig.slider_background_color = value || null;
+    } else if (configValue === "timer_button_font_color") {
+        updatedConfig.timer_button_font_color = value || null;
+    } else if (configValue === "timer_button_background_color") {
+        updatedConfig.timer_button_background_color = value || null;
+    } else if (configValue === "power_button_background_color") {
+        updatedConfig.power_button_background_color = value || null;
+    } else if (configValue === "power_button_icon_color") {
+        updatedConfig.power_button_icon_color = value || null;
+    } else if (configValue === "reverse_mode") {
+        updatedConfig.reverse_mode = value;
+    } else if (configValue === "show_daily_usage") {
+        updatedConfig.show_daily_usage = value;
+    }
 
     // Preserve existing values
     if (this._config.entity) updatedConfig.entity = this._config.entity;
@@ -510,18 +768,36 @@ class TimerCardEditor extends LitElement {
     if (this._config.card_title && configValue !== "card_title") {
         updatedConfig.card_title = this._config.card_title;
     }
-		if (this._config.power_button_icon !== undefined && configValue !== "power_button_icon") {
-			updatedConfig.power_button_icon = this._config.power_button_icon;
-		}
-		if (this._config.slider_max !== undefined && configValue !== "slider_max") {
-			updatedConfig.slider_max = this._config.slider_max;
-		}
-		if (this._config.reverse_mode !== undefined && configValue !== "reverse_mode") {
-			updatedConfig.reverse_mode = this._config.reverse_mode;
-		}
-		if (this._config.show_daily_usage !== undefined && configValue !== "show_daily_usage") {
-			updatedConfig.show_daily_usage = this._config.show_daily_usage;
-		}
+    if (this._config.power_button_icon !== undefined && configValue !== "power_button_icon") {
+      updatedConfig.power_button_icon = this._config.power_button_icon;
+    }
+    if (this._config.slider_max !== undefined && configValue !== "slider_max") {
+      updatedConfig.slider_max = this._config.slider_max;
+    }
+    if (this._config.reverse_mode !== undefined && configValue !== "reverse_mode") {
+      updatedConfig.reverse_mode = this._config.reverse_mode;
+    }
+    if (this._config.show_daily_usage !== undefined && configValue !== "show_daily_usage") {
+      updatedConfig.show_daily_usage = this._config.show_daily_usage;
+    }
+    if (this._config.slider_thumb_color !== undefined && configValue !== "slider_thumb_color") {
+      updatedConfig.slider_thumb_color = this._config.slider_thumb_color;
+    }
+    if (this._config.slider_background_color !== undefined && configValue !== "slider_background_color") {
+      updatedConfig.slider_background_color = this._config.slider_background_color;
+    }
+    if (this._config.timer_button_font_color !== undefined && configValue !== "timer_button_font_color") {
+      updatedConfig.timer_button_font_color = this._config.timer_button_font_color;
+    }
+    if (this._config.timer_button_background_color !== undefined && configValue !== "timer_button_background_color") {
+      updatedConfig.timer_button_background_color = this._config.timer_button_background_color;
+    }
+    if (this._config.power_button_background_color !== undefined && configValue !== "power_button_background_color") {
+      updatedConfig.power_button_background_color = this._config.power_button_background_color;
+    }
+    if (this._config.power_button_icon_color !== undefined && configValue !== "power_button_icon_color") {
+      updatedConfig.power_button_icon_color = this._config.power_button_icon_color;
+    }
 
     if (JSON.stringify(this._config) !== JSON.stringify(updatedConfig)) {
         this._config = updatedConfig;
@@ -541,34 +817,34 @@ class TimerCardEditor extends LitElement {
         this.requestUpdate();
     }
   }
-	
-	private _handleSliderMaxBlur(ev: Event) {
-		const target = ev.currentTarget as HTMLInputElement;
-		const raw = (target.value ?? "").trim();
-		const n = Number(raw);
-		const isInvalid = !raw || !Number.isFinite(n) || n < 1 || n > 1000;
+  
+  private _handleSliderMaxBlur(ev: Event) {
+    const target = ev.currentTarget as HTMLInputElement;
+    const raw = (target.value ?? "").trim();
+    const n = Number(raw);
+    const isInvalid = !raw || !Number.isFinite(n) || n < 1 || n > 1000;
 
-		const newMax = isInvalid ? 120 : Math.trunc(n);
-		target.value = String(newMax);
-		this._tempSliderMaxValue = null;
+    const newMax = isInvalid ? 120 : Math.trunc(n);
+    target.value = String(newMax);
+    this._tempSliderMaxValue = null;
 
-		// Clamp existing timer buttons to newMax
-		let newButtons = [...(this._config.timer_buttons || [])];
-		newButtons = newButtons.filter(val => val <= newMax);
+    // Clamp existing timer buttons to newMax
+    let newButtons = [...(this._config.timer_buttons || [])];
+    newButtons = newButtons.filter(val => val <= newMax);
 
-		const updated: TimerCardConfig = {
-			...this._config,
-			slider_max: newMax,
-			timer_buttons: newButtons
-		};
+    const updated: TimerCardConfig = {
+      ...this._config,
+      slider_max: newMax,
+      timer_buttons: newButtons
+    };
 
-		this._config = updated;
+    this._config = updated;
 
-		this.dispatchEvent(new CustomEvent("config-changed", {
-			detail: { config: updated }, bubbles: true, composed: true
-		}));
-		this.requestUpdate();
-	}
+    this.dispatchEvent(new CustomEvent("config-changed", {
+      detail: { config: updated }, bubbles: true, composed: true
+    }));
+    this.requestUpdate();
+  }
 
   static get styles() {
     return editorCardStyles;
