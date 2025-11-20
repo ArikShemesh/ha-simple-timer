@@ -106,7 +106,11 @@ class TimerCard extends LitElement {
       timer_instance_id: null, // Changed from auto-selected instance to null
       timer_buttons: [...DEFAULT_TIMER_BUTTONS], // Use default buttons
       card_title: "Simple Timer",
-			power_button_icon: "mdi:power"
+			power_button_icon: "mdi:power",
+      slider_thumb_color: null,
+      slider_background_color: null,
+      power_button_background_color: null,
+      power_button_icon_color: null
     };
   }
 
@@ -124,7 +128,13 @@ class TimerCard extends LitElement {
 			show_daily_usage: cfg.show_daily_usage !== false,
 			timer_instance_id: instanceId,
 			entity: cfg.entity,
-			sensor_entity: cfg.sensor_entity
+			sensor_entity: cfg.sensor_entity,
+      slider_thumb_color: cfg.slider_thumb_color || null,
+      slider_background_color: cfg.slider_background_color || null,
+      timer_button_font_color: cfg.timer_button_font_color || null,
+      timer_button_background_color: cfg.timer_button_background_color || null,
+      power_button_background_color: cfg.power_button_background_color || null,
+      power_button_icon_color: cfg.power_button_icon_color || null
 		};
 		
 		if (cfg.timer_instance_id) {
@@ -716,6 +726,140 @@ class TimerCard extends LitElement {
   const sensor = this.hass.states[this._effectiveSensorEntity];
   return sensor?.attributes?.reverse_mode ? 'reverse' : 'normal';
 	}
+  
+  _getSliderStyle(): string {
+    const thumbColor = this._config?.slider_thumb_color || '#2ab69c';
+    const backgroundColor = this._config?.slider_background_color || 'var(--secondary-background-color)';
+    const borderColor = this._config?.slider_thumb_color ? 
+      this._adjustColorBrightness(thumbColor, 20) : '#4bd9bf';
+    
+    // Convert hex to RGB for rgba() usage in box-shadow
+    const hexToRgb = (hex: string) => {
+      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+      } : { r: 42, g: 182, b: 156 }; // fallback to default
+    };
+    
+    const rgb = hexToRgb(thumbColor);
+    const borderRgb = hexToRgb(borderColor);
+    
+    return `
+      .timer-slider {
+        background: ${backgroundColor} !important;
+      }
+      .timer-slider::-webkit-slider-thumb {
+        background: ${thumbColor} !important;
+        border: 2px solid ${borderColor} !important;
+        box-shadow: 
+          0 0 0 2px rgba(${borderRgb.r}, ${borderRgb.g}, ${borderRgb.b}, 0.3),
+          0 0 8px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.4),
+          0 2px 4px rgba(0, 0, 0, 0.2) !important;
+      }
+      .timer-slider::-webkit-slider-thumb:hover {
+        background: ${this._adjustColorBrightness(thumbColor, -10)} !important;
+        border: 2px solid ${borderColor} !important;
+        box-shadow: 
+          0 0 0 3px rgba(${borderRgb.r}, ${borderRgb.g}, ${borderRgb.b}, 0.4),
+          0 0 12px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6),
+          0 2px 6px rgba(0, 0, 0, 0.3) !important;
+      }
+      .timer-slider::-webkit-slider-thumb:active {
+        background: ${this._adjustColorBrightness(thumbColor, -20)} !important;
+        border: 2px solid ${borderColor} !important;
+        box-shadow: 
+          0 0 0 4px rgba(${borderRgb.r}, ${borderRgb.g}, ${borderRgb.b}, 0.5),
+          0 0 16px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.7),
+          0 2px 8px rgba(0, 0, 0, 0.4) !important;
+      }
+      .timer-slider::-moz-range-thumb {
+        background: ${thumbColor} !important;
+        border: 2px solid ${borderColor} !important;
+        box-shadow: 
+          0 0 0 2px rgba(${borderRgb.r}, ${borderRgb.g}, ${borderRgb.b}, 0.3),
+          0 0 8px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.4),
+          0 2px 4px rgba(0, 0, 0, 0.2) !important;
+      }
+      .timer-slider::-moz-range-thumb:hover {
+        background: ${this._adjustColorBrightness(thumbColor, -10)} !important;
+        border: 2px solid ${borderColor} !important;
+        box-shadow: 
+          0 0 0 3px rgba(${borderRgb.r}, ${borderRgb.g}, ${borderRgb.b}, 0.4),
+          0 0 12px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6),
+          0 2px 6px rgba(0, 0, 0, 0.3) !important;
+      }
+      .timer-slider::-moz-range-thumb:active {
+        background: ${this._adjustColorBrightness(thumbColor, -20)} !important;
+        border: 2px solid ${borderColor} !important;
+        box-shadow: 
+          0 0 0 4px rgba(${borderRgb.r}, ${borderRgb.g}, ${borderRgb.b}, 0.5),
+          0 0 16px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.7),
+          0 2px 8px rgba(0, 0, 0, 0.4) !important;
+      }
+    `;
+  }
+  
+  _getTimerButtonStyle(): string {
+    const fontColor = this._config?.timer_button_font_color;
+    const backgroundColor = this._config?.timer_button_background_color;
+    
+    if (!fontColor && !backgroundColor) {
+      return ''; // No custom styling needed
+    }
+    
+    let styles = '';
+    
+    if (fontColor || backgroundColor) {
+      styles += `
+        .timer-button {
+          ${fontColor ? `color: ${fontColor} !important;` : ''}
+          ${backgroundColor ? `background-color: ${backgroundColor} !important;` : ''}
+        }
+      `;
+    }
+    
+    return styles;
+  }
+  
+  _getPowerButtonStyle(): string {
+    const backgroundColor = this._config?.power_button_background_color;
+    const iconColor = this._config?.power_button_icon_color;
+    
+    if (!backgroundColor && !iconColor) {
+      return ''; // No custom styling needed
+    }
+    
+    let styles = '';
+    
+    if (backgroundColor || iconColor) {
+      styles += `
+        .power-button-small {
+          ${backgroundColor ? `background-color: ${backgroundColor} !important;` : ''}
+        }
+        
+        .power-button-small ha-icon[icon] {
+          ${iconColor ? `color: ${iconColor} !important;` : ''}
+        }
+        
+        .power-button-small.reverse ha-icon[icon] {
+          ${iconColor ? `color: ${iconColor} !important;` : ''}
+        }
+      `;
+    }
+    
+    return styles;
+  }
+  
+  _adjustColorBrightness(color: string, percent: number): string {
+    const num = parseInt(color.replace("#", ""), 16);
+    const amt = Math.round(2.55 * percent);
+    const R = Math.max(0, Math.min(255, (num >> 16) + amt));
+    const G = Math.max(0, Math.min(255, (num >> 8 & 0x00FF) + amt));
+    const B = Math.max(0, Math.min(255, (num & 0x0000FF) + amt));
+    return "#" + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1);
+  }
 
   render() {
     let message: string | null = null;
@@ -803,6 +947,11 @@ class TimerCard extends LitElement {
 		const orphanedTimer = this._hasOrphanedTimer();
 
 		return html`
+      <style>
+        ${this._getSliderStyle()}
+        ${this._getTimerButtonStyle()}
+        ${this._getPowerButtonStyle()}
+      </style>
       <ha-card>
         <div class="card-header ${this._config?.card_title ? 'has-title' : ''}">
 						<div class="card-title">${this._config?.card_title || ''}</div>
