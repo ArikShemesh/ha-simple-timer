@@ -48,7 +48,7 @@ interface HomeAssistant {
 }
 
 const DOMAIN = "simple_timer";
-const CARD_VERSION = "1.3.0";
+const CARD_VERSION = "1.3.28";
 const DEFAULT_TIMER_BUTTONS = [15, 30, 60, 90, 120, 150]; // Default for new cards only
 
 console.info(
