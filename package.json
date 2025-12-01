@@ -1,6 +1,6 @@
 {
   "name": "simple-timer-card",
-  "version": "1.3.0",
+  "version": "1.3.28",
   "description": "Custom simple timer integration for Home Assistant",
   "main": "timer-card.ts",
   "type": "module",
