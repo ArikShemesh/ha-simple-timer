@@ -913,14 +913,14 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         current_switch_state = self.hass.states.get(self._switch_entity_id) if self._switch_entity_id else None
 
         if reverse_mode:
-            # In reverse mode, canceling should turn switch ON
-            if current_switch_state and current_switch_state.state != STATE_ON:
-                await self.hass.services.async_call(
-                   "homeassistant", "turn_on", {"entity_id": self._switch_entity_id}, blocking=True
+            # In reverse mode, canceling should just stop the timer (keep switch OFF)
+            if current_switch_state and current_switch_state.state == STATE_ON:
+                 await self.hass.services.async_call(
+                   "homeassistant", "turn_off", {"entity_id": self._switch_entity_id}, blocking=True
                 )
-                await self._ensure_switch_state("on", "Reverse timer cancellation turn-on")
-                self._last_on_timestamp = dt_util.utcnow()
-                await self._start_realtime_accumulation()
+            
+            # Ensure we don't start accumulation
+            await self._stop_realtime_accumulation()
         else:
             # Normal mode: turn switch OFF
             if current_switch_state and current_switch_state.state == STATE_ON:
