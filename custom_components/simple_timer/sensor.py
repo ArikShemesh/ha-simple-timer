@@ -9,6 +9,9 @@ from typing import Any, Dict
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
 from homeassistant.const import (
     STATE_ON,
+    STATE_OFF,
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
     UnitOfTime,
     EVENT_HOMEASSISTANT_STOP,
 )
@@ -588,11 +591,22 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             self._last_on_timestamp = now
             self.hass.async_create_task(self._start_realtime_accumulation())
 
-        # Switch turned off
-        elif to_state.state != STATE_ON and from_state and from_state.state == STATE_ON:
-            self.hass.async_create_task(self._stop_realtime_accumulation())
-            self._last_on_timestamp = None
-            if self._timer_state == "active":
+        # Switch transitioned to a non-ON state
+        elif to_state.state != STATE_ON:
+            is_definitive_off = to_state.state == STATE_OFF
+
+            if is_definitive_off:
+                self.hass.async_create_task(self._stop_realtime_accumulation())
+                self._last_on_timestamp = None
+
+            # We exclude reverse_mode because the switch is supposed to be off during those.
+            is_reverse_mode = getattr(self, '_timer_reverse_mode', False)
+
+            if (
+                self._timer_state == "active"
+                and not is_reverse_mode
+                and is_definitive_off  # Only cancel if explicitly OFF
+            ):
                 self.hass.async_create_task(self._auto_cancel_timer_on_external_off())
         
         self.async_write_ha_state()
@@ -686,7 +700,17 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                         break
                     
                     current_switch_state = self.hass.states.get(self._switch_entity_id)
-                    if current_switch_state and current_switch_state.state == STATE_ON and self._timer_start_moment:
+                    
+                    should_accumulate = (
+                        current_switch_state 
+                        and self._timer_start_moment
+                        and (
+                            current_switch_state.state == STATE_ON 
+                            or current_switch_state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN)
+                        )
+                    )
+
+                    if should_accumulate:
                         # Calculate total elapsed time from timer start
                         now = dt_util.utcnow()
                         total_elapsed = (now - self._timer_start_moment).total_seconds()
@@ -719,7 +743,17 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                         break
                     
                     current_switch_state = self.hass.states.get(self._switch_entity_id)
-                    if current_switch_state and current_switch_state.state == STATE_ON and self._last_on_timestamp:
+                    
+                    should_accumulate_manual = (
+                        current_switch_state 
+                        and self._last_on_timestamp
+                        and (
+                            current_switch_state.state == STATE_ON 
+                            or current_switch_state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN)
+                        )
+                    )
+
+                    if should_accumulate_manual:
                         # Calculate total elapsed time from when switch turned on
                         now = dt_util.utcnow()
                         total_elapsed = (now - accumulation_start).total_seconds()
@@ -733,7 +767,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                         
                         await asyncio.sleep(0.05)  # Check 20 times per second for accuracy
                     else:
-                        break
+                        break # Stop loop if definitively OFF
                     
         except asyncio.CancelledError:
             # If the timer is finishing normally OR a reset is happening, do nothing.
@@ -879,14 +913,14 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         current_switch_state = self.hass.states.get(self._switch_entity_id) if self._switch_entity_id else None
 
         if reverse_mode:
-            # In reverse mode, canceling should turn switch ON
-            if current_switch_state and current_switch_state.state != STATE_ON:
-                await self.hass.services.async_call(
-                   "homeassistant", "turn_on", {"entity_id": self._switch_entity_id}, blocking=True
+            # In reverse mode, canceling should just stop the timer (keep switch OFF)
+            if current_switch_state and current_switch_state.state == STATE_ON:
+                 await self.hass.services.async_call(
+                   "homeassistant", "turn_off", {"entity_id": self._switch_entity_id}, blocking=True
                 )
-                await self._ensure_switch_state("on", "Reverse timer cancellation turn-on")
-                self._last_on_timestamp = dt_util.utcnow()
-                await self._start_realtime_accumulation()
+            
+            # Ensure we don't start accumulation
+            await self._stop_realtime_accumulation()
         else:
             # Normal mode: turn switch OFF
             if current_switch_state and current_switch_state.state == STATE_ON:
