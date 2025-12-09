@@ -389,4 +389,45 @@ export const cardStyles = css`
     margin: 0 0 12px 0;
     border-radius: 0;
   }
+
+  .power-button-top-right {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    background-color: var(--secondary-background-color);
+    color: var(--primary-color);
+    box-shadow: 
+      0 2px 5px rgba(0, 0, 0, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    transition: all 0.2s ease;
+    z-index: 5;
+  }
+
+  .power-button-top-right ha-icon {
+    --mdc-icon-size: 24px;
+    color: var(--primary-color);
+  }
+
+  .power-button-top-right:hover {
+    background-color: var(--primary-background-color);
+    transform: scale(1.05);
+  }
+
+  .power-button-top-right:active {
+    transform: scale(0.95);
+  }
+
+  .power-button-top-right.on {
+    color: var(--primary-color);
+    box-shadow: 0 0 8px rgba(42, 137, 209, 0.6);
+    border: 1px solid rgba(42, 137, 209, 0.5);
+    animation: pulse 2s infinite;
+  }
   `;

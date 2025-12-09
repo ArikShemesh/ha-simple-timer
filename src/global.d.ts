@@ -7,10 +7,11 @@ interface TimerCardConfig {
   sensor_entity?: string | null;
   timer_buttons: number[];
   card_title?: string | null;
-	power_button_icon?: string | null;
-	slider_max?: number;
-	reverse_mode?: boolean;
-	show_daily_usage?: boolean;
+  power_button_icon?: string | null;
+  slider_max?: number;
+  reverse_mode?: boolean;
+  hide_slider?: boolean;
+  show_daily_usage?: boolean;
   slider_thumb_color?: string | null;
   slider_background_color?: string | null;
   timer_button_font_color?: string | null;
