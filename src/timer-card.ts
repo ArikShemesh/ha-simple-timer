@@ -48,7 +48,7 @@ interface HomeAssistant {
 }
 
 const DOMAIN = "simple_timer";
-const CARD_VERSION = "1.3.34";
+const CARD_VERSION = "1.3.40";
 const DEFAULT_TIMER_BUTTONS = [15, 30, 60, 90, 120, 150]; // Default for new cards only
 
 console.info(
@@ -107,6 +107,7 @@ class TimerCard extends LitElement {
       timer_buttons: [...DEFAULT_TIMER_BUTTONS], // Use default buttons
       card_title: "Simple Timer",
       power_button_icon: "mdi:power",
+      hide_slider: false,
       slider_thumb_color: null,
       slider_background_color: null,
       power_button_background_color: null,
@@ -125,6 +126,7 @@ class TimerCard extends LitElement {
       power_button_icon: cfg.power_button_icon || null,
       slider_max: newSliderMax,
       reverse_mode: cfg.reverse_mode || false,
+      hide_slider: cfg.hide_slider || false,
       show_daily_usage: cfg.show_daily_usage !== false,
       timer_instance_id: instanceId,
       entity: cfg.entity,
@@ -414,7 +416,19 @@ class TimerCard extends LitElement {
       console.log(`Timer-card: Manually turning off switch: ${switchId}`);
     } else {
       // Switch is currently OFF and no timer active
-      if (this._sliderValue > 0) {
+      if (this._config?.hide_slider) {
+        // If slider is hidden, just turn on manually (infinite)
+        this.hass.callService(DOMAIN, "manual_power_toggle", {
+          entry_id: this._getEntryId(),
+          action: "turn_on"
+        })
+          .then(() => {
+            console.log(`Timer-card: Manually turning on switch (infinite, hidden slider): ${switchId}`);
+          })
+          .catch(error => {
+            console.error("Timer-card: Error manually turning on switch:", error);
+          });
+      } else if (this._sliderValue > 0) {
         this._startTimer(this._sliderValue, 'slider');
         console.log(`Timer-card: Starting timer for ${this._sliderValue} minutes`);
       } else {
@@ -835,15 +849,15 @@ class TimerCard extends LitElement {
 
     if (backgroundColor || iconColor) {
       styles += `
-        .power-button-small {
+        .power-button-small, .power-button-top-right {
           ${backgroundColor ? `background-color: ${backgroundColor} !important;` : ''}
         }
         
-        .power-button-small ha-icon[icon] {
+        .power-button-small ha-icon[icon], .power-button-top-right ha-icon[icon] {
           ${iconColor ? `color: ${iconColor} !important;` : ''}
         }
         
-        .power-button-small.reverse ha-icon[icon] {
+        .power-button-small.reverse ha-icon[icon], .power-button-top-right.reverse ha-icon[icon] {
           ${iconColor ? `color: ${iconColor} !important;` : ''}
         }
       `;
@@ -975,6 +989,14 @@ class TimerCard extends LitElement {
 
         <div class="card-content">
 
+          ${this._config?.hide_slider ? html`
+             <div class="power-button-top-right ${isTimerActive && isReverseMode ? 'on reverse' : isOn ? 'on' : this._config.reverse_mode ? 'reverse' : ''}"
+                  @click=${this._handlePowerClick}
+                  title="Click to toggle power">
+               ${this._config?.power_button_icon ? html`<ha-icon icon="${this._config.power_button_icon}"></ha-icon>` : ''}
+             </div>
+          ` : ''}
+
           <!-- Countdown Display Section -->
           <div class="countdown-section">
             <div class="countdown-display ${isTimerActive ? 'active' : ''} ${isReverseMode ? 'reverse' : ''}">
@@ -996,12 +1018,13 @@ class TimerCard extends LitElement {
           </div>
 
           <!-- Slider Row -->
+          ${!this._config?.hide_slider ? html`
           <div class="slider-row">
             <div class="slider-container">
               <input
                 type="range"
                 min="0"
-								step="1"
+                step="1"
                 max="${this._config?.slider_max || 120}"
                 .value=${this._sliderValue.toString()}
                 @input=${this._handleSliderChange}
@@ -1009,12 +1032,14 @@ class TimerCard extends LitElement {
               />
               <span class="slider-label">${this._sliderValue} min</span>
             </div>
+            
             <div class="power-button-small ${isTimerActive && isReverseMode ? 'on reverse' : isOn ? 'on' : this._config?.reverse_mode ? 'reverse' : ''}" 
-								 @click=${this._handlePowerClick}
-								 title="Click to toggle power">
-							${this._config?.power_button_icon ? html`<ha-icon icon="${this._config.power_button_icon}"></ha-icon>` : ''}
-						</div>
+                 @click=${this._handlePowerClick}
+                 title="Click to toggle power">
+              ${this._config?.power_button_icon ? html`<ha-icon icon="${this._config.power_button_icon}"></ha-icon>` : ''}
+            </div>
           </div>
+          ` : ''}
 
           <!-- Timer Buttons -->
           <div class="button-grid">
