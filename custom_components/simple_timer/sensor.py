@@ -27,6 +27,9 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
+from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers.device_registry import DeviceInfo
+
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -107,6 +110,34 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         # Storage setup
         self._storage_lock = asyncio.Lock()
         self._store = Store(hass, self.STORAGE_VERSION, self.STORAGE_KEY_FORMAT.format(self._entry_id))
+
+    @property
+    def device_info(self) -> DeviceInfo | None:
+        """Link this entity to the device of the switch it monitors."""
+        if not self._switch_entity_id:
+            return None
+
+        # Access the Entity Registry to find the registry entry for the switch
+        ent_reg = er.async_get(self.hass)
+        entity_entry = ent_reg.async_get(self._switch_entity_id)
+        
+        # If the switch doesn't exist or isn't linked to a device, we can't link
+        if not entity_entry or not entity_entry.device_id:
+            return None
+
+        # Access the Device Registry to get the device details
+        dev_reg = dr.async_get(self.hass)
+        device_entry = dev_reg.async_get(entity_entry.device_id)
+
+        if not device_entry:
+            return None
+
+        # Return DeviceInfo with the SAME identifiers as the switch's device.
+        # This tells HA to group this sensor with that device.
+        return DeviceInfo(
+            connections=device_entry.connections,
+            identifiers=device_entry.identifiers,
+        )
 
     def _parse_reset_time(self, time_str: str) -> time:
         """Parse reset time string into time object."""
