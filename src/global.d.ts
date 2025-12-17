@@ -5,10 +5,11 @@ interface TimerCardConfig {
   timer_instance_id?: string | null;
   entity?: string | null;
   sensor_entity?: string | null;
-  timer_buttons: number[];
+  timer_buttons: (number | string)[];
   card_title?: string | null;
   power_button_icon?: string | null;
   slider_max?: number;
+  slider_unit?: string;
   reverse_mode?: boolean;
   hide_slider?: boolean;
   show_daily_usage?: boolean;

@@ -822,9 +822,33 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         except Exception as e:
             _LOGGER.error(f"Simple Timer: [{self._entry_id}] Error in accumulation task: {e}")
 
-    async def async_start_timer(self, duration_minutes: int, reverse_mode: bool = False, start_method: str = "button") -> None:
+    async def async_start_timer(self, duration: float, unit: str = "min", reverse_mode: bool = False, start_method: str = "button") -> None:
         """Start a countdown timer with synchronized accumulation."""
-        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Starting {'reverse' if reverse_mode else 'normal'} timer for {duration_minutes} minutes")
+        
+        # Convert duration to minutes for internal storage
+        duration_minutes = duration
+        if unit in ["s", "sec", "seconds"]:
+             duration_minutes = duration / 60.0
+        elif unit in ["h", "hr", "hours"]:
+             duration_minutes = duration * 60
+             
+        # Format for logging and notification
+        unit_display = unit
+        if unit in ["s", "sec", "seconds"]:
+             unit_display = "sec"
+             # Show integer if it's a whole number
+             duration_display = int(duration) if duration.is_integer() else duration
+        elif unit in ["m", "min", "minutes"]:
+             unit_display = "min"
+             duration_display = int(duration)
+        elif unit in ["h", "hr", "hours"]:
+             unit_display = "hr"
+             # Show integer if it's a whole number, otherwise float
+             duration_display = int(duration) if duration.is_integer() else duration
+        else:
+             duration_display = duration
+        
+        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Starting {'reverse' if reverse_mode else 'normal'} timer for {duration} {unit}")
         
         self._timer_start_method = start_method
         
@@ -910,7 +934,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         
         # Send notification
         mode_text = "Delayed timer started for" if reverse_mode else "Timer was started for"
-        await self._send_notification(f"{mode_text} {duration_minutes} minutes")
+        await self._send_notification(f"{mode_text} {duration_display} {unit_display}")
         
         self.async_write_ha_state()
 
