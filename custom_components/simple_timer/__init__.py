@@ -138,7 +138,7 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
     SERVICE_START_TIMER_SCHEMA = vol.Schema({
         vol.Required("entry_id"): cv.string,
         vol.Required("duration"): cv.positive_float,
-        vol.Optional("unit", default="min"): vol.In(["s", "sec", "seconds", "m", "min", "minutes", "h", "hr", "hours"]),
+        vol.Optional("unit", default="min"): vol.In(["s", "sec", "seconds", "m", "min", "minutes", "h", "hr", "hours", "d", "day", "days"]),
         vol.Optional("reverse_mode", default=False): cv.boolean,
         vol.Optional("start_method", default="button"): vol.In(["button", "slider"]),
     })

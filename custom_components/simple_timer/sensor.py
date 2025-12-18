@@ -831,6 +831,8 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
              duration_minutes = duration / 60.0
         elif unit in ["h", "hr", "hours"]:
              duration_minutes = duration * 60
+        elif unit in ["d", "day", "days"]:
+             duration_minutes = duration * 1440
              
         # Format for logging and notification
         unit_display = unit
@@ -843,6 +845,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
              duration_display = int(duration)
         elif unit in ["h", "hr", "hours"]:
              unit_display = "hr"
+             # Show integer if it's a whole number, otherwise float
+             duration_display = int(duration) if duration.is_integer() else duration
+        elif unit in ["d", "day", "days"]:
+             unit_display = "day"
              # Show integer if it's a whole number, otherwise float
              duration_display = int(duration) if duration.is_integer() else duration
         else:

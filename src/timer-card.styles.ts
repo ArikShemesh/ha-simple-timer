@@ -430,4 +430,11 @@ export const cardStyles = css`
     border: 1px solid rgba(42, 137, 209, 0.5);
     animation: pulse 2s infinite;
   }
+
+  .power-button-top-right.on.reverse {
+    color: #f2ba5a;
+    box-shadow: 0 0 8px rgba(242, 186, 90, 0.6);
+    border: 1px solid rgba(242, 186, 90, 0.5);
+    animation: pulse-orange 2s infinite;
+  }
   `;

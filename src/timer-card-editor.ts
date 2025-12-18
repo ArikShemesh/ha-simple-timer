@@ -203,23 +203,37 @@ class TimerCardEditor extends LitElement {
       configButtons.forEach(val => {
         const strVal = String(val).trim().toLowerCase();
         // Allow pure numbers (including decimals) or numbers with unit suffix
-        const match = strVal.match(/^(\d+(?:\.\d+)?)\s*(s|sec|seconds|m|min|minutes|h|hr|hours)?$/);
+        const match = strVal.match(/^(\d+(?:\.\d+)?)\s*(s|sec|seconds|m|min|minutes|h|hr|hours|d|day|days)?$/);
 
         if (match) {
           const numVal = parseFloat(match[1]);
           const isFloat = match[1].includes('.');
           const unitStr = match[2] || 'min';
           const isHours = unitStr && (unitStr.startsWith('h') || ['h', 'hr', 'hours'].includes(unitStr));
+          const isDays = unitStr && (unitStr.startsWith('d') || ['d', 'day', 'days'].includes(unitStr));
 
-          // User Restriction: Fractional numbers only allowed for hours
-          if (isFloat && !isHours) {
+          // User Restriction: Fractional numbers only allowed for hours and days
+          if (isFloat && !isHours && !isDays) {
             // Skip this value, it's invalid per rule
+            return;
+          }
+
+          // User Restriction: Max 1 digit after decimal for hours and days
+          if (isFloat && (isHours || isDays)) {
+            const decimalPart = match[1].split('.')[1];
+            if (decimalPart && decimalPart.length > 1) {
+              return;
+            }
+          }
+
+          // User Restriction: Limit to 9999 for all units
+          if (numVal > 9999) {
             return;
           }
 
           // Normalize pure numbers to number type for existing logic compatibility
           if (!unitStr || ['m', 'min', 'minutes'].includes(unitStr)) {
-            if (numVal > 0 && numVal <= 1000) {
+            if (numVal > 0 && numVal <= 9999) {
               if (!seen.has(String(numVal))) {
                 validatedButtons.push(numVal);
                 seen.add(String(numVal));
@@ -665,14 +679,14 @@ class TimerCardEditor extends LitElement {
         <div class="config-row">
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
              <ha-textfield
-              label="Slider maximum (1–1000)"
+              label="Slider maximum (1–9999)"
               type="number"
               min="1"
-              max="1000"
+              max="9999"
               inputmode="numeric"
               value=${v}
-              helper="Enter a number between 1 and 1000"
-              validationMessage="Must be 1–1000"
+              helper="Enter a number between 1 and 9999"
+              validationMessage="Must be 1–9999"
               ?invalid=${this._isSliderMaxInvalid()}
               @input=${this._onSliderMaxInput}
               @change=${this._handleSliderMaxBlur}
@@ -692,6 +706,7 @@ class TimerCardEditor extends LitElement {
               <mwc-list-item value="sec">Seconds (s)</mwc-list-item>
               <mwc-list-item value="min">Minutes (m)</mwc-list-item>
               <mwc-list-item value="hr">Hours (h)</mwc-list-item>
+              <mwc-list-item value="day">Days (d)</mwc-list-item>
             </ha-select>
           </div>
         </div>
@@ -701,7 +716,6 @@ class TimerCardEditor extends LitElement {
             <ha-switch
               .checked=${this._config?.reverse_mode || false}
               .configValue=${"reverse_mode"}
-              .disabled=${this._config?.hide_slider}
               @change=${this._valueChanged}
             ></ha-switch>
           </ha-formfield>
@@ -764,7 +778,7 @@ class TimerCardEditor extends LitElement {
     if (raw === "") return true;                 // empty = invalid while editing
     const n = Number(raw);
     if (!Number.isFinite(n)) return true;
-    return !(n >= 1 && n <= 1000);               // enforce 1–1000 (no negatives)
+    return !(n >= 1 && n <= 9999);               // enforce 1–9999 (no negatives)
   }
 
   _valueChanged(ev: Event): void {
@@ -899,7 +913,7 @@ class TimerCardEditor extends LitElement {
     const target = ev.currentTarget as HTMLInputElement;
     const raw = (target.value ?? "").trim();
     const n = Number(raw);
-    const isInvalid = !raw || !Number.isFinite(n) || n < 1 || n > 1000;
+    const isInvalid = !raw || !Number.isFinite(n) || n < 1 || n > 9999;
 
     const newMax = isInvalid ? 120 : Math.trunc(n);
     target.value = String(newMax);
