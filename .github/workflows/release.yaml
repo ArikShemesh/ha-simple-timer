@@ -25,7 +25,7 @@ jobs:
 
       - name: 💿 Install & Build
         run: |
-          npm ci
+          npm install
           npm run build
 
       - name: 🤐 Zip Integration
