@@ -14,7 +14,7 @@ A simple Home Assistant integration that turns entities on and off with a precis
 ## ✨ Key Features
 🚀 **Out-of-the-box**, pre-packaged timer solution, eliminating manual creation of multiple Home Assistant entities, sensors, and automations.
 
-🕐 **Precise Timer Control** - Set countdown timers from 1-1000 minutes for any switch, input_boolean, light, or fan
+🕐 Flexible Timer Control - Set countdown timers in seconds, minutes, hours, or days for any switch, input_boolean, light, or fan
 
 📊 **Daily Runtime Tracking** - Automatically tracks and displays daily usage time
 
@@ -25,6 +25,8 @@ A simple Home Assistant integration that turns entities on and off with a precis
 🔔 **Notification Support** - Optional notifications for timer start, finish, and cancellation events
 
 🌙 **Midnight Reset** - Daily usage statistics reset automatically at midnight
+
+👆 Manual Usage Reset - Long-press the daily usage display to reset statistics manually
 
 ⏰ **Delayed Start Timers** - Turns devices ON when timer completes and keeps them on indefinitely until manually turned off
 
@@ -94,27 +96,47 @@ Use the card editor in the Home Assistant UI for easy configuration.
 ### YAML Configuration
 ```yaml
 type: custom:timer-card
+timer_buttons:
+  - 30
+  - 1.5h
+  - 15s
+  - 1day
+hide_slider: false
 timer_instance_id: your_instance_entry_id
-timer_buttons: [15, 30, 60, 90, 120, 150]
-card_title: "Kitchen Timer"
+card_title: Water Heater
+power_button_icon: mdi:power
 slider_max: 120
-reverse_mode: true
+reverse_mode: false
+slider_unit: min
 show_daily_usage: true
-power_icon: "mdi:power"
+slider_thumb_color: null
+slider_background_color: null
+timer_button_font_color: null
+timer_button_background_color: null
+power_button_background_color: null
+power_button_icon_color: null
 ```
 
 ### Configuration Options
 
-Option                | Type     | Default                  | Description
-----------------------|----------|--------------------------|-------------------------------------------------------
-`type`                | string   | -                        | Must be `custom:timer-card`
-`timer_instance_id`   | string   | -                        | Entry ID of your timer instance
-`timer_buttons`       | array    | [15,30,60,90,120,150]    | Timer duration buttons (1-1000 minutes)
-`card_title`          | string   | -                        | Custom title for the card
-`slider_max`          | integer  | 120                      | Slider max value (1-1000 minutes)
-`reverse_mode`        | boolean  | false                    | Enable or disabled the delayed start feature
-`show_daily_usage`    | boolean  | false                    | Display or hide the daily usage
-`power_icon`          | mdi      | mdi:power                | Set the power button icon
+Option | Type | Default | Description
+---|---|---|---
+`type` | string | - | Must be `custom:timer-card`
+`timer_instance_id` | string | - | Entry ID of your timer instance
+`timer_buttons` | array | [15,30,60,90,120,150] | Timer duration buttons. Supports mixed units (e.g., `[30, "15s", "1.5h", "1day"]`)
+`card_title` | string | - | Custom title for the card
+`power_button_icon` | string | mdi:power | Icon for the power button (e.g., `mdi:power`)
+`slider_max` | integer | 120 | Slider max value (1-1000)
+`slider_unit` | string | min | Unit for the slider (`s`, `min`, `h`)
+`reverse_mode` | boolean | false | Enable delayed start (turns device ON when timer ends)
+`hide_slider` | boolean | false | Hide the slider control completely
+`show_daily_usage` | boolean | true | Display daily usage statistics
+`slider_thumb_color` | string | - | Custom color for the slider thumb (hex or rgba)
+`slider_background_color` | string | - | Custom color for the slider track
+`timer_button_font_color` | string | - | Custom font color for timer buttons
+`timer_button_background_color` | string | - | Custom background color for timer buttons
+`power_button_background_color` | string | - | Custom background color for the power button
+`power_button_icon_color` | string | - | Custom icon color for the power button
 
 ## ❓ Frequently Asked Questions
 
@@ -125,7 +147,7 @@ Yes! Add multiple integrations for different devices.
 Yes, active timers resume automatically with offline time compensation.
 
 ### Can I customize the timer buttons?
-Yes, configure any timer value between 1-1000 `timer_buttons: [7, 13, 25, 1000]` in the card YAML.
+Yes! You can configure values with explicit units. Example: timer_buttons: [30, "45s", "1.5h", "1d"] in the card YAML.
 
 ### Why does my usage show a warning message?
 This appears when HA was offline during a timer to indicate potential time sync issues.
