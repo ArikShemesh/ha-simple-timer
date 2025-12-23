@@ -2,5 +2,6 @@
   "name": "Simple Timer",
   "content_in_root": false,
   "render_readme": true,
+  "zip_release": true,
   "filename": "simple_timer.zip"
 }
