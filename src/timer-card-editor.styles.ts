@@ -72,4 +72,81 @@ export const editorCardStyles = css`
         display: flex;
         align-items: center;
       }
+
+      /* Timer Chips UI */
+      .timer-chips-container {
+        margin-bottom: 8px;
+      }
+
+      .chips-wrapper {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        min-height: 40px;
+        padding: 8px 0;
+      }
+
+      .timer-chip {
+        display: flex;
+        align-items: center;
+        background-color: var(--secondary-background-color);
+        border: 1px solid var(--divider-color);
+        border-radius: 16px;
+        padding: 4px 12px;
+        font-size: 14px;
+        color: var(--primary-text-color);
+        transition: background-color 0.2s;
+      }
+
+      .timer-chip:hover {
+        background-color: var(--secondary-text-color);
+        color: var(--primary-background-color);
+      }
+
+      .remove-chip {
+        margin-left: 8px;
+        cursor: pointer;
+        font-weight: bold;
+        opacity: 0.6;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+      }
+
+      .remove-chip:hover {
+        opacity: 1;
+        background-color: rgba(0,0,0,0.1);
+      }
+
+      .add-timer-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 8px;
+      }
+
+      .add-btn {
+        background-color: var(--primary-color);
+        color: var(--text-primary-color);
+        padding: 0 16px;
+        height: 56px; /* Match textfield height */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-top: -6px; /* Align slightly better with textfield label offset */
+      }
+      .add-btn:hover {
+        opacity: 0.9;
+      }
+      .add-btn:active {
+        opacity: 0.7;
+      }
 `;

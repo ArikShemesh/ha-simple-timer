@@ -48,7 +48,7 @@ interface HomeAssistant {
 }
 
 const DOMAIN = "simple_timer";
-const CARD_VERSION = "1.3.40";
+const CARD_VERSION = "1.3.62";
 const DEFAULT_TIMER_BUTTONS = [15, 30, 60, 90, 120, 150]; // Default for new cards only
 
 console.info(
@@ -56,6 +56,13 @@ console.info(
   'color: orange; font-weight: bold; background: black',
   'color: white; font-weight: bold; background: dimgray',
 );
+
+interface TimerButton {
+  displayValue: number;
+  unit: string; // 'min', 's', 'h'
+  labelUnit: string; // 'Min', 'Sec', 'Hr'
+  minutesEquivalent: number;
+}
 
 class TimerCard extends LitElement {
   static get properties() {
@@ -80,7 +87,7 @@ class TimerCard extends LitElement {
   _timeRemaining: string | null = null;
   _sliderValue: number = 0;
 
-  buttons: number[] = [];
+  buttons: TimerButton[] = [];
   _validationMessages: string[] = [];
   _notificationSentForCurrentCycle: boolean = false;
   _entitiesLoaded: boolean = false;
@@ -116,15 +123,18 @@ class TimerCard extends LitElement {
   }
 
   setConfig(cfg: TimerCardConfig): void {
-    const newSliderMax = cfg.slider_max && cfg.slider_max > 0 && cfg.slider_max <= 1000 ? cfg.slider_max : 120;
+    const newSliderMax = cfg.slider_max && cfg.slider_max > 0 && cfg.slider_max <= 9999 ? cfg.slider_max : 120;
     const instanceId = cfg.timer_instance_id || 'default';
+
+    this.buttons = this._getValidatedTimerButtons(cfg.timer_buttons);
 
     this._config = {
       type: cfg.type || "custom:timer-card",
-      timer_buttons: this._getValidatedTimerButtons(cfg.timer_buttons),
+      timer_buttons: cfg.timer_buttons || [...DEFAULT_TIMER_BUTTONS],
       card_title: cfg.card_title || null,
       power_button_icon: cfg.power_button_icon || null,
       slider_max: newSliderMax,
+      slider_unit: cfg.slider_unit || 'min',
       reverse_mode: cfg.reverse_mode || false,
       hide_slider: cfg.hide_slider || false,
       show_daily_usage: cfg.show_daily_usage !== false,
@@ -166,7 +176,7 @@ class TimerCard extends LitElement {
 
     this.requestUpdate();
 
-    this.buttons = [...this._config.timer_buttons];
+
     this._liveRuntimeSeconds = 0;
     this._notificationSentForCurrentCycle = false;
     this._effectiveSwitchEntity = null;
@@ -174,23 +184,84 @@ class TimerCard extends LitElement {
     this._entitiesLoaded = false;
   }
 
-  _getValidatedTimerButtons(configButtons: any): number[] {
-    let validatedTimerButtons: number[] = [];
+  _getValidatedTimerButtons(configButtons: any): TimerButton[] {
+    let validatedTimerButtons: TimerButton[] = [];
     this._validationMessages = [];
 
     if (Array.isArray(configButtons)) {
       const invalidValues: any[] = [];
-      const uniqueValues = new Set<number>();
+      const uniqueValues = new Set<string>(); // Use string representation for uniqueness
       const duplicateValues: any[] = [];
 
       configButtons.forEach(val => {
-        const numVal = Number(val);
-        if (Number.isInteger(numVal) && numVal > 0 && numVal <= 1000) {
-          if (uniqueValues.has(numVal)) {
-            duplicateValues.push(numVal);
+        let displayValue: number;
+        let unit = 'min';
+        let labelUnit = 'Min';
+        let minutesEquivalent: number;
+
+        const strVal = String(val).trim().toLowerCase();
+
+        // Match numbers (including decimals) optionally followed by unit
+        const match = strVal.match(/^(\d+(?:\.\d+)?)\s*(s|sec|seconds|m|min|minutes|h|hr|hours|d|day|days)?$/);
+
+        if (match) {
+          const numVal = parseFloat(match[1]);
+          const isFloat = match[1].includes('.');
+          const unitStr = match[2] || 'min';
+          const isHours = unitStr.startsWith('h');
+          const isDays = unitStr.startsWith('d');
+
+          // User Restriction: Limit to 9999 for all units
+          if (numVal > 9999) {
+            invalidValues.push(val);
+            return;
+          }
+
+          // User Restriction: Fractional numbers only allowed for hours and days
+          if (isFloat && !isHours && !isDays) {
+            invalidValues.push(val);
+            return;
+          }
+
+          // User Restriction: Max 1 digit after decimal for hours and days
+          if (isFloat && (isHours || isDays)) {
+            const decimalPart = match[1].split('.')[1];
+            if (decimalPart && decimalPart.length > 1) {
+              invalidValues.push(val);
+              return;
+            }
+          }
+
+          displayValue = numVal;
+
+          if (unitStr.startsWith('s')) {
+            unit = 's';
+            labelUnit = 'sec';
+            minutesEquivalent = displayValue / 60;
+          } else if (unitStr.startsWith('h')) {
+            unit = 'h';
+            labelUnit = 'hr';
+            minutesEquivalent = displayValue * 60;
+          } else if (unitStr.startsWith('d')) {
+            unit = 'd';
+            labelUnit = 'day';
+            minutesEquivalent = displayValue * 1440;
           } else {
-            uniqueValues.add(numVal);
-            validatedTimerButtons.push(numVal);
+            unit = 'min';
+            labelUnit = 'min';
+            minutesEquivalent = displayValue;
+          }
+
+          if (displayValue > 0) {
+            const uniqueKey = `${minutesEquivalent}`;
+            if (uniqueValues.has(uniqueKey)) {
+              duplicateValues.push(val);
+            } else {
+              uniqueValues.add(uniqueKey);
+              validatedTimerButtons.push({ displayValue, unit, labelUnit, minutesEquivalent });
+            }
+          } else {
+            invalidValues.push(val);
           }
         } else {
           invalidValues.push(val);
@@ -199,14 +270,14 @@ class TimerCard extends LitElement {
 
       const messages: string[] = [];
       if (invalidValues.length > 0) {
-        messages.push(`Invalid timer values ignored: ${invalidValues.join(', ')}. Only positive integers up to 1000 are allowed.`);
+        messages.push(`Invalid timer values ignored: ${invalidValues.join(', ')}. Format example: 30, "30s", "1h", "2d". Limit 9999.`);
       }
       if (duplicateValues.length > 0) {
-        messages.push(`Duplicate timer values were removed: ${[...new Set(duplicateValues)].join(', ')}.`);
+        messages.push(`Duplicate timer values were removed.`);
       }
       this._validationMessages = messages;
 
-      validatedTimerButtons.sort((a, b) => a - b);
+      validatedTimerButtons.sort((a, b) => a.minutesEquivalent - b.minutesEquivalent);
       return validatedTimerButtons;
     }
 
@@ -291,7 +362,7 @@ class TimerCard extends LitElement {
     return null;
   }
 
-  _startTimer(minutes: number, startMethod: 'button' | 'slider' = 'button'): void {
+  _startTimer(minutes: number, unit: string = 'min', startMethod: 'button' | 'slider' = 'button'): void {
     this._validationMessages = [];
     if (!this._entitiesLoaded || !this.hass || !this.hass.callService) {
       console.error("Timer-card: Cannot start timer. Entities not loaded or callService unavailable.");
@@ -312,6 +383,7 @@ class TimerCard extends LitElement {
           this.hass!.callService(DOMAIN, "start_timer", {
             entry_id: entryId,
             duration: minutes,
+            unit: unit,
             reverse_mode: true,
             start_method: startMethod
           });
@@ -323,7 +395,7 @@ class TimerCard extends LitElement {
       // NORMAL MODE: Turn ON switch, then start timer
       this.hass.callService("homeassistant", "turn_on", { entity_id: switchId })
         .then(() => {
-          this.hass!.callService(DOMAIN, "start_timer", { entry_id: entryId, duration: minutes, start_method: startMethod });
+          this.hass!.callService(DOMAIN, "start_timer", { entry_id: entryId, duration: minutes, unit: unit, start_method: startMethod });
         })
         .catch(error => {
           console.error("Timer-card: Error turning on switch or starting timer:", error);
@@ -429,8 +501,9 @@ class TimerCard extends LitElement {
             console.error("Timer-card: Error manually turning on switch:", error);
           });
       } else if (this._sliderValue > 0) {
-        this._startTimer(this._sliderValue, 'slider');
-        console.log(`Timer-card: Starting timer for ${this._sliderValue} minutes`);
+        const unit = this._config?.slider_unit || 'min';
+        this._startTimer(this._sliderValue, unit, 'slider');
+        console.log(`Timer-card: Starting timer for ${this._sliderValue} ${unit}`);
       } else {
         // Manual turn on (infinite until manually turned off)
         this.hass.callService(DOMAIN, "manual_power_toggle", {
@@ -584,9 +657,27 @@ class TimerCard extends LitElement {
     }
 
     const activeDuration = sensor.attributes.timer_duration || 0;
-    const hasMatchingButton = this.buttons.includes(activeDuration);
-    const sliderMax = this._config?.slider_max || 120;
-    const isWithinSliderRange = activeDuration >= 0 && activeDuration <= sliderMax;
+    const startMethod = sensor.attributes.timer_start_method;
+
+    // If started by slider, it is not orphaned
+    if (startMethod === 'slider') {
+      return { isOrphaned: false };
+    }
+
+    const hasMatchingButton = this.buttons.some(b => Math.abs(b.minutesEquivalent - activeDuration) < 0.001);
+
+    let sliderMax = this._config?.slider_max || 120;
+    const sliderUnit = this._config?.slider_unit || 'min';
+
+    // Convert slider max to minutes for comparison with active duration
+    if (sliderUnit === 'h' || sliderUnit === 'hr' || sliderUnit === 'hours') {
+      sliderMax = sliderMax * 60;
+    } else if (sliderUnit === 's' || sliderUnit === 'sec' || sliderUnit === 'seconds') {
+      sliderMax = sliderMax / 60;
+    }
+
+    // Add epsilon for float safety
+    const isWithinSliderRange = activeDuration >= 0 && activeDuration <= (sliderMax + 0.001);
 
     return {
       isOrphaned: !hasMatchingButton && !isWithinSliderRange,
@@ -1030,7 +1121,7 @@ class TimerCard extends LitElement {
                 @input=${this._handleSliderChange}
                 class="timer-slider"
               />
-              <span class="slider-label">${this._sliderValue} min</span>
+              <span class="slider-label">${this._sliderValue} ${this._config?.slider_unit || 'min'}</span>
             </div>
             
             <div class="power-button-small ${isTimerActive && isReverseMode ? 'on reverse' : isOn ? 'on' : this._config?.reverse_mode ? 'reverse' : ''}" 
@@ -1043,20 +1134,21 @@ class TimerCard extends LitElement {
 
           <!-- Timer Buttons -->
           <div class="button-grid">
-            ${this.buttons.map(minutes => {
+            ${this.buttons.map(button => {
       // Only highlight if timer was started via button, NOT slider
-      const isActive = isTimerActive && timerDurationInMinutes === minutes && sensor.attributes.timer_start_method === 'button';
+      // Use small epsilon for float comparison (minutes internal storage)
+      const isActive = isTimerActive && Math.abs(timerDurationInMinutes - button.minutesEquivalent) < 0.001 && sensor.attributes.timer_start_method === 'button';
       const isDisabled = isManualOn || (isTimerActive && !isActive);
       return html`
                 <div class="timer-button ${isActive ? 'active' : ''} ${isDisabled ? 'disabled' : ''}" 
                      @click=${() => {
           if (isActive) this._cancelTimer();
           else if (!isDisabled) {
-            this._startTimer(minutes, 'button');
+            this._startTimer(button.displayValue, button.unit, 'button');
           }
         }}>
-                  <div class="timer-button-value">${minutes}</div>
-                  <div class="timer-button-unit">Min</div>
+                  <div class="timer-button-value">${button.displayValue}</div>
+                  <div class="timer-button-unit">${button.labelUnit}</div>
                 </div>
               `;
     })}

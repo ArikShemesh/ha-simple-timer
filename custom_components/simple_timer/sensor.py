@@ -27,6 +27,9 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
+from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers.device_registry import DeviceInfo
+
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -107,6 +110,34 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         # Storage setup
         self._storage_lock = asyncio.Lock()
         self._store = Store(hass, self.STORAGE_VERSION, self.STORAGE_KEY_FORMAT.format(self._entry_id))
+
+    @property
+    def device_info(self) -> DeviceInfo | None:
+        """Link this entity to the device of the switch it monitors."""
+        if not self._switch_entity_id:
+            return None
+
+        # Access the Entity Registry to find the registry entry for the switch
+        ent_reg = er.async_get(self.hass)
+        entity_entry = ent_reg.async_get(self._switch_entity_id)
+        
+        # If the switch doesn't exist or isn't linked to a device, we can't link
+        if not entity_entry or not entity_entry.device_id:
+            return None
+
+        # Access the Device Registry to get the device details
+        dev_reg = dr.async_get(self.hass)
+        device_entry = dev_reg.async_get(entity_entry.device_id)
+
+        if not device_entry:
+            return None
+
+        # Return DeviceInfo with the SAME identifiers as the switch's device.
+        # This tells HA to group this sensor with that device.
+        return DeviceInfo(
+            connections=device_entry.connections,
+            identifiers=device_entry.identifiers,
+        )
 
     def _parse_reset_time(self, time_str: str) -> time:
         """Parse reset time string into time object."""
@@ -791,9 +822,39 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         except Exception as e:
             _LOGGER.error(f"Simple Timer: [{self._entry_id}] Error in accumulation task: {e}")
 
-    async def async_start_timer(self, duration_minutes: int, reverse_mode: bool = False, start_method: str = "button") -> None:
+    async def async_start_timer(self, duration: float, unit: str = "min", reverse_mode: bool = False, start_method: str = "button") -> None:
         """Start a countdown timer with synchronized accumulation."""
-        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Starting {'reverse' if reverse_mode else 'normal'} timer for {duration_minutes} minutes")
+        
+        # Convert duration to minutes for internal storage
+        duration_minutes = duration
+        if unit in ["s", "sec", "seconds"]:
+             duration_minutes = duration / 60.0
+        elif unit in ["h", "hr", "hours"]:
+             duration_minutes = duration * 60
+        elif unit in ["d", "day", "days"]:
+             duration_minutes = duration * 1440
+             
+        # Format for logging and notification
+        unit_display = unit
+        if unit in ["s", "sec", "seconds"]:
+             unit_display = "sec"
+             # Show integer if it's a whole number
+             duration_display = int(duration) if duration.is_integer() else duration
+        elif unit in ["m", "min", "minutes"]:
+             unit_display = "min"
+             duration_display = int(duration)
+        elif unit in ["h", "hr", "hours"]:
+             unit_display = "hr"
+             # Show integer if it's a whole number, otherwise float
+             duration_display = int(duration) if duration.is_integer() else duration
+        elif unit in ["d", "day", "days"]:
+             unit_display = "day"
+             # Show integer if it's a whole number, otherwise float
+             duration_display = int(duration) if duration.is_integer() else duration
+        else:
+             duration_display = duration
+        
+        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Starting {'reverse' if reverse_mode else 'normal'} timer for {duration} {unit}")
         
         self._timer_start_method = start_method
         
@@ -879,7 +940,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         
         # Send notification
         mode_text = "Delayed timer started for" if reverse_mode else "Timer was started for"
-        await self._send_notification(f"{mode_text} {duration_minutes} minutes")
+        await self._send_notification(f"{mode_text} {duration_display} {unit_display}")
         
         self.async_write_ha_state()
 

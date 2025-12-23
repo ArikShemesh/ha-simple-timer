@@ -137,7 +137,8 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
     # Schema for the timer services
     SERVICE_START_TIMER_SCHEMA = vol.Schema({
         vol.Required("entry_id"): cv.string,
-        vol.Required("duration"): cv.positive_int,
+        vol.Required("duration"): cv.positive_float,
+        vol.Optional("unit", default="min"): vol.In(["s", "sec", "seconds", "m", "min", "minutes", "h", "hr", "hours", "d", "day", "days"]),
         vol.Optional("reverse_mode", default=False): cv.boolean,
         vol.Optional("start_method", default="button"): vol.In(["button", "slider"]),
     })
@@ -189,6 +190,7 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
         """Handle the service call to start the device timer."""
         entry_id = call.data["entry_id"]
         duration = call.data["duration"]
+        unit = call.data.get("unit", "min")
         reverse_mode = call.data.get("reverse_mode", False)
         start_method = call.data.get("start_method", "button")
         
@@ -200,7 +202,7 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
                 break
         
         if sensor:
-            await sensor.async_start_timer(duration, reverse_mode, start_method)
+            await sensor.async_start_timer(duration, unit, reverse_mode, start_method)
         else:
             raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
 

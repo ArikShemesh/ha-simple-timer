@@ -75,6 +75,7 @@ class TimerCardEditor extends LitElement {
   static properties = {
     hass: { type: Object },
     _config: { type: Object },
+    _newTimerButtonValue: { type: String },
   };
 
   hass?: HomeAssistant;
@@ -83,6 +84,7 @@ class TimerCardEditor extends LitElement {
 
   private _timerInstancesOptions: Array<{ value: string; label: string }> = [];
   private _tempSliderMaxValue: string | null = null;
+  private _newTimerButtonValue: string = "";
 
   constructor() {
     super();
@@ -195,23 +197,69 @@ class TimerCardEditor extends LitElement {
     return instances;
   }
 
-  _getValidatedTimerButtons(configButtons: any): number[] {
+  _getValidatedTimerButtons(configButtons: any): (number | string)[] {
     if (Array.isArray(configButtons)) {
-      const validatedButtons: number[] = [];
-      const seen = new Set<number>();
+      const validatedButtons: (number | string)[] = [];
+      const seen = new Set<string>();
 
       configButtons.forEach(val => {
-        const numVal = Number(val);
-        if (Number.isInteger(numVal) && numVal > 0 && numVal <= 1000) {
-          if (!seen.has(numVal)) {
-            validatedButtons.push(numVal);
-            seen.add(numVal);
+        const strVal = String(val).trim().toLowerCase();
+        // Allow pure numbers (including decimals) or numbers with unit suffix
+        const match = strVal.match(/^(\d+(?:\.\d+)?)\s*(s|sec|seconds|m|min|minutes|h|hr|hours|d|day|days)?$/);
+
+        if (match) {
+          const numVal = parseFloat(match[1]);
+          const isFloat = match[1].includes('.');
+          const unitStr = match[2] || 'min';
+          const isHours = unitStr && (unitStr.startsWith('h') || ['h', 'hr', 'hours'].includes(unitStr));
+          const isDays = unitStr && (unitStr.startsWith('d') || ['d', 'day', 'days'].includes(unitStr));
+
+          // User Restriction: Fractional numbers only allowed for hours and days
+          if (isFloat && !isHours && !isDays) {
+            // Skip this value, it's invalid per rule
+            return;
+          }
+
+          // User Restriction: Max 1 digit after decimal for hours and days
+          if (isFloat && (isHours || isDays)) {
+            const decimalPart = match[1].split('.')[1];
+            if (decimalPart && decimalPart.length > 1) {
+              return;
+            }
+          }
+
+          // User Restriction: Limit to 9999 for all units
+          if (numVal > 9999) {
+            return;
+          }
+
+          // Normalize pure numbers to number type for existing logic compatibility
+          if (!unitStr || ['m', 'min', 'minutes'].includes(unitStr)) {
+            if (numVal > 0 && numVal <= 9999) {
+              if (!seen.has(String(numVal))) {
+                validatedButtons.push(numVal);
+                seen.add(String(numVal));
+              }
+            }
+          } else {
+            // Keep strings with other units
+            if (!seen.has(strVal)) {
+              validatedButtons.push(val); // Keep original casing/format or normalize? prefer original if valid
+              seen.add(strVal);
+            }
           }
         }
       });
 
-      validatedButtons.sort((a, b) => a - b);
-      return validatedButtons;
+      // Sort: numbers first (sorted), then strings (alphabetical or just appended)
+      // Actually standard logic sorts numbers. 
+      const numbers = validatedButtons.filter(b => typeof b === 'number') as number[];
+      const strings = validatedButtons.filter(b => typeof b === 'string') as string[];
+
+      numbers.sort((a, b) => a - b);
+      strings.sort();
+
+      return [...numbers, ...strings];
     }
 
     if (configButtons === undefined || configButtons === null) {
@@ -234,6 +282,7 @@ class TimerCardEditor extends LitElement {
       card_title: cfg.card_title || null,
       power_button_icon: cfg.power_button_icon || null,
       slider_max: cfg.slider_max || 120,
+      slider_unit: cfg.slider_unit || 'min',
       reverse_mode: cfg.reverse_mode || false,
       hide_slider: cfg.hide_slider || false,
       show_daily_usage: cfg.show_daily_usage !== false,
@@ -328,44 +377,110 @@ class TimerCardEditor extends LitElement {
     }
   }
 
-  _allTimerOptions: number[] = [1, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180];
+  _handleNewTimerInput(event: InputEvent): void {
+    const target = event.target as HTMLInputElement;
+    this._newTimerButtonValue = target.value;
+  }
 
-  _handleTimerCheckboxChange(event: Event): void {
-    const inputElement = event.target as HTMLInputElement;
-    const value = parseInt(inputElement.value);
-    const isChecked = inputElement.checked;
-    let currentButtons = Array.isArray(this._config?.timer_buttons) ? [...this._config!.timer_buttons] : [];
+  _addTimerButton(): void {
+    const val = this._newTimerButtonValue.trim();
+    if (!val) return;
 
-    if (isChecked) {
-      if (!currentButtons.includes(value)) {
-        currentButtons.push(value);
-      }
-    } else {
-      currentButtons = currentButtons.filter(button => button !== value);
+    // Validate using the same regex as the card
+    const match = val.match(/^(\d+(?:\.\d+)?)\s*(s|sec|seconds|m|min|minutes|h|hr|hours|d|day|days)?$/i);
+
+    if (!match) {
+      alert("Invalid format! Use format like: 30, 30s, 10m, 1.5h, 1d");
+      return;
     }
 
-    currentButtons.sort((a, b) => a - b);
+    const numVal = parseFloat(match[1]);
+    const isFloat = match[1].includes('.');
+    const unitStr = (match[2] || 'min').toLowerCase();
+    const isHours = unitStr.startsWith('h');
+    const isDays = unitStr.startsWith('d');
 
-    const updatedConfig: TimerCardConfig = {
-      type: this._config!.type,
-      timer_buttons: currentButtons
-    };
-    if (this._config?.timer_instance_id) updatedConfig.timer_instance_id = this._config.timer_instance_id;
-    if (this._config?.entity) updatedConfig.entity = this._config.entity;
-    if (this._config?.sensor_entity) updatedConfig.sensor_entity = this._config.sensor_entity;
-    if (this._config?.card_title) updatedConfig.card_title = this._config.card_title;
-    if (this._config?.power_button_icon) updatedConfig.power_button_icon = this._config.power_button_icon;
-    if (this._config?.show_daily_usage !== undefined) updatedConfig.show_daily_usage = this._config.show_daily_usage;
-    if (this._config?.slider_max !== undefined) updatedConfig.slider_max = this._config.slider_max;
-    if (this._config?.reverse_mode !== undefined) updatedConfig.reverse_mode = this._config.reverse_mode;
-    if (this._config?.slider_thumb_color !== undefined) updatedConfig.slider_thumb_color = this._config.slider_thumb_color;
-    if (this._config?.slider_background_color !== undefined) updatedConfig.slider_background_color = this._config.slider_background_color;
-    if (this._config?.timer_button_font_color !== undefined) updatedConfig.timer_button_font_color = this._config.timer_button_font_color;
-    if (this._config?.timer_button_background_color !== undefined) updatedConfig.timer_button_background_color = this._config.timer_button_background_color;
-    if (this._config?.power_button_background_color !== undefined) updatedConfig.power_button_background_color = this._config.power_button_background_color;
-    if (this._config?.power_button_icon_color !== undefined) updatedConfig.power_button_icon_color = this._config.power_button_icon_color;
-    if (this._config?.hide_slider !== undefined) updatedConfig.hide_slider = this._config.hide_slider;
+    // User Restriction: Limit to 9999 for all units
+    if (numVal > 9999) {
+      alert("Value cannot exceed 9999");
+      return;
+    }
 
+    // User Restriction: Fractional numbers only allowed for hours and days
+    if (isFloat && !isHours && !isDays) {
+      alert("Fractional values are only allowed for Hours (h) and Days (d)");
+      return;
+    }
+
+    // User Restriction: Max 1 digit after decimal for hours and days
+    if (isFloat && (isHours || isDays)) {
+      const decimalPart = match[1].split('.')[1];
+      if (decimalPart && decimalPart.length > 1) {
+        alert("Maximum 1 decimal place allowed (e.g. 1.5)");
+        return;
+      }
+    }
+
+    // NEW CHECK: Must be greater than 0
+    // Internal calculation used by card to ignore zero values
+    let minutesCheck = numVal;
+    if (unitStr.startsWith('s')) minutesCheck = numVal / 60;
+    else if (unitStr.startsWith('h')) minutesCheck = numVal * 60;
+    else if (unitStr.startsWith('d')) minutesCheck = numVal * 1440;
+
+    if (minutesCheck <= 0) {
+      alert("Timer duration must be greater than 0");
+      return;
+    }
+
+    let currentButtons = Array.isArray(this._config?.timer_buttons) ? [...this._config!.timer_buttons] : [];
+
+    // Normalize logic: Store numbers as numbers (minutes), strings as strings (with units)
+    // If user enters "30", treat as 30 min (number)
+    // If user enters "30m", treat as "30m" (string)? OR normalize "30m" -> 30?
+    // Current backend/frontend supports mixed. Let's keep it simple: if valid, add as string unless it's pure number
+
+    let valueToAdd: string | number = val;
+    // Optional: normalize pure numbers to number type for consistency with legacy, 
+    // but the regex allows units. 
+    // If no unit provided, match[2] is undefined.
+    if (!match[2]) {
+      valueToAdd = numVal;
+    }
+
+    // Check for duplicates
+    if (currentButtons.includes(valueToAdd)) {
+      this._newTimerButtonValue = ""; // Clear input anyway
+      this.requestUpdate();
+      return;
+    }
+
+    currentButtons.push(valueToAdd);
+
+    // Sort logic
+    const numbers = currentButtons.filter(b => typeof b === 'number') as number[];
+    const strings = currentButtons.filter(b => typeof b === 'string') as string[];
+    numbers.sort((a, b) => a - b);
+    strings.sort((a, b) => {
+      // Try to sort strings naturally? simplified sort for now
+      return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+    });
+
+    currentButtons = [...numbers, ...strings];
+
+    this._updateConfig({ timer_buttons: currentButtons });
+    this._newTimerButtonValue = "";
+    this.requestUpdate();
+  }
+
+  _removeTimerButton(valueToRemove: string | number): void {
+    let currentButtons = Array.isArray(this._config?.timer_buttons) ? [...this._config!.timer_buttons] : [];
+    currentButtons = currentButtons.filter(b => b !== valueToRemove);
+    this._updateConfig({ timer_buttons: currentButtons });
+  }
+
+  _updateConfig(updates: Partial<TimerCardConfig>) {
+    const updatedConfig = { ...this._config, ...updates };
     this._config = updatedConfig;
     this.dispatchEvent(
       new CustomEvent("config-changed", {
@@ -625,21 +740,38 @@ class TimerCardEditor extends LitElement {
         </div>
         
         <div class="config-row">
-          <ha-textfield
-            label="Slider maximum (1–1000)"
-            type="number"
-            min="1"
-            max="1000"
-            inputmode="numeric"
-            value=${v}
-            helper="Enter a number between 1 and 1000"
-            validationMessage="Must be 1–1000"
-            ?invalid=${this._isSliderMaxInvalid()}
-            @input=${this._onSliderMaxInput}
-            @change=${this._handleSliderMaxBlur}
-            @blur=${this._handleSliderMaxBlur}
-            @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') this._handleSliderMaxBlur(e as any); }}
-          />
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+             <ha-textfield
+              label="Slider maximum (1–9999)"
+              type="number"
+              min="1"
+              max="9999"
+              inputmode="numeric"
+              value=${v}
+              helper="Enter a number between 1 and 9999"
+              validationMessage="Must be 1–9999"
+              ?invalid=${this._isSliderMaxInvalid()}
+              @input=${this._onSliderMaxInput}
+              @change=${this._handleSliderMaxBlur}
+              @blur=${this._handleSliderMaxBlur}
+              @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') this._handleSliderMaxBlur(e as any); }}
+            ></ha-textfield>
+
+            <ha-select
+              .label=${"Slider Unit"}
+              .value=${this._config?.slider_unit || "min"}
+              .configValue=${"slider_unit"}
+              @selected=${this._valueChanged}
+              @closed=${(ev) => ev.stopPropagation()}
+              fixedMenuPosition
+              naturalMenuWidth
+            >
+              <mwc-list-item value="sec">Seconds (s)</mwc-list-item>
+              <mwc-list-item value="min">Minutes (m)</mwc-list-item>
+              <mwc-list-item value="hr">Hours (h)</mwc-list-item>
+              <mwc-list-item value="day">Days (d)</mwc-list-item>
+            </ha-select>
+          </div>
         </div>
         
         <div class="config-row">
@@ -647,7 +779,6 @@ class TimerCardEditor extends LitElement {
             <ha-switch
               .checked=${this._config?.reverse_mode || false}
               .configValue=${"reverse_mode"}
-              .disabled=${this._config?.hide_slider}
               @change=${this._valueChanged}
             ></ha-switch>
           </ha-formfield>
@@ -675,24 +806,35 @@ class TimerCardEditor extends LitElement {
         
       </div>
 
-      <div class="card-config-group">
-        <h3>Select your timers (Minutes)</h3>
-        <div class="checkbox-grid">
-          ${this._allTimerOptions.map(value => html`
-            <label class="checkbox-label">
-              <input
-                type="checkbox"
-                value="${value}"
-                .checked=${Array.isArray(this._config?.timer_buttons) && this._config!.timer_buttons.includes(value)}
-                @change=${this._handleTimerCheckboxChange}
-              >
-              ${value}
-            </label>
-          `)}
+        <div class="config-row">
+            <div class="timer-chips-container">
+             <label class="config-label">Timer Presets</label>
+             <div class="chips-wrapper">
+                ${(this._config?.timer_buttons || DEFAULT_TIMER_BUTTONS).map(btn => html`
+                    <div class="timer-chip">
+                        <span>${typeof btn === 'number' ? btn + 'm' : btn}</span>
+                        <span class="remove-chip" @click=${() => this._removeTimerButton(btn)}>✕</span>
+                    </div>
+                `)}
+             </div>
+            </div>
+            
+            <div class="add-timer-row">
+               <ha-textfield
+                  .label=${"Add Timer (e.g. 30s, 10m, 1h)"}
+                  .value=${this._newTimerButtonValue}
+                  @input=${this._handleNewTimerInput}
+                  @keypress=${(e: KeyboardEvent) => { if (e.key === 'Enter') this._addTimerButton(); }}
+                  style="flex: 1;"
+               ></ha-textfield>
+               <div class="add-btn" @click=${this._addTimerButton} role="button">ADD</div>
+            </div>
+            <div class="helper-text" style="font-size: 0.8em; color: var(--secondary-text-color); margin-top: 4px;">
+                Supports seconds (s), minutes (m), hours (h), days (d). Example: 30s, 10, 1.5h, 1d
+            </div>
         </div>
-        <div class="timer-buttons-info">
-          ${!this._config?.timer_buttons?.length ? html`
-            <p class="info-text">ℹ️ No timer buttons selected. Only power toggle and daily usage will be shown.</p>
+          ${(!this._config?.timer_buttons?.length && this._config?.hide_slider) ? html`
+            <p class="info-text">ℹ️ No timer presets logic and the Slider is also hidden. The card will not be able to set a duration.</p>
           ` : ''}
         </div>
       </div>
@@ -710,7 +852,7 @@ class TimerCardEditor extends LitElement {
     if (raw === "") return true;                 // empty = invalid while editing
     const n = Number(raw);
     if (!Number.isFinite(n)) return true;
-    return !(n >= 1 && n <= 1000);               // enforce 1–1000 (no negatives)
+    return !(n >= 1 && n <= 9999);               // enforce 1–9999 (no negatives)
   }
 
   _valueChanged(ev: Event): void {
@@ -772,6 +914,8 @@ class TimerCardEditor extends LitElement {
       updatedConfig.hide_slider = value;
     } else if (configValue === "show_daily_usage") {
       updatedConfig.show_daily_usage = value;
+    } else if (configValue === "slider_unit") {
+      updatedConfig.slider_unit = value;
     }
 
     // Preserve existing values
@@ -794,6 +938,9 @@ class TimerCardEditor extends LitElement {
     }
     if (this._config.hide_slider !== undefined && configValue !== "hide_slider") {
       updatedConfig.hide_slider = this._config.hide_slider;
+    }
+    if (this._config.slider_unit !== undefined && configValue !== "slider_unit") {
+      updatedConfig.slider_unit = this._config.slider_unit;
     }
     if (this._config.show_daily_usage !== undefined && configValue !== "show_daily_usage") {
       updatedConfig.show_daily_usage = this._config.show_daily_usage;
@@ -840,7 +987,7 @@ class TimerCardEditor extends LitElement {
     const target = ev.currentTarget as HTMLInputElement;
     const raw = (target.value ?? "").trim();
     const n = Number(raw);
-    const isInvalid = !raw || !Number.isFinite(n) || n < 1 || n > 1000;
+    const isInvalid = !raw || !Number.isFinite(n) || n < 1 || n > 9999;
 
     const newMax = isInvalid ? 120 : Math.trunc(n);
     target.value = String(newMax);
@@ -848,7 +995,12 @@ class TimerCardEditor extends LitElement {
 
     // Clamp existing timer buttons to newMax
     let newButtons = [...(this._config.timer_buttons || [])];
-    newButtons = newButtons.filter(val => val <= newMax);
+    newButtons = newButtons.filter(val => {
+      if (typeof val === 'number') {
+        return val <= newMax;
+      }
+      return true; // Keep custom string buttons
+    });
 
     const updated: TimerCardConfig = {
       ...this._config,
