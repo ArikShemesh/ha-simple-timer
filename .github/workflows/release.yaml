@@ -30,9 +30,8 @@ jobs:
 
       - name: 🤐 Zip Integration
         run: |
-          cd custom_components
-          zip -r ../simple_timer.zip simple_timer
-          cd ..
+          cd custom_components/simple_timer
+          zip -r ../../simple_timer.zip
 
       # Update this step to handle manual runs (workflow_dispatch)
       - name: ☁️ Upload zip to release
