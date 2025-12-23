@@ -1,0 +1,44 @@
+name: Release Build & Publish
+
+on:
+  release:
+    types:
+      - published
+
+jobs:
+  build_and_release:
+    name: Build, Zip, and Upload
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      # 1. Checkout the code
+      - name: 🛍️ Checkout repo
+        uses: actions/checkout@v4
+
+      # 2. Setup Node.js (Required to build your card)
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 3. Install NPM dependencies and Build
+      - name: 💿 Install & Build
+        run: |
+          npm ci
+          npm run build
+        # This compiles your TypeScript into dist/timer-card.js
+
+      # 4. Zip the integration folder
+      - name: 🤐 Zip Integration
+        run: |
+          cd custom_components
+          zip -r ../simple_timer.zip simple_timer
+          cd ..
+
+      # 5. Upload the Zip to the Release
+      - name: ☁️ Upload zip to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: simple_timer.zip
