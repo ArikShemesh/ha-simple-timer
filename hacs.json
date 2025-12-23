@@ -1,5 +1,6 @@
 {
   "name": "Simple Timer",
   "content_in_root": false,
-  "render_readme": true
+  "render_readme": true,
+  "filename": "simple_timer.zip"
 }
