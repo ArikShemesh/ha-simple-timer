@@ -280,7 +280,8 @@ class TimerCardEditor extends LitElement {
       type: cfg.type || "custom:timer-card",
       timer_buttons: timerButtonsToSet,
       card_title: cfg.card_title || null,
-      power_button_icon: cfg.power_button_icon || null,
+      entity_state_icon: cfg.entity_state_icon || cfg.power_button_icon || null, // Migrate legacy value
+      // power_button_icon: preserved implicitly via ...oldConfig but not actively set here to avoid confusion
       slider_max: cfg.slider_max || 120,
       slider_unit: cfg.slider_unit || 'min',
       reverse_mode: cfg.reverse_mode || false,
@@ -291,7 +292,9 @@ class TimerCardEditor extends LitElement {
       timer_button_font_color: cfg.timer_button_font_color || null,
       timer_button_background_color: cfg.timer_button_background_color || null,
       power_button_background_color: cfg.power_button_background_color || null,
-      power_button_icon_color: cfg.power_button_icon_color || null
+      power_button_icon_color: cfg.power_button_icon_color || null,
+      entity_state_button_background_color: cfg.entity_state_button_background_color || null,
+      entity_state_button_icon_color: cfg.entity_state_button_icon_color || null
     };
 
     if (cfg.timer_instance_id) {
@@ -421,7 +424,6 @@ class TimerCardEditor extends LitElement {
       }
     }
 
-    // NEW CHECK: Must be greater than 0
     // Internal calculation used by card to ignore zero values
     let minutesCheck = numVal;
     if (unitStr.startsWith('s')) minutesCheck = numVal / 60;
@@ -512,6 +514,8 @@ class TimerCardEditor extends LitElement {
     const defaultTimerButtonBackgroundColor = this._getThemeColorHex('--secondary-background-color', '#424242');
     const defaultPowerButtonBackgroundColor = this._getThemeColorHex('--secondary-background-color', '#424242');
     const defaultPowerButtonIconColor = this._getThemeColorHex('--primary-color', '#03a9f4');
+    const defaultEntityStateButtonBackgroundColor = this._getThemeColorHex('--ha-card-background', this._getThemeColorHex('--card-background-color', '#1c1c1c'));
+    const defaultEntityStateButtonIconColor = this._getThemeColorHex('--secondary-text-color', '#727272');
 
     return html`
       <div class="card-config">
@@ -546,197 +550,17 @@ class TimerCardEditor extends LitElement {
         
         <div class="config-row">
           <ha-textfield
-            .label=${"Power Button Icon (optional)"}
-            .value=${this._config?.power_button_icon || ""}
-            .configValue=${"power_button_icon"}
+            .label=${"Entity State Icon (optional)"}
+            .value=${this._config?.entity_state_icon || ""}
+            .configValue=${"entity_state_icon"}
             @input=${this._valueChanged}
             .placeholder=${"e.g., mdi:power, mdi:lightbulb, or leave empty for no icon"}
-            .helper=${"Enter any MDI icon name (mdi:icon-name) or leave empty to hide icon"}
+            .helper=${"Enter any MDI icon name (mdi:icon-name) or leave empty to default to mdi:power"}
           >
-            ${this._config?.power_button_icon ? html`
-              <ha-icon icon="${this._config.power_button_icon}" slot="leadingIcon"></ha-icon>
+            ${this._config?.entity_state_icon ? html`
+              <ha-icon icon="${this._config.entity_state_icon}" slot="leadingIcon"></ha-icon>
             ` : ''}
           </ha-textfield>
-        </div>
-        
-        <div class="config-row">
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-            <!-- Slider Thumb Color -->
-            <div style="display: flex; gap: 8px; align-items: center;">
-              <input
-                type="color"
-                value=${this._config?.slider_thumb_color || defaultSliderThumbColor}
-                @input=${(ev: Event) => {
-        const target = ev.target as HTMLInputElement;
-        this._valueChanged({
-          target: {
-            configValue: "slider_thumb_color",
-            value: target.value
-          },
-          stopPropagation: () => { }
-        } as any);
-      }}
-                style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
-              />
-              <ha-textfield
-                .label=${"Slider Thumb Color"}
-                .value=${this._config?.slider_thumb_color || ""}
-                .configValue=${"slider_thumb_color"}
-                @input=${this._valueChanged}
-                .placeholder=${"Theme default"}
-                .helper=${"Leave empty to use default (#2ab69c)"}
-                style="flex: 1; min-width: 0;"
-              ></ha-textfield>
-            </div>
-            
-            <!-- Slider Background Color -->
-            <div style="display: flex; gap: 8px; align-items: center;">
-              <input
-                type="color"
-                value=${this._config?.slider_background_color || defaultSliderBackgroundColor}
-                @input=${(ev: Event) => {
-        const target = ev.target as HTMLInputElement;
-        this._valueChanged({
-          target: {
-            configValue: "slider_background_color",
-            value: target.value
-          },
-          stopPropagation: () => { }
-        } as any);
-      }}
-                style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
-              />
-              <ha-textfield
-                .label=${"Slider Background Color"}
-                .value=${this._config?.slider_background_color || ""}
-                .configValue=${"slider_background_color"}
-                @input=${this._valueChanged}
-                .placeholder=${"Theme default"}
-                .helper=${"Leave empty to use theme color"}
-                style="flex: 1; min-width: 0;"
-              ></ha-textfield>
-            </div>
-          </div>
-        </div>
-        
-        <div class="config-row">
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-            <!-- Timer Button Font Color -->
-            <div style="display: flex; gap: 8px; align-items: center;">
-              <input
-                type="color"
-                value=${this._config?.timer_button_font_color || defaultTimerButtonFontColor}
-                @input=${(ev: Event) => {
-        const target = ev.target as HTMLInputElement;
-        this._valueChanged({
-          target: {
-            configValue: "timer_button_font_color",
-            value: target.value
-          },
-          stopPropagation: () => { }
-        } as any);
-      }}
-                style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
-              />
-              <ha-textfield
-                .label=${"Timer Button Font Color"}
-                .value=${this._config?.timer_button_font_color || ""}
-                .configValue=${"timer_button_font_color"}
-                @input=${this._valueChanged}
-                .placeholder=${"Theme default"}
-                .helper=${"Leave empty to use theme color"}
-                style="flex: 1; min-width: 0;"
-              ></ha-textfield>
-            </div>
-            
-            <!-- Timer Button Background Color -->
-            <div style="display: flex; gap: 8px; align-items: center;">
-              <input
-                type="color"
-                value=${this._config?.timer_button_background_color || defaultTimerButtonBackgroundColor}
-                @input=${(ev: Event) => {
-        const target = ev.target as HTMLInputElement;
-        this._valueChanged({
-          target: {
-            configValue: "timer_button_background_color",
-            value: target.value
-          },
-          stopPropagation: () => { }
-        } as any);
-      }}
-                style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
-              />
-              <ha-textfield
-                .label=${"Timer Button Background Color"}
-                .value=${this._config?.timer_button_background_color || ""}
-                .configValue=${"timer_button_background_color"}
-                @input=${this._valueChanged}
-                .placeholder=${"Theme default"}
-                .helper=${"Leave empty to use theme color"}
-                style="flex: 1; min-width: 0;"
-              ></ha-textfield>
-            </div>
-          </div>
-        </div>
-        
-        <div class="config-row">
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-            <!-- Power Button Background Color -->
-            <div style="display: flex; gap: 8px; align-items: center;">
-              <input
-                type="color"
-                value=${this._config?.power_button_background_color || defaultPowerButtonBackgroundColor}
-                @input=${(ev: Event) => {
-        const target = ev.target as HTMLInputElement;
-        this._valueChanged({
-          target: {
-            configValue: "power_button_background_color",
-            value: target.value
-          },
-          stopPropagation: () => { }
-        } as any);
-      }}
-                style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
-              />
-              <ha-textfield
-                .label=${"Power Button Background"}
-                .value=${this._config?.power_button_background_color || ""}
-                .configValue=${"power_button_background_color"}
-                @input=${this._valueChanged}
-                .placeholder=${"Theme default"}
-                .helper=${"Leave empty to use theme color"}
-                style="flex: 1; min-width: 0;"
-              ></ha-textfield>
-            </div>
-            
-            <!-- Power Button Icon Color -->
-            <div style="display: flex; gap: 8px; align-items: center;">
-              <input
-                type="color"
-                value=${this._config?.power_button_icon_color || defaultPowerButtonIconColor}
-                @input=${(ev: Event) => {
-        const target = ev.target as HTMLInputElement;
-        this._valueChanged({
-          target: {
-            configValue: "power_button_icon_color",
-            value: target.value
-          },
-          stopPropagation: () => { }
-        } as any);
-      }}
-                style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
-              />
-              <ha-textfield
-                .label=${"Power Button Icon Color"}
-                .value=${this._config?.power_button_icon_color || ""}
-                .configValue=${"power_button_icon_color"}
-                @input=${this._valueChanged}
-                .placeholder=${"Theme default"}
-                .helper=${"Leave empty to use theme color"}
-                style="flex: 1; min-width: 0;"
-              ></ha-textfield>
-            </div>
-          </div>
         </div>
         
         <div class="config-row">
@@ -773,6 +597,255 @@ class TimerCardEditor extends LitElement {
             </ha-select>
           </div>
         </div>
+
+        <ha-expansion-panel outlined style="margin-top: 16px; margin-bottom: 16px;">
+          <div slot="header" style="display: flex; align-items: center;">
+            <ha-icon icon="mdi:palette-outline" style="margin-right: 8px;"></ha-icon>
+            Appearance
+          </div>
+          <div class="content" style="padding: 12px; margin-top: 12px;">
+            <div class="config-row">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <!-- Slider Thumb Color -->
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <input
+                    type="color"
+                    value=${this._config?.slider_thumb_color || defaultSliderThumbColor}
+                    @input=${(ev: Event) => {
+        const target = ev.target as HTMLInputElement;
+        this._valueChanged({
+          target: {
+            configValue: "slider_thumb_color",
+            value: target.value
+          },
+          stopPropagation: () => { }
+        } as any);
+      }}
+                    style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
+                  />
+                  <ha-textfield
+                    .label=${"Slider Thumb Color"}
+                    .value=${this._config?.slider_thumb_color || ""}
+                    .configValue=${"slider_thumb_color"}
+                    @input=${this._valueChanged}
+                    .placeholder=${"Theme default"}
+                    .helper=${"Leave empty to use default (#2ab69c)"}
+                    style="flex: 1; min-width: 0;"
+                  ></ha-textfield>
+                </div>
+                
+                <!-- Slider Background Color -->
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <input
+                    type="color"
+                    value=${this._config?.slider_background_color || defaultSliderBackgroundColor}
+                    @input=${(ev: Event) => {
+        const target = ev.target as HTMLInputElement;
+        this._valueChanged({
+          target: {
+            configValue: "slider_background_color",
+            value: target.value
+          },
+          stopPropagation: () => { }
+        } as any);
+      }}
+                    style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
+                  />
+                  <ha-textfield
+                    .label=${"Slider Background Color"}
+                    .value=${this._config?.slider_background_color || ""}
+                    .configValue=${"slider_background_color"}
+                    @input=${this._valueChanged}
+                    .placeholder=${"Theme default"}
+                    .helper=${"Leave empty to use theme color"}
+                    style="flex: 1; min-width: 0;"
+                  ></ha-textfield>
+                </div>
+              </div>
+            </div>
+            
+            <div class="config-row">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <!-- Timer Button Font Color -->
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <input
+                    type="color"
+                    value=${this._config?.timer_button_font_color || defaultTimerButtonFontColor}
+                    @input=${(ev: Event) => {
+        const target = ev.target as HTMLInputElement;
+        this._valueChanged({
+          target: {
+            configValue: "timer_button_font_color",
+            value: target.value
+          },
+          stopPropagation: () => { }
+        } as any);
+      }}
+                    style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
+                  />
+                  <ha-textfield
+                    .label=${"Timer Button Font Color"}
+                    .value=${this._config?.timer_button_font_color || ""}
+                    .configValue=${"timer_button_font_color"}
+                    @input=${this._valueChanged}
+                    .placeholder=${"Theme default"}
+                    .helper=${"Leave empty to use theme color"}
+                    style="flex: 1; min-width: 0;"
+                  ></ha-textfield>
+                </div>
+                
+                <!-- Timer Button Background Color -->
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <input
+                    type="color"
+                    value=${this._config?.timer_button_background_color || defaultTimerButtonBackgroundColor}
+                    @input=${(ev: Event) => {
+        const target = ev.target as HTMLInputElement;
+        this._valueChanged({
+          target: {
+            configValue: "timer_button_background_color",
+            value: target.value
+          },
+          stopPropagation: () => { }
+        } as any);
+      }}
+                    style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
+                  />
+                  <ha-textfield
+                    .label=${"Timer Button Background Color"}
+                    .value=${this._config?.timer_button_background_color || ""}
+                    .configValue=${"timer_button_background_color"}
+                    @input=${this._valueChanged}
+                    .placeholder=${"Theme default"}
+                    .helper=${"Leave empty to use theme color"}
+                    style="flex: 1; min-width: 0;"
+                  ></ha-textfield>
+                </div>
+              </div>
+            </div>
+            
+            <div class="config-row">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <!-- Timer Control Button Background Color -->
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <input
+                    type="color"
+                    value=${this._config?.power_button_background_color || defaultPowerButtonBackgroundColor}
+                    @input=${(ev: Event) => {
+        const target = ev.target as HTMLInputElement;
+        this._valueChanged({
+          target: {
+            configValue: "power_button_background_color",
+            value: target.value
+          },
+          stopPropagation: () => { }
+        } as any);
+      }}
+                    style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
+                  />
+                  <ha-textfield
+                    .label=${"Timer Control Button Background"}
+                    .value=${this._config?.power_button_background_color || ""}
+                    .configValue=${"power_button_background_color"}
+                    @input=${this._valueChanged}
+                    .placeholder=${"Theme default"}
+                    .helper=${"Button next to slider"}
+                    style="flex: 1; min-width: 0;"
+                  ></ha-textfield>
+                </div>
+                
+                <!-- Timer Control Button Icon Color -->
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <input
+                    type="color"
+                    value=${this._config?.power_button_icon_color || defaultPowerButtonIconColor}
+                    @input=${(ev: Event) => {
+        const target = ev.target as HTMLInputElement;
+        this._valueChanged({
+          target: {
+            configValue: "power_button_icon_color",
+            value: target.value
+          },
+          stopPropagation: () => { }
+        } as any);
+      }}
+                    style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
+                  />
+                  <ha-textfield
+                    .label=${"Timer Control Button Icon Color"}
+                    .value=${this._config?.power_button_icon_color || ""}
+                    .configValue=${"power_button_icon_color"}
+                    @input=${this._valueChanged}
+                    .placeholder=${"Theme default"}
+                    .helper=${"Button next to slider"}
+                    style="flex: 1; min-width: 0;"
+                  ></ha-textfield>
+                </div>
+              </div>
+            </div>
+            
+            <!-- NEW: Entity State Button Colors -->
+            <div class="config-row">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <!-- Entity State Button Background Color -->
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <input
+                    type="color"
+                    value=${this._config?.entity_state_button_background_color || defaultEntityStateButtonBackgroundColor}
+                    @input=${(ev: Event) => {
+        const target = ev.target as HTMLInputElement;
+        this._valueChanged({
+          target: {
+            configValue: "entity_state_button_background_color",
+            value: target.value
+          },
+          stopPropagation: () => { }
+        } as any);
+      }}
+                    style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
+                  />
+                  <ha-textfield
+                    .label=${"Entity State Button Background"}
+                    .value=${this._config?.entity_state_button_background_color || ""}
+                    .configValue=${"entity_state_button_background_color"}
+                    @input=${this._valueChanged}
+                    .placeholder=${"Theme default (Transparent)"}
+                    .helper=${"Top-right button"}
+                    style="flex: 1; min-width: 0;"
+                  ></ha-textfield>
+                </div>
+                
+                <!-- Entity State Button Icon Color -->
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <input
+                    type="color"
+                    value=${this._config?.entity_state_button_icon_color || defaultEntityStateButtonIconColor}
+                    @input=${(ev: Event) => {
+        const target = ev.target as HTMLInputElement;
+        this._valueChanged({
+          target: {
+            configValue: "entity_state_button_icon_color",
+            value: target.value
+          },
+          stopPropagation: () => { }
+        } as any);
+      }}
+                    style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
+                  />
+                  <ha-textfield
+                    .label=${"Entity State Button Icon Color"}
+                    .value=${this._config?.entity_state_button_icon_color || ""}
+                    .configValue=${"entity_state_button_icon_color"}
+                    @input=${this._valueChanged}
+                    .placeholder=${"Theme default"}
+                    .helper=${"Top-right button"}
+                    style="flex: 1; min-width: 0;"
+                  ></ha-textfield>
+                </div>
+              </div>
+            </div>
+          </div>
+        </ha-expansion-panel>
         
         <div class="config-row">
           <ha-formfield .label=${"Reverse Mode (Delayed Start)"}>
@@ -876,12 +949,10 @@ class TimerCardEditor extends LitElement {
       return;
     }
 
-    const updatedConfig: TimerCardConfig = {
-      type: this._config.type || "custom:timer-card",
-      timer_buttons: this._config.timer_buttons
-    };
+    // Clone existing config to ensure we preserve all fields (including entity_state_icon)
+    const updatedConfig: TimerCardConfig = { ...this._config };
 
-    // Handle specific field updates
+    // Handle specific logic for certain fields
     if (configValue === "card_title") {
       if (value && value !== '') {
         updatedConfig.card_title = value;
@@ -892,76 +963,34 @@ class TimerCardEditor extends LitElement {
       if (value && value !== "none_found" && value !== "") {
         updatedConfig.timer_instance_id = value;
       } else {
-        updatedConfig.timer_instance_id = null;
+        updatedConfig.timer_instance_id = null; // or undef depending on needs, null seems safe
       }
-    } else if (configValue === "power_button_icon") {
-      updatedConfig.power_button_icon = value || null;
-    } else if (configValue === "slider_thumb_color") {
-      updatedConfig.slider_thumb_color = value || null;
-    } else if (configValue === "slider_background_color") {
-      updatedConfig.slider_background_color = value || null;
-    } else if (configValue === "timer_button_font_color") {
-      updatedConfig.timer_button_font_color = value || null;
-    } else if (configValue === "timer_button_background_color") {
-      updatedConfig.timer_button_background_color = value || null;
-    } else if (configValue === "power_button_background_color") {
-      updatedConfig.power_button_background_color = value || null;
-    } else if (configValue === "power_button_icon_color") {
-      updatedConfig.power_button_icon_color = value || null;
-    } else if (configValue === "reverse_mode") {
-      updatedConfig.reverse_mode = value;
-    } else if (configValue === "hide_slider") {
-      updatedConfig.hide_slider = value;
     } else if (configValue === "show_daily_usage") {
-      updatedConfig.show_daily_usage = value;
+      updatedConfig.show_daily_usage = value; // boolean
+    } else if (configValue === "hide_slider") {
+      updatedConfig.hide_slider = value; // boolean
+    } else if (configValue === "reverse_mode") {
+      updatedConfig.reverse_mode = value; // boolean
     } else if (configValue === "slider_unit") {
       updatedConfig.slider_unit = value;
-    }
-
-    // Preserve existing values
-    if (this._config.entity) updatedConfig.entity = this._config.entity;
-    if (this._config.sensor_entity) updatedConfig.sensor_entity = this._config.sensor_entity;
-    if (this._config.timer_instance_id && configValue !== "timer_instance_id") {
-      updatedConfig.timer_instance_id = this._config.timer_instance_id;
-    }
-    if (this._config.card_title && configValue !== "card_title") {
-      updatedConfig.card_title = this._config.card_title;
-    }
-    if (this._config.power_button_icon !== undefined && configValue !== "power_button_icon") {
-      updatedConfig.power_button_icon = this._config.power_button_icon;
-    }
-    if (this._config.slider_max !== undefined && configValue !== "slider_max") {
-      updatedConfig.slider_max = this._config.slider_max;
-    }
-    if (this._config.reverse_mode !== undefined && configValue !== "reverse_mode") {
-      updatedConfig.reverse_mode = this._config.reverse_mode;
-    }
-    if (this._config.hide_slider !== undefined && configValue !== "hide_slider") {
-      updatedConfig.hide_slider = this._config.hide_slider;
-    }
-    if (this._config.slider_unit !== undefined && configValue !== "slider_unit") {
-      updatedConfig.slider_unit = this._config.slider_unit;
-    }
-    if (this._config.show_daily_usage !== undefined && configValue !== "show_daily_usage") {
-      updatedConfig.show_daily_usage = this._config.show_daily_usage;
-    }
-    if (this._config.slider_thumb_color !== undefined && configValue !== "slider_thumb_color") {
-      updatedConfig.slider_thumb_color = this._config.slider_thumb_color;
-    }
-    if (this._config.slider_background_color !== undefined && configValue !== "slider_background_color") {
-      updatedConfig.slider_background_color = this._config.slider_background_color;
-    }
-    if (this._config.timer_button_font_color !== undefined && configValue !== "timer_button_font_color") {
-      updatedConfig.timer_button_font_color = this._config.timer_button_font_color;
-    }
-    if (this._config.timer_button_background_color !== undefined && configValue !== "timer_button_background_color") {
-      updatedConfig.timer_button_background_color = this._config.timer_button_background_color;
-    }
-    if (this._config.power_button_background_color !== undefined && configValue !== "power_button_background_color") {
-      updatedConfig.power_button_background_color = this._config.power_button_background_color;
-    }
-    if (this._config.power_button_icon_color !== undefined && configValue !== "power_button_icon_color") {
-      updatedConfig.power_button_icon_color = this._config.power_button_icon_color;
+    } else {
+      // For text/color fields where empty string means delete/null
+      if (value && value !== '') {
+        (updatedConfig as any)[configValue] = value;
+      } else {
+        // If the field is one that should be null when empty
+        if ([
+          'entity_state_icon', 'power_button_icon',
+          'slider_thumb_color', 'slider_background_color',
+          'timer_button_font_color', 'timer_button_background_color',
+          'power_button_background_color', 'power_button_icon_color',
+          'entity_state_button_background_color', 'entity_state_button_icon_color'
+        ].includes(configValue)) {
+          (updatedConfig as any)[configValue] = null;
+        } else {
+          delete (updatedConfig as any)[configValue];
+        }
+      }
     }
 
     if (JSON.stringify(this._config) !== JSON.stringify(updatedConfig)) {

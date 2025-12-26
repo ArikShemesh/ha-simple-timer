@@ -105,7 +105,7 @@ export const cardStyles = css`
     display: flex;
     align-items: center;
     gap: 4px;
-    margin-bottom: 15px;
+    margin-top: 12px;
     flex-wrap: wrap;
     justify-content: center;
   }
@@ -205,12 +205,12 @@ export const cardStyles = css`
     text-align: left;
   }
 
-  .power-button-small {
-      width: 65px;
-      height: 60px;
+  .timer-control-button {
+      width: 48px;
+      height: 32px;
       flex-shrink: 0;
       box-sizing: border-box;
-      border-radius: 12px;
+      border-radius: 8px;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -222,25 +222,24 @@ export const cardStyles = css`
       border: 2px solid transparent;
       background-clip: padding-box;
       box-shadow: 
-          0 8px 25px rgba(0, 0, 0, 0.4),
-          0 3px 10px rgba(0, 0, 0, 0.3),
-          inset 0 1px 0 rgba(255, 255, 255, 0.2),
-          inset 0 -1px 0 rgba(0, 0, 0, 0.3);
+          0 4px 10px rgba(0, 0, 0, 0.3),
+          0 2px 5px rgba(0, 0, 0, 0.2);
       
       color: var(--primary-color);
-      --mdc-icon-size: 36px;
-      padding: 4px;
+      --mdc-icon-size: 20px;
+      padding: 0;
+      margin-left: 12px; /* Add some spacing from the text */
   }
 
-  .power-button-small ha-icon[icon] {
+  .timer-control-button ha-icon[icon] {
       color: var(--primary-color);
   }
 
-  .power-button-small.reverse ha-icon[icon] {
+  .timer-control-button.reverse ha-icon[icon] {
       color: #f2ba5a;
   }
 
-  .power-button-small::before {
+  .timer-control-button::before {
       content: '';
       position: absolute;
       inset: -2px;
@@ -248,7 +247,7 @@ export const cardStyles = css`
       z-index: -1;
   }
 
-  .power-button-small:hover {
+  .timer-control-button:hover {
       transform: translateY(-2px);
       box-shadow: 
           0 12px 35px rgba(0, 0, 0, 0.5),
@@ -258,7 +257,7 @@ export const cardStyles = css`
       color: var(--primary-color);
   }
 
-  .power-button-small:active {
+  .timer-control-button:active {
       transform: translateY(0px);
       transition: all 0.1s;
       box-shadow: 
@@ -268,16 +267,11 @@ export const cardStyles = css`
           inset 0 -1px 0 rgba(0, 0, 0, 0.4);
   }
 
-  .power-button-small.on {
-      border: 2px solid #4da3e0;
+  .timer-control-button.active {
       color: var(--primary-color);
-      box-shadow: 
-          0 0 0 2px rgba(42, 137, 209, 0.3),
-          0 0 12px rgba(42, 137, 209, 0.6);
-      animation: pulse 2s infinite;
   }
 
-  .power-button-small.on::before {
+  .timer-control-button.active::before {
       display: none;
   }
 
@@ -290,13 +284,19 @@ export const cardStyles = css`
           0 0 20px rgba(42, 137, 209, 0.8); }
   }
 
-  .power-button-small.on.reverse {
-      border: 2px solid #f4c474;
+  .timer-control-button.active.reverse {
       color: #f2ba5a;
-      box-shadow: 
-          0 0 0 2px rgba(242, 186, 90, 0.3),
-          0 0 12px rgba(242, 186, 90, 0.6);
-      animation: pulse-orange 2s infinite;
+  }
+
+  .timer-control-button.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+  
+  .timer-control-button.disabled:hover {
+    transform: none;
+    box-shadow: none;
   }
 
   @keyframes pulse-orange {
@@ -313,6 +313,8 @@ export const cardStyles = css`
     flex-wrap: wrap;
     gap: 8px;
     justify-content: center;
+    padding-bottom: 24px;
+    margin-top: 12px;
   }
 
   .timer-button {
@@ -353,6 +355,12 @@ export const cardStyles = css`
     opacity: 0.5;
   }
 
+  .timer-button.stop-button.active,
+  .timer-button.stop-button.active:hover {
+    box-shadow: none;
+    border: none;
+  }
+
   .timer-button-value {
     font-size: 20px;
     font-weight: 600;
@@ -390,51 +398,68 @@ export const cardStyles = css`
     border-radius: 0;
   }
 
-  .power-button-top-right {
+  .entity-state-button {
     position: absolute;
     top: 12px;
-    right: 12px;
+    right: 16px;
     width: 40px;
     height: 40px;
-    border-radius: 8px;
+    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    background-color: var(--secondary-background-color);
-    color: var(--primary-color);
-    box-shadow: 
-      0 2px 5px rgba(0, 0, 0, 0.2),
-      inset 0 1px 0 rgba(255, 255, 255, 0.1);
-    transition: all 0.2s ease;
+    background-color: transparent;
+    color: var(--secondary-text-color);
+    transition: all 0.3s ease;
     z-index: 5;
+    /* No border or shadow in default state */
   }
 
-  .power-button-top-right ha-icon {
-    --mdc-icon-size: 24px;
-    color: var(--primary-color);
+  .entity-state-button ha-icon {
+    --mdc-icon-size: 30px;
+    color: var(--secondary-text-color);
   }
 
-  .power-button-top-right:hover {
-    background-color: var(--primary-background-color);
-    transform: scale(1.05);
+  .entity-state-button:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    transform: scale(1.1);
   }
 
-  .power-button-top-right:active {
+  .entity-state-button:active {
     transform: scale(0.95);
   }
 
-  .power-button-top-right.on {
+  .entity-state-button.on {
     color: var(--primary-color);
-    box-shadow: 0 0 8px rgba(42, 137, 209, 0.6);
-    border: 1px solid rgba(42, 137, 209, 0.5);
-    animation: pulse 2s infinite;
+    /* Circular glow effect */
+    box-shadow: 0 0 15px var(--primary-color);
+    background-color: rgba(var(--rgb-primary-color), 0.1);
+    animation: glow-pulse 2s infinite;
+  }
+  
+  .entity-state-button.on ha-icon {
+    color: var(--primary-color);
   }
 
-  .power-button-top-right.on.reverse {
+  @keyframes glow-pulse {
+      0%, 100% { box-shadow: 0 0 15px rgba(var(--rgb-primary-color), 0.6); }
+      50% { box-shadow: 0 0 25px rgba(var(--rgb-primary-color), 0.9); }
+  }
+
+  .entity-state-button.on.reverse {
     color: #f2ba5a;
-    box-shadow: 0 0 8px rgba(242, 186, 90, 0.6);
-    border: 1px solid rgba(242, 186, 90, 0.5);
-    animation: pulse-orange 2s infinite;
+    box-shadow: 0 0 15px #f2ba5a;
+    background-color: rgba(242, 186, 90, 0.1);
+    animation: glow-pulse-orange 2s infinite;
+  }
+  
+  .entity-state-button.on.reverse ha-icon {
+      color: #f2ba5a;
+  }
+
+  @keyframes glow-pulse-orange {
+      0%, 100% { box-shadow: 0 0 15px rgba(242, 186, 90, 0.6); }
+      50% { box-shadow: 0 0 25px rgba(242, 186, 90, 0.9); }
   }
   `;

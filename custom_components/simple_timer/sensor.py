@@ -95,7 +95,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._timer_finishes_at = None
         self._timer_duration = 0
         self._timer_start_moment = None  # Track exact timer start moment
-        self._runtime_at_timer_start = 0  # NEW: Track runtime when timer started
+        self._runtime_at_timer_start = 0  # Track runtime when timer started
         self._timer_unsub = None
         self._watchdog_message = None
         self._timer_update_task = None
@@ -227,7 +227,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             ATTR_LAST_ON_TIMESTAMP: self._last_on_timestamp.isoformat() if self._last_on_timestamp else None,
             ATTR_INSTANCE_TITLE: self.instance_title,
             ATTR_NEXT_RESET_DATE: self._next_reset_date.isoformat() if self._next_reset_date else None,
-            ATTR_RESET_TIME: self._reset_time.strftime("%H:%M:%S"),  # NEW: Expose current reset time
+            ATTR_RESET_TIME: self._reset_time.strftime("%H:%M:%S"),  # Expose current reset time
             ATTR_TIMER_START_METHOD: self._timer_start_method,
             "show_seconds": show_seconds_setting,  # Expose show_seconds from config entry
             "reverse_mode": getattr(self, '_timer_reverse_mode', False),
@@ -636,9 +636,11 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             if (
                 self._timer_state == "active"
                 and not is_reverse_mode
-                and is_definitive_off  # Only cancel if explicitly OFF
+                # Only cancel if explicitly OFF
             ):
-                self.hass.async_create_task(self._auto_cancel_timer_on_external_off())
+                # DECOUPLED: Do NOT auto-cancel timer when switch turns off
+                # self.hass.async_create_task(self._auto_cancel_timer_on_external_off())
+                pass
         
         self.async_write_ha_state()
 
@@ -717,88 +719,47 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         """Accumulate runtime while switch is on using actual elapsed time."""
         try:
             # For timer-based accumulation, use a more precise approach
-            if self._timer_state == "active" and self._timer_start_moment:
-                # Skip accumulation in reverse mode during timer countdown
-                reverse_mode = getattr(self, '_timer_reverse_mode', False)
-                if reverse_mode:
-                    return  # Don't accumulate during reverse timer countdown
-                    
-                runtime_at_start = getattr(self, '_runtime_at_timer_start', self._state)
-                last_whole_second = -1
+            # Initialize base runtime for this accumulation session
+            base_runtime = self._state
+            last_whole_second = -1
+            
+            while not self._stop_event_received:
+                if not self._switch_entity_id:
+                    break
                 
-                while not self._stop_event_received:
-                    if not self._switch_entity_id:
-                        break
-                    
-                    current_switch_state = self.hass.states.get(self._switch_entity_id)
-                    
-                    should_accumulate = (
-                        current_switch_state 
-                        and self._timer_start_moment
-                        and (
-                            current_switch_state.state == STATE_ON 
-                            or current_switch_state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN)
-                        )
-                    )
-
-                    if should_accumulate:
-                        # Calculate total elapsed time from timer start
-                        now = dt_util.utcnow()
-                        total_elapsed = (now - self._timer_start_moment).total_seconds()
-                        current_whole_second = int(total_elapsed)
-                        
-                        # Only update when we cross a whole second boundary
-                        if current_whole_second != last_whole_second:
-                            self._state = runtime_at_start + current_whole_second
-                            last_whole_second = current_whole_second
-                            self.async_write_ha_state()
-                        
-                        # Check if timer is about to end
-                        if self._timer_finishes_at:
-                            remaining = (self._timer_finishes_at - now).total_seconds()
-                            if remaining <= 0.2:
-                                # Timer is about to finish, let the timer callback handle final update
-                                break
-                        
-                        await asyncio.sleep(0.05)  # Check 20 times per second for accuracy
-                    else:
-                        break
-            else:
-                # For manual on/off, use the original accumulation method
-                accumulation_start = self._last_on_timestamp or dt_util.utcnow()
-                base_runtime = self._state
-                last_whole_second = -1
+                current_switch_state = self.hass.states.get(self._switch_entity_id)
                 
-                while not self._stop_event_received:
-                    if not self._switch_entity_id:
-                        break
-                    
-                    current_switch_state = self.hass.states.get(self._switch_entity_id)
-                    
-                    should_accumulate_manual = (
-                        current_switch_state 
-                        and self._last_on_timestamp
-                        and (
-                            current_switch_state.state == STATE_ON 
-                            or current_switch_state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN)
-                        )
+                # OBSERVER LOGIC: Accumulate ONLY if switch is ON
+                should_accumulate = (
+                    current_switch_state 
+                    and self._last_on_timestamp
+                    and (
+                        current_switch_state.state == STATE_ON 
+                        or current_switch_state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN)
                     )
+                )
 
-                    if should_accumulate_manual:
-                        # Calculate total elapsed time from when switch turned on
-                        now = dt_util.utcnow()
-                        total_elapsed = (now - accumulation_start).total_seconds()
-                        current_whole_second = int(total_elapsed)
-                        
-                        # Only update when we cross a whole second boundary
-                        if current_whole_second != last_whole_second:
-                            self._state = base_runtime + current_whole_second
-                            last_whole_second = current_whole_second
-                            self.async_write_ha_state()
-                        
-                        await asyncio.sleep(0.05)  # Check 20 times per second for accuracy
-                    else:
-                        break # Stop loop if definitively OFF
+                if should_accumulate:
+                    # Calculate total elapsed time from when switch turned on
+                    now = dt_util.utcnow()
+                    total_elapsed = (now - self._last_on_timestamp).total_seconds()
+                    current_whole_second = int(total_elapsed)
+                    
+                    # Only update when we cross a whole second boundary
+                    if current_whole_second != last_whole_second:
+                        self._state = base_runtime + current_whole_second
+                        last_whole_second = current_whole_second
+                        self.async_write_ha_state()
+                    
+                    # Check if timer is about to end (legacy check, but harmless)
+                    if self._timer_state == "active" and self._timer_finishes_at:
+                        remaining = (self._timer_finishes_at - now).total_seconds()
+                        if remaining <= 0.2:
+                            break
+                    
+                    await asyncio.sleep(0.05)  # Check 20 times per second for accuracy
+                else:
+                    break # Stop loop if definitively OFF
                     
         except asyncio.CancelledError:
             # If the timer is finishing normally OR a reset is happening, do nothing.
@@ -877,28 +838,20 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         
         # Handle switch state based on mode
         if reverse_mode:
-            # REVERSE MODE: Ensure switch is OFF
+            # REVERSE MODE: Decoupled - Do not force switch OFF.
+            # Just ensure we aren't accumulating until timer finishes (which turns it ON).
             self._last_on_timestamp = None
             await self._stop_realtime_accumulation()
-            current_switch_state = self.hass.states.get(self._switch_entity_id) if self._switch_entity_id else None
-            if current_switch_state and current_switch_state.state == "on":
-                await self.hass.services.async_call(
-                    "homeassistant", "turn_off", {"entity_id": self._switch_entity_id}, blocking=True
-                )
-                await self._ensure_switch_state("off", "Reverse mode timer start")
+            # Logic removed: We no longer force turn_off here.
         else:
-            # NORMAL MODE: Ensure switch is ON 
+            # NORMAL MODE: Convenience turn ON, but don't wait for it
             current_switch_state = self.hass.states.get(self._switch_entity_id) if self._switch_entity_id else None
             if not current_switch_state or current_switch_state.state != STATE_ON:
                 await self.hass.services.async_call(
-                   "homeassistant", "turn_on", {"entity_id": self._switch_entity_id}, blocking=True
+                   "homeassistant", "turn_on", {"entity_id": self._switch_entity_id}, blocking=False
                 )
-                # Wait for switch to actually turn on
-                for _ in range(10):  # Max 1 second wait
-                    await asyncio.sleep(0.1)
-                    state = self.hass.states.get(self._switch_entity_id)
-                    if state and state.state == STATE_ON:
-                        break
+                # DECOUPLED: Do NOT wait for state change. Start timer immediately.
+                # User can turn switch on/off manually during timer.
         
         # Now set timer start time and duration atomically
         timer_start_moment = dt_util.utcnow()
@@ -974,23 +927,14 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         current_switch_state = self.hass.states.get(self._switch_entity_id) if self._switch_entity_id else None
 
         if reverse_mode:
-            # In reverse mode, canceling should just stop the timer (keep switch OFF)
-            if current_switch_state and current_switch_state.state == STATE_ON:
-                 await self.hass.services.async_call(
-                   "homeassistant", "turn_off", {"entity_id": self._switch_entity_id}, blocking=True
-                )
-            
-            # Ensure we don't start accumulation
+            # In reverse mode, canceling just stops the timer
+            # Ensure we don't start accumulation (though it shouldn't if switch is off)
             await self._stop_realtime_accumulation()
         else:
-            # Normal mode: turn switch OFF
-            if current_switch_state and current_switch_state.state == STATE_ON:
-                await self.hass.services.async_call(
-                   "homeassistant", "turn_off", {"entity_id": self._switch_entity_id}, blocking=True
-                )
-                await self._ensure_switch_state("off", "Timer cancellation turn-off")
-            else:
-                await self._stop_realtime_accumulation()
+            # Normal mode: DECOUPLED - do NOT turn switch OFF.
+            # Just cleanup timer (already done above) and stop forced accumulation loop if needed.
+            # If switch is ON, it stays ON and continues accumulating in "manual" mode.
+            pass
         
         # Send notification
         await self._send_notification(f"Timer finished – daily usage {formatted_time} {label}")

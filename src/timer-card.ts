@@ -16,7 +16,7 @@ interface HAState {
     timer_duration?: number;
     watchdog_message?: string;
     show_seconds?: boolean; // This comes from backend now
-    reset_time?: string; // NEW: Reset time from backend
+    reset_time?: string; // Reset time from backend
     [key: string]: any;
   };
   last_changed: string;
@@ -132,6 +132,7 @@ class TimerCard extends LitElement {
       type: cfg.type || "custom:timer-card",
       timer_buttons: cfg.timer_buttons || [...DEFAULT_TIMER_BUTTONS],
       card_title: cfg.card_title || null,
+      entity_state_icon: cfg.entity_state_icon || null,
       power_button_icon: cfg.power_button_icon || null,
       slider_max: newSliderMax,
       slider_unit: cfg.slider_unit || 'min',
@@ -146,7 +147,9 @@ class TimerCard extends LitElement {
       timer_button_font_color: cfg.timer_button_font_color || null,
       timer_button_background_color: cfg.timer_button_background_color || null,
       power_button_background_color: cfg.power_button_background_color || null,
-      power_button_icon_color: cfg.power_button_icon_color || null
+      power_button_icon_color: cfg.power_button_icon_color || null,
+      entity_state_button_background_color: cfg.entity_state_button_background_color || null,
+      entity_state_button_icon_color: cfg.entity_state_button_icon_color || null
     };
 
     if (cfg.timer_instance_id) {
@@ -162,7 +165,7 @@ class TimerCard extends LitElement {
     // Always initialize from localStorage
     const saved = localStorage.getItem(`simple-timer-slider-${instanceId}`);
     let parsed = saved ? parseInt(saved) : NaN;
-    if (isNaN(parsed) || parsed <= 0) {
+    if (isNaN(parsed) || parsed < 0) {
       parsed = newSliderMax;
     }
 
@@ -376,21 +379,14 @@ class TimerCard extends LitElement {
     const reverseMode = this._config?.reverse_mode || false;
 
     if (reverseMode) {
-      // REVERSE MODE: Ensure switch is OFF, then start timer
-      this.hass.callService("homeassistant", "turn_off", { entity_id: switchId })
-        .then(() => {
-          // Pass reverse mode info to backend via service call data
-          this.hass!.callService(DOMAIN, "start_timer", {
-            entry_id: entryId,
-            duration: minutes,
-            unit: unit,
-            reverse_mode: true,
-            start_method: startMethod
-          });
-        })
-        .catch(error => {
-          console.error("Timer-card: Error turning off switch for reverse timer:", error);
-        });
+      // REVERSE MODE: Start timer directly (Decoupled: Do not force OFF state)
+      this.hass!.callService(DOMAIN, "start_timer", {
+        entry_id: entryId,
+        duration: minutes,
+        unit: unit,
+        reverse_mode: true,
+        start_method: startMethod
+      });
     } else {
       // NORMAL MODE: Turn ON switch, then start timer
       this.hass.callService("homeassistant", "turn_on", { entity_id: switchId })
@@ -437,88 +433,61 @@ class TimerCard extends LitElement {
     this._notificationSentForCurrentCycle = false;
   }
 
-  _togglePower(): void {
+
+
+  // Renamed from _togglePower: This ONLY controls the timer now.
+  // Renamed from _togglePower: This ONLY controls the timer now.
+  _handleTimerControl(): void {
     this._validationMessages = [];
-    if (!this._entitiesLoaded || !this.hass || !this.hass.states || !this.hass.callService) {
-      console.error("Timer-card: Cannot toggle power. Entities not loaded or services unavailable.");
+
+    // Check basic requirements
+    if (!this._entitiesLoaded || !this.hass || !this.hass.states) {
+      console.error("Timer-card: Cannot control timer. Entities not loaded.");
       return;
     }
 
-    // Don't do anything if we're in the middle of cancelling
-    if (this._isCancelling) {
-      return;
-    }
-
-    const switchId = this._effectiveSwitchEntity!;
     const sensorId = this._effectiveSensorEntity!;
-
-    const timerSwitch = this.hass.states[switchId];
-    if (!timerSwitch) {
-      console.warn(`Timer-card: Switch entity '${switchId}' not found during toggle.`);
-      return;
-    }
-
     const sensor = this.hass.states[sensorId];
-    const isTimerActive = sensor && sensor.attributes.timer_state === 'active';
 
-    // PRIORITY 1: Check for active timer first (regardless of switch state)
-    if (isTimerActive) {
-      // Check if this is a reverse mode timer
-      const isReverseMode = sensor.attributes.reverse_mode;
-
-      if (isReverseMode) {
-        // For reverse timers: cancel means "start now instead of waiting"
-        this._cancelTimer();
-        console.log(`Timer-card: Cancelling reverse timer and turning on switch: ${switchId}`);
-      } else {
-        // For normal timers: cancel means "stop and turn off"
-        this._cancelTimer();
-        console.log(`Timer-card: Cancelling normal timer for switch: ${switchId}`);
-      }
+    if (!sensor) {
+      console.error("Timer-card: Sensor entity not found.");
       return;
     }
 
-    // PRIORITY 2: Handle switch state for non-timer operations
-    if (timerSwitch.state === 'on') {
-      // Switch is on but no timer active - manual turn off
-      this.hass.callService(DOMAIN, "manual_power_toggle", {
-        entry_id: this._getEntryId(),
-        action: "turn_off"
-      });
-      console.log(`Timer-card: Manually turning off switch: ${switchId}`);
-    } else {
-      // Switch is currently OFF and no timer active
-      if (this._config?.hide_slider) {
-        // If slider is hidden, just turn on manually (infinite)
-        this.hass.callService(DOMAIN, "manual_power_toggle", {
-          entry_id: this._getEntryId(),
-          action: "turn_on"
-        })
-          .then(() => {
-            console.log(`Timer-card: Manually turning on switch (infinite, hidden slider): ${switchId}`);
-          })
-          .catch(error => {
-            console.error("Timer-card: Error manually turning on switch:", error);
-          });
-      } else if (this._sliderValue > 0) {
-        const unit = this._config?.slider_unit || 'min';
-        this._startTimer(this._sliderValue, unit, 'slider');
-        console.log(`Timer-card: Starting timer for ${this._sliderValue} ${unit}`);
-      } else {
-        // Manual turn on (infinite until manually turned off)
-        this.hass.callService(DOMAIN, "manual_power_toggle", {
-          entry_id: this._getEntryId(),
-          action: "turn_on"
-        })
-          .then(() => {
-            console.log(`Timer-card: Manually turning on switch (infinite): ${switchId}`);
-          })
-          .catch(error => {
-            console.error("Timer-card: Error manually turning on switch:", error);
-          });
-      }
-      this._notificationSentForCurrentCycle = false;
+    const isTimerActive = sensor.attributes.timer_state === 'active';
+
+    // IF TIMER ACTIVE -> STOP TIMER (Decoupled: does NOT turn off switch interactions)
+    if (isTimerActive) {
+      this._cancelTimer();
+      console.log(`Timer-card: Stopping active timer.`);
+      return;
     }
+
+    // IF TIMER IDLE -> START TIMER
+    if (this._sliderValue > 0) {
+      const unit = this._config?.slider_unit || 'min';
+      this._startTimer(this._sliderValue, unit, 'slider');
+      console.log(`Timer-card: Starting timer for ${this._sliderValue} ${unit}`);
+    } else {
+      console.warn("Timer-card: Slider value is 0, cannot start timer.");
+    }
+  }
+
+  // Completely independent power toggle
+  _handleIndependentPower(event: Event): void {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!this._entitiesLoaded || !this.hass || !this._effectiveSwitchEntity) {
+      console.error("Timer-card: Cannot toggle power. Entities not loaded.");
+      return;
+    }
+
+    const switchId = this._effectiveSwitchEntity;
+    console.log(`Timer-card: Toggling independent power for ${switchId}`);
+
+    this.hass.callService("homeassistant", "toggle", { entity_id: switchId })
+      .catch(err => console.error("Timer-card: Error toggling power:", err));
   }
 
   _showMoreInfo(): void {
@@ -735,7 +704,7 @@ class TimerCard extends LitElement {
     if (event.type === 'click' && !this._isLongPress) {
       event.preventDefault();
       event.stopPropagation();
-      this._togglePower();
+      this._handleTimerControl();
     }
     this._isLongPress = false;
   }
@@ -929,27 +898,43 @@ class TimerCard extends LitElement {
   }
 
   _getPowerButtonStyle(): string {
-    const backgroundColor = this._config?.power_button_background_color;
-    const iconColor = this._config?.power_button_icon_color;
+    const powerBg = this._config?.power_button_background_color;
+    const powerIcon = this._config?.power_button_icon_color;
+    const stateBg = this._config?.entity_state_button_background_color;
+    const stateIcon = this._config?.entity_state_button_icon_color;
 
-    if (!backgroundColor && !iconColor) {
+    if (!powerBg && !powerIcon && !stateBg && !stateIcon) {
       return ''; // No custom styling needed
     }
 
     let styles = '';
 
-    if (backgroundColor || iconColor) {
+    // Timer Control Button (Start/Stop)
+    if (powerBg || powerIcon) {
       styles += `
-        .power-button-small, .power-button-top-right {
-          ${backgroundColor ? `background-color: ${backgroundColor} !important;` : ''}
+        .timer-control-button {
+          ${powerBg ? `background-color: ${powerBg} !important;` : ''}
         }
-        
-        .power-button-small ha-icon[icon], .power-button-top-right ha-icon[icon] {
-          ${iconColor ? `color: ${iconColor} !important;` : ''}
+        .timer-control-button ha-icon[icon] {
+          ${powerIcon ? `color: ${powerIcon} !important;` : ''}
         }
-        
-        .power-button-small.reverse ha-icon[icon], .power-button-top-right.reverse ha-icon[icon] {
-          ${iconColor ? `color: ${iconColor} !important;` : ''}
+        .timer-control-button.reverse ha-icon[icon] {
+          ${powerIcon ? `color: ${powerIcon} !important;` : ''}
+        }
+      `;
+    }
+
+    // Entity State Button (Top Right)
+    if (stateBg || stateIcon) {
+      styles += `
+        .entity-state-button {
+          ${stateBg ? `background-color: ${stateBg} !important;` : ''}
+        }
+        .entity-state-button ha-icon[icon] {
+          ${stateIcon ? `color: ${stateIcon} !important;` : ''}
+        }
+        .entity-state-button.reverse ha-icon[icon] {
+          ${stateIcon ? `color: ${stateIcon} !important;` : ''}
         }
       `;
     }
@@ -1080,13 +1065,15 @@ class TimerCard extends LitElement {
 
         <div class="card-content">
 
-          ${this._config?.hide_slider ? html`
-             <div class="power-button-top-right ${isTimerActive && isReverseMode ? 'on reverse' : isOn ? 'on' : this._config.reverse_mode ? 'reverse' : ''}"
-                  @click=${this._handlePowerClick}
-                  title="Click to toggle power">
-               ${this._config?.power_button_icon ? html`<ha-icon icon="${this._config.power_button_icon}"></ha-icon>` : ''}
-             </div>
-          ` : ''}
+          
+          <!-- Independent Power Toggle (Always Visible now, Top Right) -->
+          <div class="entity-state-button ${isOn ? 'on' : ''}"
+                @click=${this._handleIndependentPower}
+                title="Toggle Power (Independent)">
+            <ha-icon icon="${this._config?.entity_state_icon || this._config?.power_button_icon || 'mdi:power'}"></ha-icon>
+          </div>
+          
+          ${'' /* Removed the conditional power-button-top-right that was here */}
 
           <!-- Countdown Display Section -->
           <div class="countdown-section">
@@ -1124,21 +1111,24 @@ class TimerCard extends LitElement {
               <span class="slider-label">${this._sliderValue} ${this._config?.slider_unit || 'min'}</span>
             </div>
             
-            <div class="power-button-small ${isTimerActive && isReverseMode ? 'on reverse' : isOn ? 'on' : this._config?.reverse_mode ? 'reverse' : ''}" 
-                 @click=${this._handlePowerClick}
-                 title="Click to toggle power">
-              ${this._config?.power_button_icon ? html`<ha-icon icon="${this._config.power_button_icon}"></ha-icon>` : ''}
+            <div class="timer-control-button ${isTimerActive ? 'active' : ''} ${!isTimerActive && this._sliderValue === 0 ? 'disabled' : ''}" 
+                 @click=${!isTimerActive && this._sliderValue === 0 ? null : this._handleTimerControl}
+                 title="${isTimerActive ? 'Stop Timer' : (this._sliderValue === 0 ? 'Set time to start' : 'Start Timer')}">
+              <ha-icon icon="${isTimerActive ? 'mdi:stop' : (this._sliderValue === 0 ? 'mdi:stop' : 'mdi:play')}"></ha-icon>
             </div>
           </div>
           ` : ''}
 
-          <!-- Timer Buttons -->
+          </div>
+          
+           <!-- Timer Buttons Grid -->
+           ${this.buttons.length > 0 || (this._config?.hide_slider && isTimerActive) ? html`
           <div class="button-grid">
             ${this.buttons.map(button => {
       // Only highlight if timer was started via button, NOT slider
       // Use small epsilon for float comparison (minutes internal storage)
       const isActive = isTimerActive && Math.abs(timerDurationInMinutes - button.minutesEquivalent) < 0.001 && sensor.attributes.timer_start_method === 'button';
-      const isDisabled = isManualOn || (isTimerActive && !isActive);
+      const isDisabled = isTimerActive && !isActive; // Disable others if one is active
       return html`
                 <div class="timer-button ${isActive ? 'active' : ''} ${isDisabled ? 'disabled' : ''}" 
                      @click=${() => {
@@ -1152,7 +1142,20 @@ class TimerCard extends LitElement {
                 </div>
               `;
     })}
+            
+            ${this._config?.hide_slider ? html`
+                <!-- Stop Button appended to grid when slider is hidden -->
+                <div class="timer-button stop-button ${isTimerActive ? 'active' : 'disabled'}" 
+                     style="color: var(--primary-color);"
+                     @click=${isTimerActive ? this._handleTimerControl : null}>
+                  <div class="timer-button-value">
+                    <ha-icon icon="mdi:stop"></ha-icon>
+                  </div>
+                  <div class="timer-button-unit">Stop</div>
+                </div>
+            ` : ''}
           </div>
+          ` : ''}
         </div>
 
         ${this._validationMessages.length > 0 ? html`
