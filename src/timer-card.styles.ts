@@ -314,7 +314,7 @@ export const cardStyles = css`
     gap: 8px;
     justify-content: center;
     padding-bottom: 24px;
-    margin-top: 12px;
+    margin-top: 0px;
   }
 
   .timer-button {
@@ -394,8 +394,14 @@ export const cardStyles = css`
   }
 
   .watchdog-banner {
-    margin: 0 0 12px 0;
+    margin: 20px 0 12px 0;
+    padding-right: 50px;
     border-radius: 0;
+  }
+
+  /* Push banner down further if there is no title to clear the power button */
+  .card-header:not(.has-title) + .watchdog-banner {
+    margin-top: 60px;
   }
 
   .entity-state-button {

@@ -615,44 +615,7 @@ class TimerCard extends LitElement {
     this._timeRemaining = null;
   }
 
-  _hasOrphanedTimer(): { isOrphaned: boolean; duration?: number } {
-    if (!this._entitiesLoaded || !this.hass || !this._effectiveSensorEntity) {
-      return { isOrphaned: false };
-    }
 
-    const sensor = this.hass.states[this._effectiveSensorEntity];
-    if (!sensor || sensor.attributes.timer_state !== 'active') {
-      return { isOrphaned: false };
-    }
-
-    const activeDuration = sensor.attributes.timer_duration || 0;
-    const startMethod = sensor.attributes.timer_start_method;
-
-    // If started by slider, it is not orphaned
-    if (startMethod === 'slider') {
-      return { isOrphaned: false };
-    }
-
-    const hasMatchingButton = this.buttons.some(b => Math.abs(b.minutesEquivalent - activeDuration) < 0.001);
-
-    let sliderMax = this._config?.slider_max || 120;
-    const sliderUnit = this._config?.slider_unit || 'min';
-
-    // Convert slider max to minutes for comparison with active duration
-    if (sliderUnit === 'h' || sliderUnit === 'hr' || sliderUnit === 'hours') {
-      sliderMax = sliderMax * 60;
-    } else if (sliderUnit === 's' || sliderUnit === 'sec' || sliderUnit === 'seconds') {
-      sliderMax = sliderMax / 60;
-    }
-
-    // Add epsilon for float safety
-    const isWithinSliderRange = activeDuration >= 0 && activeDuration <= (sliderMax + 0.001);
-
-    return {
-      isOrphaned: !hasMatchingButton && !isWithinSliderRange,
-      duration: activeDuration
-    };
-  }
 
   // Get show_seconds from the sensor attributes (backend config)
   _getShowSeconds(): boolean {
@@ -1034,7 +997,7 @@ class TimerCard extends LitElement {
     }
 
     const watchdogMessage = sensor.attributes.watchdog_message;
-    const orphanedTimer = this._hasOrphanedTimer();
+
 
     return html`
       <style>
@@ -1053,15 +1016,7 @@ class TimerCard extends LitElement {
             <span class="status-text">${watchdogMessage}</span>
           </div>
         ` : ''}
-        ${orphanedTimer.isOrphaned ? html`
-          <div class="status-message warning">
-            <ha-icon icon="mdi:timer-alert-outline" class="status-icon"></ha-icon>
-            <span class="status-text">
-              Active ${orphanedTimer.duration}-minute timer has no corresponding button. 
-              Use the power button to cancel or wait for automatic completion.
-            </span>
-          </div>
-        ` : ''}
+
 
         <div class="card-content">
 
