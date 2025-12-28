@@ -394,7 +394,7 @@ export const cardStyles = css`
   }
 
   .watchdog-banner {
-    margin: 20px 0 12px 0;
+    margin: 35px 0 12px 0;
     padding-right: 50px;
     border-radius: 0;
   }

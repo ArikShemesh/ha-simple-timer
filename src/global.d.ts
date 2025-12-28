@@ -21,7 +21,8 @@ interface TimerCardConfig {
   power_button_icon_color?: string | null;
   entity_state_button_background_color?: string | null;
   entity_state_button_icon_color?: string | null;
-  entity_state_icon?: string | null; // NEW: Replacement for power_button_icon for the top-right button
+  entity_state_icon?: string | null;
+  turn_off_on_cancel?: boolean;
 }
 
 // Define the structure for a Home Assistant state object
@@ -36,8 +37,8 @@ interface HAState {
     timer_finishes_at?: string;
     timer_duration?: number;
     watchdog_message?: string;
-    show_seconds?: boolean; // NEW: This comes from backend now
-    [key: string]: any; // Allow for other unknown attributes
+    show_seconds?: boolean;
+    [key: string]: any;
   };
   last_changed: string;
   last_updated: string;

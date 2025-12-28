@@ -294,7 +294,8 @@ class TimerCardEditor extends LitElement {
       power_button_background_color: cfg.power_button_background_color || null,
       power_button_icon_color: cfg.power_button_icon_color || null,
       entity_state_button_background_color: cfg.entity_state_button_background_color || null,
-      entity_state_button_icon_color: cfg.entity_state_button_icon_color || null
+      entity_state_button_icon_color: cfg.entity_state_button_icon_color || null,
+      turn_off_on_cancel: cfg.turn_off_on_cancel !== false
     };
 
     if (cfg.timer_instance_id) {
@@ -562,6 +563,8 @@ class TimerCardEditor extends LitElement {
             ` : ''}
           </ha-textfield>
         </div>
+
+
         
         <div class="config-row">
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
@@ -848,6 +851,16 @@ class TimerCardEditor extends LitElement {
         </ha-expansion-panel>
         
         <div class="config-row">
+          <ha-formfield .label=${"Turn off entity on timer cancel"}>
+            <ha-switch
+              .checked=${this._config?.turn_off_on_cancel !== false}
+              .configValue=${"turn_off_on_cancel"}
+              @change=${this._valueChanged}
+            ></ha-switch>
+          </ha-formfield>
+        </div>
+
+        <div class="config-row">
           <ha-formfield .label=${"Reverse Mode (Delayed Start)"}>
             <ha-switch
               .checked=${this._config?.reverse_mode || false}
@@ -973,6 +986,8 @@ class TimerCardEditor extends LitElement {
       updatedConfig.reverse_mode = value; // boolean
     } else if (configValue === "slider_unit") {
       updatedConfig.slider_unit = value;
+    } else if (configValue === "turn_off_on_cancel") {
+      updatedConfig.turn_off_on_cancel = value; // boolean
     } else {
       // For text/color fields where empty string means delete/null
       if (value && value !== '') {

@@ -636,11 +636,11 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             if (
                 self._timer_state == "active"
                 and not is_reverse_mode
-                # Only cancel if explicitly OFF
+                and is_definitive_off
             ):
-                # DECOUPLED: Do NOT auto-cancel timer when switch turns off
-                # self.hass.async_create_task(self._auto_cancel_timer_on_external_off())
-                pass
+                # COUPLED: Auto-cancel timer when switch turns off
+                _LOGGER.info(f"Simple Timer: [{self._entry_id}] Switch turned off - cancelling timer (coupled)")
+                self.hass.async_create_task(self.async_cancel_timer())
         
         self.async_write_ha_state()
 
@@ -767,18 +767,12 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 raise
 
             # Ensure final state is correct when cancelled MANUALLY or externally
-            if self._timer_state == "active" and self._timer_start_moment:
-                runtime_at_start = getattr(self, '_runtime_at_timer_start', 0)
-                final_elapsed = round((dt_util.utcnow() - self._timer_start_moment).total_seconds())
-                self._state = runtime_at_start + final_elapsed
-                self.async_write_ha_state()
-            elif self._last_on_timestamp:
-                # For manual mode
-                accumulation_start = self._last_on_timestamp
-                base_runtime = self._state - int((dt_util.utcnow() - accumulation_start).total_seconds())
-                final_elapsed = int((dt_util.utcnow() - accumulation_start).total_seconds())
-                self._state = base_runtime + final_elapsed
-                self.async_write_ha_state()
+            # The accumulation loop updates self._state incrementally.
+            # If the loop exited, we trust the accumulated value.
+            if self._last_on_timestamp:
+               pass
+
+            self.async_write_ha_state()
             raise
         except Exception as e:
             _LOGGER.error(f"Simple Timer: [{self._entry_id}] Error in accumulation task: {e}")
@@ -897,7 +891,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         
         self.async_write_ha_state()
 
-    async def async_cancel_timer(self) -> None:
+    async def async_cancel_timer(self, turn_off_entity: bool = True) -> None:
         """Cancel an active timer."""
         _LOGGER.info(f"Simple Timer: [{self._entry_id}] Cancelling timer")
         
@@ -931,10 +925,21 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             # Ensure we don't start accumulation (though it shouldn't if switch is off)
             await self._stop_realtime_accumulation()
         else:
-            # Normal mode: DECOUPLED - do NOT turn switch OFF.
-            # Just cleanup timer (already done above) and stop forced accumulation loop if needed.
-            # If switch is ON, it stays ON and continues accumulating in "manual" mode.
-            pass
+            # Normal mode: Check passed argument for cancellation behavior
+            if turn_off_entity:
+                # COUPLED: Turn switch OFF.
+                if self._switch_entity_id:
+                    try:
+                        await self.hass.services.async_call(
+                            "homeassistant", "turn_off", {"entity_id": self._switch_entity_id}, blocking=True
+                        )
+                        await self._ensure_switch_state("off", "Timer cancellation turn-off")
+                        await self._stop_realtime_accumulation()
+                    except Exception as e:
+                        _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Could not turn off switch: {e}")
+            else:
+                 # DECOUPLED: Do nothing
+                 pass
         
         # Send notification
         await self._send_notification(f"Timer finished – daily usage {formatted_time} {label}")
@@ -974,13 +979,6 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             else:
                 # NORMAL MODE: Original logic - turn switch OFF
                 await self._stop_realtime_accumulation()
-                
-                # Always set runtime to exact timer duration for timer-based usage
-                if self._timer_duration > 0:
-                    expected_runtime = self._timer_duration * 60  # Convert to seconds
-                    runtime_at_start = getattr(self, '_runtime_at_timer_start', 0)
-                    self._state = runtime_at_start + expected_runtime
-                    _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Set runtime to exact timer duration: {self._state}s (start: {runtime_at_start}s + duration: {expected_runtime}s)")
                 
                 self.async_write_ha_state()
                 
@@ -1477,8 +1475,8 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             # Runtime should start from when timer finishes (now), not include countdown period
             _LOGGER.info(f"Simple Timer: [{self._entry_id}] Reverse mode timer expired - device will turn ON now")
             # Don't add the timer duration to runtime since device was OFF during countdown
-        else:
             # For normal mode: device was ON during timer, add full duration to runtime
+            # Since timer expired offline, we assume it completed successfully.
             if self._timer_duration > 0 and hasattr(self, '_runtime_at_timer_start'):
                 expected_runtime = self._timer_duration * 60  # Whole seconds
                 self._state = self._runtime_at_timer_start + expected_runtime
@@ -1628,16 +1626,22 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         if last_state and last_state.state != "unavailable":
             offline_seconds = (now - last_state.last_updated).total_seconds()
             if offline_seconds > 0:
+                self._watchdog_message = "Warning: Home assistant was offline during a running timer! Usage time may be unsynchronized."
+                
                 # For reverse mode, we don't add offline time since device was OFF
                 reverse_mode = getattr(self, '_timer_reverse_mode', False)
                 if not reverse_mode:
                     # Add offline time to the current state only for normal timers
+                    _LOGGER.info(f"Simple Timer: [{self._entry_id}] Adjusting for offline gap of {int(offline_seconds)}s")
                     self._state += int(offline_seconds)
-                    _LOGGER.info(f"Simple Timer: [{self._entry_id}] Added {int(offline_seconds)}s offline time to runtime")
+                    
+                    # CRITICAL: We MUST reset _last_on_timestamp to NOW.
+                    # Why? Because self._state now includes everything up to NOW.
+                    # If we leave _last_on_timestamp at T0, the accumulation loop will calculate (NOW - T0)
+                    # and add it to self._state, which would double-count the initial period.
+                    self._last_on_timestamp = now
                 else:
                     _LOGGER.info(f"Simple Timer: [{self._entry_id}] Reverse mode timer - not adding offline time during countdown")
-                
-                self._watchdog_message = "Warning: Home assistant was offline during a running timer! Usage time may be unsynchronized."
         
         # Restore timer tracking
         self._timer_unsub = async_track_point_in_utc_time(

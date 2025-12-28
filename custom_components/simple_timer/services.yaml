@@ -36,6 +36,13 @@ cancel_timer:
       required: true
       selector:
         text:
+    turn_off_entity:
+      name: Turn Off Entity
+      description: If true, turns off the associated switch entity when cancelling.
+      required: false
+      default: true
+      selector:
+        boolean:
 
 update_switch_entity:
   name: Update Switch Entity

@@ -149,7 +149,8 @@ class TimerCard extends LitElement {
       power_button_background_color: cfg.power_button_background_color || null,
       power_button_icon_color: cfg.power_button_icon_color || null,
       entity_state_button_background_color: cfg.entity_state_button_background_color || null,
-      entity_state_button_icon_color: cfg.entity_state_button_icon_color || null
+      entity_state_button_icon_color: cfg.entity_state_button_icon_color || null,
+      turn_off_on_cancel: cfg.turn_off_on_cancel !== false
     };
 
     if (cfg.timer_instance_id) {
@@ -418,7 +419,9 @@ class TimerCard extends LitElement {
       return;
     }
 
-    this.hass.callService(DOMAIN, "cancel_timer", { entry_id: entryId })
+    const turnOffEntity = this._config?.turn_off_on_cancel !== false;
+
+    this.hass.callService(DOMAIN, "cancel_timer", { entry_id: entryId, turn_off_entity: turnOffEntity })
       .then(() => {
         // Reset flag after a short delay to ensure state has settled
         setTimeout(() => {
