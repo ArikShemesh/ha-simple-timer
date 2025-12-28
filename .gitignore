@@ -122,6 +122,9 @@ package-lock.json
 Thumbs.db
 /*.docx
 /*.bat
+!simple_timer_deploy.bat
+!deploy_config.template.bat
+deploy_config.bat
 /*.pdf
 /*.html
 /*.bak
