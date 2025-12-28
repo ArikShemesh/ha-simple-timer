@@ -743,19 +743,13 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                     # Calculate total elapsed time from when switch turned on
                     now = dt_util.utcnow()
                     total_elapsed = (now - self._last_on_timestamp).total_seconds()
-                    current_whole_second = int(total_elapsed)
+                    current_whole_second = round(total_elapsed)
                     
                     # Only update when we cross a whole second boundary
                     if current_whole_second != last_whole_second:
                         self._state = base_runtime + current_whole_second
                         last_whole_second = current_whole_second
                         self.async_write_ha_state()
-                    
-                    # Check if timer is about to end (legacy check, but harmless)
-                    if self._timer_state == "active" and self._timer_finishes_at:
-                        remaining = (self._timer_finishes_at - now).total_seconds()
-                        if remaining <= 0.2:
-                            break
                     
                     await asyncio.sleep(0.05)  # Check 20 times per second for accuracy
                 else:
