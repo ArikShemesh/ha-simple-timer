@@ -111,7 +111,8 @@ export const cardStyles = css`
   }
 
   .slider-container {
-    flex: 0 0 75%;
+    flex: 1;
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -198,35 +199,33 @@ export const cardStyles = css`
   }
 
   .slider-label {
-    font-size: 16px;
-    font-weight: 500;
+    font-size: 1.1em;
+    font-weight: 400;
     color: var(--primary-text-color);
-    min-width: 60px;
-    text-align: left;
+    white-space: nowrap;
+    margin-left: 4px;
+    margin-right: 4px;
   }
 
   .timer-control-button {
-      width: 48px;
-      height: 32px;
+      width: 80px;
+      height: 38px;
       flex-shrink: 0;
       box-sizing: border-box;
-      border-radius: 8px;
+      border-radius: 6px;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: background-color 0.2s, opacity 0.2s;
       position: relative;     
       background-color: var(--secondary-background-color);
-      border: 2px solid transparent;
-      background-clip: padding-box;
-      box-shadow: 
-          0 4px 10px rgba(0, 0, 0, 0.3),
-          0 2px 5px rgba(0, 0, 0, 0.2);
+      border: none;
+      box-shadow: none;
       
       color: var(--primary-color);
-      --mdc-icon-size: 20px;
+      --mdc-icon-size: 24px;
       padding: 0;
       margin-left: 12px; /* Add some spacing from the text */
   }
@@ -239,41 +238,24 @@ export const cardStyles = css`
       color: #f2ba5a;
   }
 
-  .timer-control-button::before {
-      content: '';
-      position: absolute;
-      inset: -2px;
-      border-radius: 14px;
-      z-index: -1;
-  }
+
 
   .timer-control-button:hover {
-      transform: translateY(-2px);
-      box-shadow: 
-          0 12px 35px rgba(0, 0, 0, 0.5),
-          0 5px 15px rgba(0, 0, 0, 0.4),
-          inset 0 1px 0 rgba(255, 255, 255, 0.25),
-          inset 0 -1px 0 rgba(0, 0, 0, 0.3);
+      transform: none;
+      box-shadow: 0 0 8px rgba(42, 182, 156, 1);
       color: var(--primary-color);
   }
 
   .timer-control-button:active {
-      transform: translateY(0px);
-      transition: all 0.1s;
-      box-shadow: 
-          0 4px 15px rgba(0, 0, 0, 0.4),
-          0 2px 5px rgba(0, 0, 0, 0.3),
-          inset 0 1px 0 rgba(255, 255, 255, 0.15),
-          inset 0 -1px 0 rgba(0, 0, 0, 0.4);
+      transform: none;
+      box-shadow: 0 0 12px rgba(42, 182, 156, 0.6);
   }
 
   .timer-control-button.active {
       color: var(--primary-color);
   }
 
-  .timer-control-button.active::before {
-      display: none;
-  }
+
 
   @keyframes pulse {
       0%, 100% { box-shadow: 
@@ -319,12 +301,13 @@ export const cardStyles = css`
 
   .timer-button {
     width: 80px;
-    height: 65px;
-    border-radius: 12px;
+    height: 38px;
+    border-radius: 6px;
     display: flex;
-    flex-direction: column;
-    align-items: center;
+    flex-direction: row;
+    align-items: baseline;
     justify-content: center;
+    gap: 4px;
     cursor: pointer;
     transition: background-color 0.2s, opacity 0.2s;
     text-align: center;
@@ -362,15 +345,16 @@ export const cardStyles = css`
   }
 
   .timer-button-value {
-    font-size: 20px;
-    font-weight: 600;
-    line-height: 1;
+    font-size: 1.1em;
+    font-weight: 400;
+    line-height: 38px;
   }
 
   .timer-button-unit {
-    font-size: 12px;
+    font-size: 0.9em;
     font-weight: 400;
-    margin-top: 2px;
+    margin-top: 0px;
+    line-height: 38px;
   }
 
   .status-message {
@@ -407,7 +391,7 @@ export const cardStyles = css`
   .entity-state-button {
     position: absolute;
     top: 12px;
-    right: 16px;
+    left: 16px;
     width: 40px;
     height: 40px;
     border-radius: 50%;
