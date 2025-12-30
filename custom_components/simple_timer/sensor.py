@@ -924,15 +924,33 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         if unit in ["s", "sec", "seconds"]: unit_display = "sec"
         elif unit in ["m", "min", "minutes"]: unit_display = "min"
         
-        # Check max limit (9999 minutes)
-        MAX_DURATION = 9999
-        if self._timer_duration + duration_minutes > MAX_DURATION:
+        # Check max limit (9999 days)
+        MAX_DURATION_MINUTES = 9999 * 1440
+        
+        # Calculate current remaining time to check against limit
+        remaining_seconds = 0
+        if self._timer_finishes_at:
+             remaining_seconds = max(0, (self._timer_finishes_at - dt_util.utcnow()).total_seconds())
+        remaining_minutes = remaining_seconds / 60.0
+
+        if remaining_minutes + duration_minutes > MAX_DURATION_MINUTES:
             old_duration_minutes = duration_minutes
-            duration_minutes = max(0, MAX_DURATION - self._timer_duration)
-            if duration_minutes == 0:
-                 await self._send_notification(f"Cannot extend: Timer is at maximum limit ({MAX_DURATION} min)")
-                 return
+            duration_minutes = max(0, MAX_DURATION_MINUTES - remaining_minutes)
             
+            # If we can't add anything significant (less than 1 second approx), show notification
+            if duration_minutes < 0.02:
+                 _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Cannot extend: Timer is at maximum limit")
+                 await self.hass.services.async_call(
+                     "persistent_notification", 
+                     "create", 
+                     {
+                         "title": "Simple Timer Limit",
+                         "message": f"Cannot extend: Timer is at maximum limit ({int(MAX_DURATION_MINUTES/1440)} days)",
+                         "notification_id": f"simple_timer_limit_{self._entry_id}"
+                     }
+                 )
+                 return
+
             # Update display values to reflect capped amount
             _LOGGER.info(f"Simple Timer: [{self._entry_id}] Extension capped from {old_duration_minutes} to {duration_minutes} min to stay within limit")
             duration_display = round(duration_minutes, 1)
