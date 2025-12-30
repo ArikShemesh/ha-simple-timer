@@ -182,11 +182,12 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
     @property
     def instance_title(self) -> str:
-        """Get the current instance title from the config entry."""
-        data_name = self._entry.data.get("name")
-        if data_name:
-            return data_name
-        return self._entry.title or "Timer"
+        """Get the current instance title."""
+        # Prefer the editable title from the config entry
+        if self._entry.title:
+            return self._entry.title
+        # Fallback to data name
+        return self._entry.data.get("name") or "Timer"
 
     @property
     def name(self) -> str:
@@ -391,7 +392,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 _LOGGER.debug(f"Simple Timer: [{self._entry_id}] No notification entities configured - staying silent")
                 return
             
-            title = self.instance_title or "Timer"
+            # Use instance title but sanitized to prevent Markdown errors in Telegram
+            # (Replace underscores with spaces)
+            raw_title = self.instance_title or "Timer"
+            title = raw_title.replace("_", " ")
             
             # Send to all configured notification services
             for notification_entity in notification_entities:
@@ -403,17 +407,31 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                         continue
                         
                     domain = service_parts[0]
-                    service = service_parts[1]  # Don't rejoin with dots
+                    service = service_parts[1]
                     
-                    _LOGGER.info(f"Simple Timer: [{self._entry_id}] Sending notification to {domain}.{service}: '{message}'")
-                    
-                    await self.hass.services.async_call(
-                        domain, service, {"message": message, "title": title}
-                    )
+                    # Special handling for boolean/switch/button entities used as notifications
+                    if domain in ["input_boolean", "switch", "light"]:
+                        _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Turning on configured notification entity: {notification_entity}")
+                        await self.hass.services.async_call(
+                            domain, "turn_on", {"entity_id": notification_entity}
+                        )
+                    elif domain == "input_button":
+                         _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Pressing configured notification button: {notification_entity}")
+                         await self.hass.services.async_call(
+                            domain, "press", {"entity_id": notification_entity}
+                        )
+                    else:
+                        # Standard notification service (e.g., notify.mobile_app_x)
+                        # We assume the second part is the service name
+                        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Sending notification to {domain}.{service}: '{message}'")
+                        
+                        await self.hass.services.async_call(
+                            domain, service, {"message": message, "title": title}
+                        )
                     
                 except Exception as e:
                     _LOGGER.error(f"Simple Timer: [{self._entry_id}] Failed to send notification to {notification_entity}: {e}")
-            
+
         except Exception as e:
             _LOGGER.error(f"Simple Timer: [{self._entry_id}] Failed to send notifications: {e}")
             
