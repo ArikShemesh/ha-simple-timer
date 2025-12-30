@@ -70,7 +70,7 @@ export const cardStyles = css`
     display: flex;
     justify-content: center;
     align-items: center;
-    font-size: 3.5rem;
+    font-size: clamp(1.8rem, 10vw, 3.5rem);
     font-weight: bold;
     width: 100%;
     text-align: center;
@@ -78,7 +78,7 @@ export const cardStyles = css`
     overflow: hidden;
     text-overflow: ellipsis;
     line-height: 1.2;
-    padding: 4px 0;
+    padding: 4px 44px;
     min-height: 3.5rem;
     box-sizing: border-box;
   }
@@ -104,23 +104,30 @@ export const cardStyles = css`
   .slider-row {
     display: flex;
     align-items: center;
-    gap: 4px;
+    justify-content: space-between;
     margin-top: 12px;
-    flex-wrap: wrap;
-    justify-content: center;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0 8px; /* Extra internal padding if needed, or rely on card padding */
+    gap: 12px;
   }
 
-  .slider-container {
-    flex: 1;
-    min-width: 0;
+  .slider-right-group {
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: flex-start;
+    /* Reserve space so slider doesn't jump when label grows */
+    min-width: 135px; 
+    flex: 0 0 auto;
+    white-space: nowrap;
   }
 
   .timer-slider {
-    flex: 1;
-    height: 20px;
+    flex: 1; /* Fills remaining space */
+    width: auto; /* Allow flex to control width */
+    min-width: 100px; /* Don't shrink too small on tiny screens */
+    height: 16px;
+    margin: 0;
     -webkit-appearance: none;
     appearance: none;
     background: var(--secondary-background-color);
@@ -203,12 +210,14 @@ export const cardStyles = css`
     font-weight: 400;
     color: var(--primary-text-color);
     white-space: nowrap;
-    margin-left: 4px;
-    margin-right: 4px;
+    margin-left: 0px;
+    margin-right: 10px;
+    min-width: 75px; 
+    text-align: center;
   }
 
   .timer-control-button {
-      width: 80px;
+      width: 50px;
       height: 38px;
       flex-shrink: 0;
       box-sizing: border-box;
@@ -227,7 +236,7 @@ export const cardStyles = css`
       color: var(--primary-color);
       --mdc-icon-size: 24px;
       padding: 0;
-      margin-left: 12px; /* Add some spacing from the text */
+      margin-right: 10px; /* Add some spacing from the text */
   }
 
   .timer-control-button ha-icon[icon] {
@@ -452,4 +461,6 @@ export const cardStyles = css`
       0%, 100% { box-shadow: 0 0 15px rgba(242, 186, 90, 0.6); }
       50% { box-shadow: 0 0 25px rgba(242, 186, 90, 0.9); }
   }
+
+
   `;

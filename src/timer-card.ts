@@ -1095,23 +1095,24 @@ class TimerCard extends LitElement {
           <!-- Slider Row -->
           ${!this._config?.hide_slider ? html`
           <div class="slider-row">
-            <div class="slider-container">
-              <input
-                type="range"
-                min="0"
-                step="1"
-                max="${this._config?.slider_max || 120}"
-                .value=${this._sliderValue.toString()}
-                @input=${this._handleSliderChange}
-                class="timer-slider"
-              />
-              <span class="slider-label">${this._sliderValue} ${this._config?.slider_unit || 'min'}</span>
-            </div>
+            <input
+              type="range"
+              min="0"
+              step="1"
+              max="${this._config?.slider_max || 120}"
+              .value=${this._sliderValue.toString()}
+              @input=${this._handleSliderChange}
+              class="timer-slider"
+            />
             
-            <div class="timer-control-button ${isTimerActive ? 'active' : ''} ${!isTimerActive && this._sliderValue === 0 ? 'disabled' : ''}" 
-                 @click=${!isTimerActive && this._sliderValue === 0 ? null : this._handleTimerControl}
-                 title="${isTimerActive ? 'Stop Timer' : (this._sliderValue === 0 ? 'Set time to start' : 'Start Timer')}">
-              <ha-icon icon="${isTimerActive ? 'mdi:stop' : (this._sliderValue === 0 ? 'mdi:stop' : 'mdi:play')}"></ha-icon>
+            <div class="slider-right-group">
+                <span class="slider-label">${this._sliderValue} ${this._config?.slider_unit || 'min'}</span>
+                
+                <div class="timer-control-button ${isTimerActive ? 'active' : ''} ${!isTimerActive && this._sliderValue === 0 ? 'disabled' : ''}" 
+                     @click=${!isTimerActive && this._sliderValue === 0 ? null : this._handleTimerControl}
+                     title="${isTimerActive ? 'Stop Timer' : (this._sliderValue === 0 ? 'Set time to start' : 'Start Timer')}">
+                  <ha-icon icon="${isTimerActive ? 'mdi:stop' : (this._sliderValue === 0 ? 'mdi:stop' : 'mdi:play')}"></ha-icon>
+                </div>
             </div>
           </div>
           ` : ''}
