@@ -7,7 +7,8 @@
   "scripts": {
     "build": "rollup -c",
     "watch": "rollup -c --watch",
-    "clean": "rd /s /q dist"
+    "clean": "rd /s /q dist",
+    "deploy": "simple_timer_deploy.bat"
   },
   "keywords": [
     "home-assistant",
