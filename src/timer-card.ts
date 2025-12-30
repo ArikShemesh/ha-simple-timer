@@ -402,6 +402,27 @@ class TimerCard extends LitElement {
     this._notificationSentForCurrentCycle = false;
   }
 
+  _addTimer(minutes: number, unit: string = 'min'): void {
+    this._validationMessages = [];
+    if (!this._entitiesLoaded || !this.hass || !this.hass.callService) {
+      console.error("Timer-card: Cannot add to timer. Entities not loaded or callService unavailable.");
+      return;
+    }
+
+    const entryId = this._getEntryId();
+    if (!entryId) { console.error("Timer-card: Entry ID not found for adding to timer."); return; }
+
+    this.hass.callService(DOMAIN, "add_timer", {
+      entry_id: entryId,
+      duration: minutes,
+      unit: unit
+    }).then(() => {
+      console.log(`Timer-card: Added ${minutes} ${unit} to active timer.`);
+    }).catch(error => {
+      console.error("Timer-card: Error adding to timer:", error);
+    });
+  }
+
   _cancelTimer(): void {
     this._validationMessages = [];
     if (!this._entitiesLoaded || !this.hass || !this.hass.callService) {
@@ -572,16 +593,30 @@ class TimerCard extends LitElement {
       return;
     }
 
-    if (!this._countdownInterval) {
-      const rawFinish = sensor.attributes.timer_finishes_at;
-      if (rawFinish === undefined) {
-        console.warn("Timer-card: timer_finishes_at is undefined for active timer. Stopping countdown.");
-        this._stopCountdown();
-        return;
-      }
-      const finishesAt = new Date(rawFinish).getTime();
+    const rawFinish = sensor.attributes.timer_finishes_at;
+    if (rawFinish === undefined) {
+      console.warn("Timer-card: timer_finishes_at is undefined for active timer. Stopping countdown.");
+      this._stopCountdown();
+      return;
+    }
+    // Always calculate the most current finish time
+    const finishesAt = new Date(rawFinish).getTime();
 
+    // If we have a running interval, check if we need to restart it (e.g. time added)
+    // We store the target time on the instance to compare
+    if (this._countdownInterval && this['_currentFinishesAt'] !== finishesAt) {
+      this._stopCountdown(); // Restart with new time
+    }
+
+    // Store current target for next comparison
+    this['_currentFinishesAt'] = finishesAt;
+
+    if (!this._countdownInterval) {
       const update = () => {
+        // Re-read latest finish time in case it changed (though restarting handles most cases, safe to be robust)
+        // actually, restarting handling it is cleaner.
+        // But to be super safe, let's just use the current captured finishesAt which is now fresh because we restarted.
+
         const now = new Date().getTime();
         const remaining = Math.max(0, Math.round((finishesAt - now) / 1000));
 
@@ -599,6 +634,10 @@ class TimerCard extends LitElement {
         }
 
         if (remaining === 0) {
+          // Do not stop immediately, let the backend handle state change to idle
+          // But we can stop the interval if we want.
+          // keeping it running until state changes is usually safer to avoid 00:00 -> 00:01 glitches if backend is slow.
+          // But existing logic stopped it.
           this._stopCountdown();
           if (!this._notificationSentForCurrentCycle) {
             this._notificationSentForCurrentCycle = true;
@@ -1083,19 +1122,20 @@ class TimerCard extends LitElement {
            ${this.buttons.length > 0 || (this._config?.hide_slider && isTimerActive) ? html`
           <div class="button-grid">
             ${this.buttons.map(button => {
-      // Only highlight if timer was started via button, NOT slider
-      // Use small epsilon for float comparison (minutes internal storage)
+      // Highlight if current duration matches button (visual indicator only)
       const isActive = isTimerActive && Math.abs(timerDurationInMinutes - button.minutesEquivalent) < 0.001 && sensor.attributes.timer_start_method === 'button';
-      const isDisabled = isTimerActive && !isActive; // Disable others if one is active
+
+      // Buttons are NO LONGER disabled when timer is active - they now Extend
       return html`
-                <div class="timer-button ${isActive ? 'active' : ''} ${isDisabled ? 'disabled' : ''}" 
+                <div class="timer-button ${isActive ? 'active' : ''}" 
                      @click=${() => {
-          if (isActive) this._cancelTimer();
-          else if (!isDisabled) {
+          if (isTimerActive) {
+            this._addTimer(button.displayValue, button.unit);
+          } else {
             this._startTimer(button.displayValue, button.unit, 'button');
           }
         }}>
-                  <div class="timer-button-value">${button.displayValue}</div>
+                  <div class="timer-button-value">${isTimerActive ? '+' : ''}${button.displayValue}</div>
                   <div class="timer-button-unit">${button.labelUnit}</div>
                 </div>
               `;

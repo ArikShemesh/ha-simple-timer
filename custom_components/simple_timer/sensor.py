@@ -885,6 +885,72 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         
         self.async_write_ha_state()
 
+    async def async_add_timer(self, duration: float, unit: str = "min") -> None:
+        """Extend a currently running timer by adding duration."""
+        if self._timer_state != "active":
+            _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Cannot add time: Timer is not active")
+            return
+
+        # Convert duration to minutes
+        duration_minutes = duration
+        if unit in ["s", "sec", "seconds"]:
+             duration_minutes = duration / 60.0
+        elif unit in ["h", "hr", "hours"]:
+             duration_minutes = duration * 60
+        elif unit in ["d", "day", "days"]:
+             duration_minutes = duration * 1440
+             
+        # Format for notification
+        unit_display = unit
+        duration_display = int(duration) if isinstance(duration, (int, float)) and duration % 1 == 0 else duration
+        if unit in ["s", "sec", "seconds"]: unit_display = "sec"
+        elif unit in ["m", "min", "minutes"]: unit_display = "min"
+        
+        # Check max limit (9999 minutes)
+        MAX_DURATION = 9999
+        if self._timer_duration + duration_minutes > MAX_DURATION:
+            old_duration_minutes = duration_minutes
+            duration_minutes = max(0, MAX_DURATION - self._timer_duration)
+            if duration_minutes == 0:
+                 await self._send_notification(f"Cannot extend: Timer is at maximum limit ({MAX_DURATION} min)")
+                 return
+            
+            # Update display values to reflect capped amount
+            _LOGGER.info(f"Simple Timer: [{self._entry_id}] Extension capped from {old_duration_minutes} to {duration_minutes} min to stay within limit")
+            duration_display = round(duration_minutes, 1)
+            # Simplify display if it's basically an integer now
+            if duration_display % 1 == 0: duration_display = int(duration_display)
+            unit_display = "min" # Force min unit since we calculated in minutes
+
+        # Calculate new duration and finish time
+        self._timer_duration += duration_minutes
+        self._timer_finishes_at += timedelta(minutes=duration_minutes)
+        
+        # Update storage
+        async with self._storage_lock:
+            data = await self._store.async_load() or {}
+            data.update({
+               "finishes_at": self._timer_finishes_at.isoformat(),
+               "duration": self._timer_duration,
+            })
+            await self._store.async_save(data)
+            
+        # Update timer completion callback
+        if self._timer_unsub:
+            self._timer_unsub()
+            
+        self._timer_unsub = async_track_point_in_utc_time(
+           self.hass, self._async_timer_finished, self._timer_finishes_at
+        )
+        
+        # Send notification
+        remaining_seconds = max(0, int((self._timer_finishes_at - dt_util.utcnow()).total_seconds()))
+        notification_entity, show_seconds = await self._get_card_notification_config()
+        formatted_rest, label = self._format_time_for_notification(remaining_seconds, show_seconds)
+        
+        await self._send_notification(f"Timer extended by {duration_display} {unit_display}. New remaining: {formatted_rest} {label}")
+        self.async_write_ha_state()
+
     async def async_cancel_timer(self, turn_off_entity: bool = True) -> None:
         """Cancel an active timer."""
         _LOGGER.info(f"Simple Timer: [{self._entry_id}] Cancelling timer")
@@ -1418,6 +1484,11 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             except (ValueError, TypeError):
                 self._timer_start_moment = None
                 _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Failed to restore timer_start_moment")
+
+        # Restore total duration from storage if available (for extended timers)
+        if storage_data.get("duration"):
+            self._timer_duration = storage_data["duration"]
+            _LOGGER.info(f"Simple Timer: [{self._entry_id}] Restored duration from storage: {self._timer_duration}")
         
         # Restore reverse mode from storage
         reverse_mode = storage_data.get("reverse_mode", False)

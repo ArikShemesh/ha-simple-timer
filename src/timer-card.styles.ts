@@ -293,7 +293,7 @@ export const cardStyles = css`
   .button-grid {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 10px;
     justify-content: center;
     padding-bottom: 24px;
     margin-top: 0px;

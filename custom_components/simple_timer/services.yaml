@@ -26,6 +26,46 @@ start_timer:
       selector:
         boolean:
 
+add_timer:
+  name: Add to Timer
+  description: Extends a currently running timer by adding duration to it.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: The config entry ID of the simple timer sensor.
+      required: true
+      selector:
+        text:
+    duration:
+      name: Duration
+      description: The duration to add in minutes.
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 1000
+          unit_of_measurement: "minutes"
+    unit:
+      name: Unit
+      description: The unit of the duration (min, sec, etc).
+      required: false
+      default: minutes
+      selector:
+        select:
+          options:
+            - s
+            - sec
+            - seconds
+            - m
+            - min
+            - minutes
+            - h
+            - hr
+            - hours
+            - d
+            - day
+            - days
+
 cancel_timer:
   name: Cancel Timer
   description: Cancels an active countdown timer.
