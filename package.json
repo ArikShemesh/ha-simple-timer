@@ -1,13 +1,14 @@
 {
   "name": "simple-timer-card",
-  "version": "1.3.62",
+  "version": "1.4.0",
   "description": "Custom simple timer integration for Home Assistant",
   "main": "timer-card.ts",
   "type": "module",
   "scripts": {
     "build": "rollup -c",
     "watch": "rollup -c --watch",
-    "clean": "rd /s /q dist"
+    "clean": "rd /s /q dist",
+    "deploy": "simple_timer_deploy.bat"
   },
   "keywords": [
     "home-assistant",

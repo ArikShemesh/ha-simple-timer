@@ -70,7 +70,7 @@ export const cardStyles = css`
     display: flex;
     justify-content: center;
     align-items: center;
-    font-size: 3.5rem;
+    font-size: clamp(1.8rem, 10vw, 3.5rem);
     font-weight: bold;
     width: 100%;
     text-align: center;
@@ -78,7 +78,7 @@ export const cardStyles = css`
     overflow: hidden;
     text-overflow: ellipsis;
     line-height: 1.2;
-    padding: 4px 0;
+    padding: 4px 44px;
     min-height: 3.5rem;
     box-sizing: border-box;
   }
@@ -104,22 +104,30 @@ export const cardStyles = css`
   .slider-row {
     display: flex;
     align-items: center;
-    gap: 4px;
-    margin-bottom: 15px;
-    flex-wrap: wrap;
-    justify-content: center;
+    justify-content: space-between;
+    margin-top: 12px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0 8px; /* Extra internal padding if needed, or rely on card padding */
+    gap: 12px;
   }
 
-  .slider-container {
-    flex: 0 0 75%;
+  .slider-right-group {
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: flex-start;
+    /* Reserve space so slider doesn't jump when label grows */
+    min-width: 135px; 
+    flex: 0 0 auto;
+    white-space: nowrap;
   }
 
   .timer-slider {
-    flex: 1;
-    height: 20px;
+    flex: 1; /* Fills remaining space */
+    width: auto; /* Allow flex to control width */
+    min-width: 100px; /* Don't shrink too small on tiny screens */
+    height: 16px;
+    margin: 0;
     -webkit-appearance: none;
     appearance: none;
     background: var(--secondary-background-color);
@@ -198,88 +206,65 @@ export const cardStyles = css`
   }
 
   .slider-label {
-    font-size: 16px;
-    font-weight: 500;
+    font-size: 1.1em;
+    font-weight: 400;
     color: var(--primary-text-color);
-    min-width: 60px;
-    text-align: left;
+    white-space: nowrap;
+    margin-left: 0px;
+    margin-right: 10px;
+    min-width: 75px; 
+    text-align: center;
   }
 
-  .power-button-small {
-      width: 65px;
-      height: 60px;
+  .timer-control-button {
+      width: 50px;
+      height: 38px;
       flex-shrink: 0;
       box-sizing: border-box;
-      border-radius: 12px;
+      border-radius: 6px;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: background-color 0.2s, opacity 0.2s;
       position: relative;     
       background-color: var(--secondary-background-color);
-      border: 2px solid transparent;
-      background-clip: padding-box;
-      box-shadow: 
-          0 8px 25px rgba(0, 0, 0, 0.4),
-          0 3px 10px rgba(0, 0, 0, 0.3),
-          inset 0 1px 0 rgba(255, 255, 255, 0.2),
-          inset 0 -1px 0 rgba(0, 0, 0, 0.3);
+      border: none;
+      box-shadow: none;
       
       color: var(--primary-color);
-      --mdc-icon-size: 36px;
-      padding: 4px;
+      --mdc-icon-size: 24px;
+      padding: 0;
+      margin-right: 10px; /* Add some spacing from the text */
   }
 
-  .power-button-small ha-icon[icon] {
+  .timer-control-button ha-icon[icon] {
       color: var(--primary-color);
   }
 
-  .power-button-small.reverse ha-icon[icon] {
+  .timer-control-button.reverse ha-icon[icon] {
       color: #f2ba5a;
   }
 
-  .power-button-small::before {
-      content: '';
-      position: absolute;
-      inset: -2px;
-      border-radius: 14px;
-      z-index: -1;
-  }
 
-  .power-button-small:hover {
-      transform: translateY(-2px);
-      box-shadow: 
-          0 12px 35px rgba(0, 0, 0, 0.5),
-          0 5px 15px rgba(0, 0, 0, 0.4),
-          inset 0 1px 0 rgba(255, 255, 255, 0.25),
-          inset 0 -1px 0 rgba(0, 0, 0, 0.3);
+
+  .timer-control-button:hover {
+      transform: none;
+      box-shadow: 0 0 8px rgba(42, 182, 156, 1);
       color: var(--primary-color);
   }
 
-  .power-button-small:active {
-      transform: translateY(0px);
-      transition: all 0.1s;
-      box-shadow: 
-          0 4px 15px rgba(0, 0, 0, 0.4),
-          0 2px 5px rgba(0, 0, 0, 0.3),
-          inset 0 1px 0 rgba(255, 255, 255, 0.15),
-          inset 0 -1px 0 rgba(0, 0, 0, 0.4);
+  .timer-control-button:active {
+      transform: none;
+      box-shadow: 0 0 12px rgba(42, 182, 156, 0.6);
   }
 
-  .power-button-small.on {
-      border: 2px solid #4da3e0;
+  .timer-control-button.active {
       color: var(--primary-color);
-      box-shadow: 
-          0 0 0 2px rgba(42, 137, 209, 0.3),
-          0 0 12px rgba(42, 137, 209, 0.6);
-      animation: pulse 2s infinite;
   }
 
-  .power-button-small.on::before {
-      display: none;
-  }
+
 
   @keyframes pulse {
       0%, 100% { box-shadow: 
@@ -290,13 +275,19 @@ export const cardStyles = css`
           0 0 20px rgba(42, 137, 209, 0.8); }
   }
 
-  .power-button-small.on.reverse {
-      border: 2px solid #f4c474;
+  .timer-control-button.active.reverse {
       color: #f2ba5a;
-      box-shadow: 
-          0 0 0 2px rgba(242, 186, 90, 0.3),
-          0 0 12px rgba(242, 186, 90, 0.6);
-      animation: pulse-orange 2s infinite;
+  }
+
+  .timer-control-button.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+  
+  .timer-control-button.disabled:hover {
+    transform: none;
+    box-shadow: none;
   }
 
   @keyframes pulse-orange {
@@ -311,18 +302,21 @@ export const cardStyles = css`
   .button-grid {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 10px;
     justify-content: center;
+    padding-bottom: 24px;
+    margin-top: 0px;
   }
 
   .timer-button {
     width: 80px;
-    height: 65px;
-    border-radius: 12px;
+    height: 38px;
+    border-radius: 6px;
     display: flex;
-    flex-direction: column;
-    align-items: center;
+    flex-direction: row;
+    align-items: baseline;
     justify-content: center;
+    gap: 4px;
     cursor: pointer;
     transition: background-color 0.2s, opacity 0.2s;
     text-align: center;
@@ -353,16 +347,23 @@ export const cardStyles = css`
     opacity: 0.5;
   }
 
+  .timer-button.stop-button.active,
+  .timer-button.stop-button.active:hover {
+    box-shadow: none;
+    border: none;
+  }
+
   .timer-button-value {
-    font-size: 20px;
-    font-weight: 600;
-    line-height: 1;
+    font-size: 1.1em;
+    font-weight: 400;
+    line-height: 38px;
   }
 
   .timer-button-unit {
-    font-size: 12px;
+    font-size: 0.9em;
     font-weight: 400;
-    margin-top: 2px;
+    margin-top: 0px;
+    line-height: 38px;
   }
 
   .status-message {
@@ -386,55 +387,80 @@ export const cardStyles = css`
   }
 
   .watchdog-banner {
-    margin: 0 0 12px 0;
+    margin: 35px 0 12px 0;
+    padding-right: 50px;
     border-radius: 0;
   }
 
-  .power-button-top-right {
+  /* Push banner down further if there is no title to clear the power button */
+  .card-header:not(.has-title) + .watchdog-banner {
+    margin-top: 60px;
+  }
+
+  .entity-state-button {
     position: absolute;
     top: 12px;
-    right: 12px;
+    left: 16px;
     width: 40px;
     height: 40px;
-    border-radius: 8px;
+    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    background-color: var(--secondary-background-color);
-    color: var(--primary-color);
-    box-shadow: 
-      0 2px 5px rgba(0, 0, 0, 0.2),
-      inset 0 1px 0 rgba(255, 255, 255, 0.1);
-    transition: all 0.2s ease;
+    background-color: transparent;
+    color: var(--secondary-text-color);
+    transition: all 0.3s ease;
     z-index: 5;
+    /* No border or shadow in default state */
   }
 
-  .power-button-top-right ha-icon {
-    --mdc-icon-size: 24px;
-    color: var(--primary-color);
+  .entity-state-button ha-icon {
+    --mdc-icon-size: 30px;
+    color: var(--secondary-text-color);
   }
 
-  .power-button-top-right:hover {
-    background-color: var(--primary-background-color);
-    transform: scale(1.05);
+  .entity-state-button:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    transform: scale(1.1);
   }
 
-  .power-button-top-right:active {
+  .entity-state-button:active {
     transform: scale(0.95);
   }
 
-  .power-button-top-right.on {
+  .entity-state-button.on {
     color: var(--primary-color);
-    box-shadow: 0 0 8px rgba(42, 137, 209, 0.6);
-    border: 1px solid rgba(42, 137, 209, 0.5);
-    animation: pulse 2s infinite;
+    /* Circular glow effect */
+    box-shadow: 0 0 15px var(--primary-color);
+    background-color: rgba(var(--rgb-primary-color), 0.1);
+    animation: glow-pulse 2s infinite;
+  }
+  
+  .entity-state-button.on ha-icon {
+    color: var(--primary-color);
   }
 
-  .power-button-top-right.on.reverse {
-    color: #f2ba5a;
-    box-shadow: 0 0 8px rgba(242, 186, 90, 0.6);
-    border: 1px solid rgba(242, 186, 90, 0.5);
-    animation: pulse-orange 2s infinite;
+  @keyframes glow-pulse {
+      0%, 100% { box-shadow: 0 0 15px rgba(var(--rgb-primary-color), 0.6); }
+      50% { box-shadow: 0 0 25px rgba(var(--rgb-primary-color), 0.9); }
   }
+
+  .entity-state-button.on.reverse {
+    color: #f2ba5a;
+    box-shadow: 0 0 15px #f2ba5a;
+    background-color: rgba(242, 186, 90, 0.1);
+    animation: glow-pulse-orange 2s infinite;
+  }
+  
+  .entity-state-button.on.reverse ha-icon {
+      color: #f2ba5a;
+  }
+
+  @keyframes glow-pulse-orange {
+      0%, 100% { box-shadow: 0 0 15px rgba(242, 186, 90, 0.6); }
+      50% { box-shadow: 0 0 25px rgba(242, 186, 90, 0.9); }
+  }
+
+
   `;

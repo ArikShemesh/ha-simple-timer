@@ -142,8 +142,14 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
         vol.Optional("reverse_mode", default=False): cv.boolean,
         vol.Optional("start_method", default="button"): vol.In(["button", "slider"]),
     })
+    SERVICE_ADD_TIMER_SCHEMA = vol.Schema({
+        vol.Required("entry_id"): cv.string,
+        vol.Required("duration"): cv.positive_float,
+        vol.Optional("unit", default="min"): vol.In(["s", "sec", "seconds", "m", "min", "minutes", "h", "hr", "hours", "d", "day", "days"]),
+    })
     SERVICE_CANCEL_TIMER_SCHEMA = vol.Schema({
         vol.Required("entry_id"): cv.string,
+        vol.Optional("turn_off_entity", default=True): cv.boolean,
     })
     # Schema for the service that tells the sensor which switch to monitor
     SERVICE_UPDATE_SWITCH_SCHEMA = vol.Schema({
@@ -206,9 +212,11 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
         else:
             raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
 
-    async def cancel_timer(call: ServiceCall):
-        """Handle the service call to cancel the device timer."""
+    async def add_timer(call: ServiceCall):
+        """Handle the service call to add time to an active timer."""
         entry_id = call.data["entry_id"]
+        duration = call.data["duration"]
+        unit = call.data.get("unit", "min")
         
         # Find the sensor by entry_id
         sensor = None
@@ -218,7 +226,24 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
                 break
         
         if sensor:
-            await sensor.async_cancel_timer()
+            await sensor.async_add_timer(duration, unit)
+        else:
+            raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
+
+    async def cancel_timer(call: ServiceCall):
+        """Handle the service call to cancel the device timer."""
+        entry_id = call.data["entry_id"]
+        turn_off_entity = call.data.get("turn_off_entity", True)
+        
+        # Find the sensor by entry_id
+        sensor = None
+        for stored_entry_id, entry_data in hass.data[DOMAIN].items():
+            if stored_entry_id == entry_id and "sensor" in entry_data:
+                sensor = entry_data["sensor"]
+                break
+        
+        if sensor:
+            await sensor.async_cancel_timer(turn_off_entity)
         else:
             raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
 
@@ -341,6 +366,9 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
     # Register all services
     hass.services.async_register(
         DOMAIN, "start_timer", start_timer, schema=SERVICE_START_TIMER_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, "add_timer", add_timer, schema=SERVICE_ADD_TIMER_SCHEMA
     )
     hass.services.async_register(
         DOMAIN, "cancel_timer", cancel_timer, schema=SERVICE_CANCEL_TIMER_SCHEMA

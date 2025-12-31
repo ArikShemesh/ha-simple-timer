@@ -30,6 +30,8 @@ A simple Home Assistant integration that turns entities on and off with a precis
 
 ⏰ **Delayed Start Timers** - Turns devices ON when timer completes and keeps them on indefinitely until manually turned off
 
+➕ **Extend Timer** - Add time to actively running timers on the fly without restarting
+
 ## 🏠 Perfect For
 
 - **Water Heater Control** - Manage boiler schedules  
@@ -137,6 +139,9 @@ Option | Type | Default | Description
 `timer_button_background_color` | string | - | Custom background color for timer buttons
 `power_button_background_color` | string | - | Custom background color for the power button
 `power_button_icon_color` | string | - | Custom icon color for the power button
+`turn_off_on_cancel` | boolean | true | Whether to turn off the entity when the timer is cancelled
+`entity_state_button_background_color` | string | - | Custom background color for the entity state button (top-left)
+`entity_state_button_icon_color` | string | - | Custom icon color for the entity state button (top-left)
 
 ## ❓ Frequently Asked Questions
 
