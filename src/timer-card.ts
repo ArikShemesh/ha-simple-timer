@@ -402,14 +402,8 @@ class TimerCard extends LitElement {
         start_method: startMethod
       });
     } else {
-      // NORMAL MODE: Turn ON switch, then start timer
-      this.hass.callService("homeassistant", "turn_on", { entity_id: switchId })
-        .then(() => {
-          this.hass!.callService(DOMAIN, "start_timer", { entry_id: entryId, duration: minutes, unit: unit, start_method: startMethod });
-        })
-        .catch(error => {
-          console.error("Timer-card: Error turning on switch or starting timer:", error);
-        });
+      // NORMAL MODE: Start timer directly (Backend handles turning switch ON)
+      this.hass!.callService(DOMAIN, "start_timer", { entry_id: entryId, duration: minutes, unit: unit, start_method: startMethod });
     }
 
     this._notificationSentForCurrentCycle = false;
