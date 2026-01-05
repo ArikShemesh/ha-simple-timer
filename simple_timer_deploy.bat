@@ -29,8 +29,7 @@ set "SRC_DIST=custom_components\simple_timer\dist"
 set "DEST_INTEGRATION=%HA_CONFIG_DIR%\custom_components\simple_timer"
 set "DEST_WWW=%HA_CONFIG_DIR%\www"
 
-REM 0. Update manifest.json version
-powershell -NoProfile -ExecutionPolicy Bypass -Command "& { $path = 'custom_components\simple_timer\manifest.json'; $content = Get-Content $path -Raw; if ($content -match '\"version\"\s*:\s*\"([0-9\.]+)\"') { $old = $matches[1]; $parts = $old -split '\.'; $parts[-1] = [int]$parts[-1] + 1; $new = ($parts -join '.'); $replacement = '\"version\": \"' + $new + '\"'; $content = $content -replace '\"version\"\s*:\s*\"[0-9\.]+\"', $replacement; [System.IO.File]::WriteAllText($path, $content, [System.Text.UTF8Encoding]::new($false)); Write-Host ('Version changed from ' + $old + ' to ' + $new) -ForegroundColor Green } }"
+
 
 echo.
 call :ColorEcho "Cyan" "[1/3] Building card..."
@@ -65,7 +64,7 @@ if defined HA_URL (
     if defined HA_API_TOKEN (
         echo.
         call :ColorEcho "Cyan" "Reloading resources..."
-        powershell -Command "try { Invoke-RestMethod -Uri '%HA_URL%/api/services/simple_timer/reload_resources' -Method Post -Headers @{ 'Authorization' = 'Bearer %HA_API_TOKEN%'; 'Content-Type' = 'application/json' }; Write-Host 'Resources reloaded successfully' -ForegroundColor Green } catch { Write-Error $_ }"
+        powershell -Command "try { Invoke-RestMethod -Uri '%HA_URL%/api/services/simple_timer/reload_resources' -Method Post -Body '{}' -Headers @{ 'Authorization' = 'Bearer %HA_API_TOKEN%'; 'Content-Type' = 'application/json' }; Write-Host 'Resources reloaded successfully' -ForegroundColor Green } catch { Write-Error $_ }"
     ) else (
         call :ColorEcho "Yellow" "[INFO] HA_API_TOKEN not set, skipping auto-reload."
     )

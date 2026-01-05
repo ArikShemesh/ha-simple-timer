@@ -132,7 +132,17 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
 
     # Initialize the frontend resource
     version = getattr(hass.data["integrations"][DOMAIN], "version", "1.0.0")
-    await init_resource(hass, "/local/simple-timer/timer-card.js", str(version))
+    
+    # Calculate cache_id using version and file mtime
+    try:
+        www_dir = hass.config.path("www", "simple-timer")
+        js_path = os.path.join(www_dir, "timer-card.js")
+        file_mtime = os.path.getmtime(js_path)
+        cache_id = f"{version}.{int(file_mtime)}"
+    except Exception:
+        cache_id = str(version)
+
+    await init_resource(hass, "/local/simple-timer/timer-card.js", cache_id)
 
     # Schema for the timer services
     SERVICE_START_TIMER_SCHEMA = vol.Schema({
@@ -343,17 +353,29 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
             
             version = await hass.async_add_executor_job(read_manifest)
             
-            # Re-register resource with new version
-            await init_resource(hass, "/local/simple-timer/timer-card.js", version)
+            # Calculate cache_id using version and file mtime
+            def get_cache_id(ver):
+                try:
+                    www_dir = hass.config.path("www", "simple-timer")
+                    js_path = os.path.join(www_dir, "timer-card.js")
+                    file_mtime = os.path.getmtime(js_path)
+                    return f"{ver}.{int(file_mtime)}"
+                except Exception:
+                    return str(ver)
             
-            _LOGGER.info(f"Simple Timer: Resources updated to version {version}")
+            cache_id = await hass.async_add_executor_job(get_cache_id, version)
+
+            # Re-register resource with new version
+            await init_resource(hass, "/local/simple-timer/timer-card.js", cache_id)
+            
+            _LOGGER.info(f"Simple Timer: Resources updated to version {cache_id}")
             
             # Send notification
             await hass.services.async_call(
                 "persistent_notification",
                 "create",
                 {
-                    "message": f"Simple Timer resources reloaded with version {version}. Please refresh your browser (Ctrl+Shift+R).",
+                    "message": f"Simple Timer resources reloaded with version {cache_id}. Please refresh your browser (Ctrl+Shift+R).",
                     "title": "Simple Timer Resources Updated",
                     "notification_id": "simple_timer_resource_reload"
                 }

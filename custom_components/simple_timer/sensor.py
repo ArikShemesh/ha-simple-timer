@@ -111,6 +111,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._default_timer_enabled = False
         self._default_timer_duration = 0.0
         self._default_timer_unit = "min"
+        self._default_timer_reverse_mode = False
 
         # Storage setup
         self._storage_lock = asyncio.Lock()
