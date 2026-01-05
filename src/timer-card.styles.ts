@@ -10,6 +10,7 @@ export const cardStyles = css`
   ha-card {
     padding: 0;
     position: relative;
+    isolation: isolate;
   }
 
   .card-header {

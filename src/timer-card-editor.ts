@@ -308,6 +308,8 @@ class TimerCardEditor extends LitElement {
       power_button_icon_color: cfg.power_button_icon_color || null,
       entity_state_button_background_color: cfg.entity_state_button_background_color || null,
       entity_state_button_icon_color: cfg.entity_state_button_icon_color || null,
+      entity_state_button_background_color_on: cfg.entity_state_button_background_color_on || null,
+      entity_state_button_icon_color_on: cfg.entity_state_button_icon_color_on || null,
       turn_off_on_cancel: cfg.turn_off_on_cancel !== false,
       use_default_timer: cfg.use_default_timer || false
     };
@@ -537,6 +539,8 @@ class TimerCardEditor extends LitElement {
     const defaultPowerButtonIconColor = this._getThemeColorHex('--primary-color', '#03a9f4');
     const defaultEntityStateButtonBackgroundColor = this._getThemeColorHex('--ha-card-background', this._getThemeColorHex('--card-background-color', '#1c1c1c'));
     const defaultEntityStateButtonIconColor = this._getThemeColorHex('--secondary-text-color', '#727272');
+    const defaultEntityStateButtonBackgroundColorOn = this._getThemeColorHex('--ha-card-background', this._getThemeColorHex('--card-background-color', '#1c1c1c'));
+    const defaultEntityStateButtonIconColorOn = this._getThemeColorHex('--primary-color', '#03a9f4');
 
     return html`
       <div class="card-config">
@@ -828,15 +832,16 @@ class TimerCardEditor extends LitElement {
                     style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
                   />
                   <ha-textfield
-                    .label=${"Entity State Button Background"}
+                    .label=${"State Icon Background (Off)"}
                     .value=${this._config?.entity_state_button_background_color || ""}
                     .configValue=${"entity_state_button_background_color"}
                     @input=${this._valueChanged}
                     .placeholder=${"Theme default (Transparent)"}
-                    .helper=${"Top-right button"}
+                    .helper=${"Leave empty to use theme color"}
                     style="flex: 1; min-width: 0;"
                   ></ha-textfield>
                 </div>
+                
                 
                 <!-- Entity State Button Icon Color -->
                 <div style="display: flex; gap: 8px; align-items: center;">
@@ -856,12 +861,68 @@ class TimerCardEditor extends LitElement {
                     style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
                   />
                   <ha-textfield
-                    .label=${"Entity State Button Icon Color"}
+                    .label=${"State Icon Color (Off)"}
                     .value=${this._config?.entity_state_button_icon_color || ""}
                     .configValue=${"entity_state_button_icon_color"}
                     @input=${this._valueChanged}
                     .placeholder=${"Theme default"}
-                    .helper=${"Top-right button"}
+                    .helper=${"Leave empty to use theme color"}
+                    style="flex: 1; min-width: 0;"
+                  ></ha-textfield>
+                </div>
+
+                <!-- Entity State Button Background Color (On) -->
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <input
+                    type="color"
+                    value=${this._config?.entity_state_button_background_color_on || defaultEntityStateButtonBackgroundColorOn}
+                    @input=${(ev: Event) => {
+        const target = ev.target as HTMLInputElement;
+        this._valueChanged({
+          target: {
+            configValue: "entity_state_button_background_color_on",
+            value: target.value
+          },
+          stopPropagation: () => { }
+        } as any);
+      }}
+                    style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
+                  />
+                  <ha-textfield
+                    .label=${"State Icon Background (On)"}
+                    .value=${this._config?.entity_state_button_background_color_on || ""}
+                    .configValue=${"entity_state_button_background_color_on"}
+                    @input=${this._valueChanged}
+                    .placeholder=${"Theme default"}
+                    .helper=${"Leave empty to use theme color"}
+                    style="flex: 1; min-width: 0;"
+                  ></ha-textfield>
+                </div>
+
+                <!-- Entity State Button Icon Color (On) -->
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <input
+                    type="color"
+                    value=${this._config?.entity_state_button_icon_color_on || defaultEntityStateButtonIconColorOn}
+                    @input=${(ev: Event) => {
+        const target = ev.target as HTMLInputElement;
+        this._valueChanged({
+          target: {
+            configValue: "entity_state_button_icon_color_on",
+            value: target.value
+          },
+          stopPropagation: () => { }
+        } as any);
+      }}
+                    style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
+                  />
+                  <ha-textfield
+                    .label=${"State Icon Color (On)"}
+                    .value=${this._config?.entity_state_button_icon_color_on || ""}
+                    .configValue=${"entity_state_button_icon_color_on"}
+                    @input=${this._valueChanged}
+                    .placeholder=${"Theme default"}
+                    .helper=${"Leave empty to use theme color"}
                     style="flex: 1; min-width: 0;"
                   ></ha-textfield>
                 </div>
@@ -1039,7 +1100,8 @@ class TimerCardEditor extends LitElement {
           'slider_thumb_color', 'slider_background_color',
           'timer_button_font_color', 'timer_button_background_color',
           'power_button_background_color', 'power_button_icon_color',
-          'entity_state_button_background_color', 'entity_state_button_icon_color'
+          'entity_state_button_background_color', 'entity_state_button_icon_color',
+          'entity_state_button_background_color_on', 'entity_state_button_icon_color_on'
         ].includes(configValue)) {
           (updatedConfig as any)[configValue] = null;
         } else {

@@ -154,6 +154,8 @@ class TimerCard extends LitElement {
       power_button_icon_color: cfg.power_button_icon_color || null,
       entity_state_button_background_color: cfg.entity_state_button_background_color || null,
       entity_state_button_icon_color: cfg.entity_state_button_icon_color || null,
+      entity_state_button_background_color_on: cfg.entity_state_button_background_color_on || null,
+      entity_state_button_icon_color_on: cfg.entity_state_button_icon_color_on || null,
       turn_off_on_cancel: cfg.turn_off_on_cancel !== false,
       use_default_timer: cfg.use_default_timer || false
     };
@@ -993,8 +995,10 @@ class TimerCard extends LitElement {
     const powerIcon = this._config?.power_button_icon_color;
     const stateBg = this._config?.entity_state_button_background_color;
     const stateIcon = this._config?.entity_state_button_icon_color;
+    const stateBgOn = this._config?.entity_state_button_background_color_on;
+    const stateIconOn = this._config?.entity_state_button_icon_color_on;
 
-    if (!powerBg && !powerIcon && !stateBg && !stateIcon) {
+    if (!powerBg && !powerIcon && !stateBg && !stateIcon && !stateBgOn && !stateIconOn) {
       return ''; // No custom styling needed
     }
 
@@ -1015,7 +1019,8 @@ class TimerCard extends LitElement {
       `;
     }
 
-    // Entity State Button (Top Right)
+    // Entity State Button
+    // Default (Off) State
     if (stateBg || stateIcon) {
       styles += `
         .entity-state-button {
@@ -1026,6 +1031,22 @@ class TimerCard extends LitElement {
         }
         .entity-state-button.reverse ha-icon[icon] {
           ${stateIcon ? `color: ${stateIcon} !important;` : ''}
+        }
+      `;
+    }
+
+    // On State
+    if (stateBgOn || stateIconOn) {
+      styles += `
+        .entity-state-button.on {
+          ${stateBgOn ? `background-color: ${stateBgOn} !important;` : ''}
+        }
+        .entity-state-button.on ha-icon[icon] {
+          ${stateIconOn ? `color: ${stateIconOn} !important;` : ''}
+        }
+        /* Ensure specific override if needed */
+        .entity-state-button.on.reverse ha-icon[icon] {
+          ${stateIconOn ? `color: ${stateIconOn} !important;` : ''}
         }
       `;
     }
@@ -1149,7 +1170,7 @@ class TimerCard extends LitElement {
         <div class="card-content">
 
           
-          <!-- Independent Power Toggle (Always Visible now, Top Right) -->
+          <!-- Independent Power Toggle (Always Visible now) -->
           <div class="entity-state-button ${isOn ? 'on' : ''}"
                 @click=${this._handleIndependentPower}
                 title="Toggle Power (Independent)">
