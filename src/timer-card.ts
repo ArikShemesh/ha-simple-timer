@@ -17,6 +17,9 @@ interface HAState {
     watchdog_message?: string;
     show_seconds?: boolean; // This comes from backend now
     reset_time?: string; // Reset time from backend
+    default_timer_enabled?: boolean;
+    default_timer_duration?: number;
+    default_timer_unit?: string;
     [key: string]: any;
   };
   last_changed: string;
@@ -62,6 +65,7 @@ interface TimerButton {
   unit: string; // 'min', 's', 'h'
   labelUnit: string; // 'Min', 'Sec', 'Hr'
   minutesEquivalent: number;
+  isDefault?: boolean;
 }
 
 class TimerCard extends LitElement {
@@ -150,7 +154,8 @@ class TimerCard extends LitElement {
       power_button_icon_color: cfg.power_button_icon_color || null,
       entity_state_button_background_color: cfg.entity_state_button_background_color || null,
       entity_state_button_icon_color: cfg.entity_state_button_icon_color || null,
-      turn_off_on_cancel: cfg.turn_off_on_cancel !== false
+      turn_off_on_cancel: cfg.turn_off_on_cancel !== false,
+      use_default_timer: cfg.use_default_timer || false
     };
 
     if (cfg.timer_instance_id) {
@@ -205,13 +210,14 @@ class TimerCard extends LitElement {
 
         const strVal = String(val).trim().toLowerCase();
 
-        // Match numbers (including decimals) optionally followed by unit
-        const match = strVal.match(/^(\d+(?:\.\d+)?)\s*(s|sec|seconds|m|min|minutes|h|hr|hours|d|day|days)?$/);
+        // Match numbers (including decimals) optionally followed by unit, optionally ending with *
+        const match = strVal.match(/^(\d+(?:\.\d+)?)\s*(s|sec|seconds|m|min|minutes|h|hr|hours|d|day|days)?(\*)?$/);
 
         if (match) {
           const numVal = parseFloat(match[1]);
           const isFloat = match[1].includes('.');
           const unitStr = match[2] || 'min';
+          const isDefault = !!match[3];
           const isHours = unitStr.startsWith('h');
           const isDays = unitStr.startsWith('d');
 
@@ -258,11 +264,16 @@ class TimerCard extends LitElement {
 
           if (displayValue > 0) {
             const uniqueKey = `${minutesEquivalent}`;
-            if (uniqueValues.has(uniqueKey)) {
-              duplicateValues.push(val);
+            if (isDefault) {
+              // Always accept default timer (it doesn't conflict with grid buttons)
+              validatedTimerButtons.push({ displayValue, unit, labelUnit, minutesEquivalent, isDefault });
             } else {
-              uniqueValues.add(uniqueKey);
-              validatedTimerButtons.push({ displayValue, unit, labelUnit, minutesEquivalent });
+              if (uniqueValues.has(uniqueKey)) {
+                duplicateValues.push(val);
+              } else {
+                uniqueValues.add(uniqueKey);
+                validatedTimerButtons.push({ displayValue, unit, labelUnit, minutesEquivalent, isDefault });
+              }
             }
           } else {
             invalidValues.push(val);
@@ -569,6 +580,81 @@ class TimerCard extends LitElement {
       this._determineEffectiveEntities();
       this._updateLiveRuntime();
       this._updateCountdown();
+    }
+
+    // Only sync if CONFIG changed or on first load (which has _config).
+    // Do NOT sync if only HASS changed (prevents fighting between multiple card instances)
+    if (changedProperties.has("_config")) {
+      this._syncDefaultTimer();
+    }
+  }
+
+  _syncDefaultTimer(): void {
+    if (!this._config) return;
+
+    if (!this._entitiesLoaded || !this.hass || !this._effectiveSensorEntity) {
+      console.warn("Timer-card: Sync skipped - entities not loaded or missing dependencies",
+        { loaded: this._entitiesLoaded, hasHass: !!this.hass, sensor: this._effectiveSensorEntity });
+      return;
+    }
+
+    const sensor = this.hass.states[this._effectiveSensorEntity];
+    if (!sensor) {
+      console.warn("Timer-card: Sync skipped - sensor state not found", this._effectiveSensorEntity);
+      return;
+    }
+
+    const entryId = sensor.attributes.entry_id;
+    if (!entryId) {
+      console.warn("Timer-card: Sync skipped - entry_id not found in sensor attributes");
+      return;
+    }
+
+    // Determine Desired State from Card Config
+    const isReverseMode = this._config.reverse_mode || false;
+    let configEnabled = this._config.use_default_timer || false;
+
+    // Logic Mutual Exclusion: Reverse Mode overrides Default Timer
+    if (isReverseMode) {
+      configEnabled = false;
+    }
+
+    let configDuration = 0;
+    let configUnit = 'min';
+
+    // Find the default timer button (marked with *)
+    const defaultBtn = this.buttons.find(b => b.isDefault);
+    if (defaultBtn) {
+      configDuration = defaultBtn.displayValue;
+      configUnit = defaultBtn.unit;
+    } else {
+      // Safety: If enabled but no default timer button exists, force disabled logic
+      configEnabled = false;
+    }
+
+    // Determine Current Backend State
+    const currentEnabled = sensor.attributes.default_timer_enabled;
+    const currentDuration = sensor.attributes.default_timer_duration || 0;
+    const currentUnit = sensor.attributes.default_timer_unit || 'min';
+
+    // Compare and Sync if different
+    const isDifferent = (
+      configEnabled !== currentEnabled ||
+      (configEnabled && (
+        Math.abs(configDuration - currentDuration) > 0.001 ||
+        configUnit !== currentUnit
+      ))
+    );
+
+    if (isDifferent) {
+      console.info(`Timer-card: Syncing default timer to backend...`);
+      this.hass.callService(DOMAIN, "set_default_timer_config", {
+        entry_id: entryId,
+        enabled: configEnabled,
+        duration: configDuration,
+        unit: configUnit
+      }).then(() => console.log("Timer-card: Sync successful"))
+        .catch(err => console.error("Timer-card: Failed to sync default timer config:", err));
     }
   }
 
@@ -1123,6 +1209,9 @@ class TimerCard extends LitElement {
            ${this.buttons.length > 0 || (this._config?.hide_slider && isTimerActive) ? html`
           <div class="button-grid">
             ${this.buttons.map(button => {
+      // Skip default timer buttons from grid
+      if (button.isDefault) return '';
+
       // Highlight if current duration matches button (visual indicator only)
       const isActive = isTimerActive && Math.abs(timerDurationInMinutes - button.minutesEquivalent) < 0.001 && sensor.attributes.timer_start_method === 'button';
 

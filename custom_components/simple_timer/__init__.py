@@ -391,6 +391,37 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
     hass.services.async_register(
         DOMAIN, "reload_resources", reload_resources, schema=vol.Schema({})
     )
+    
+    # Schema for setting default timer config
+    SERVICE_SET_DEFAULT_TIMER_CONFIG_SCHEMA = vol.Schema({
+        vol.Required("entry_id"): cv.string,
+        vol.Required("enabled"): cv.boolean,
+        vol.Optional("duration", default=0): cv.positive_float,
+        vol.Optional("unit", default="min"): vol.In(["s", "sec", "seconds", "m", "min", "minutes", "h", "hr", "hours", "d", "day", "days"]),
+    })
+
+    async def set_default_timer_config(call: ServiceCall):
+        """Handle the service call to configure the default timer."""
+        entry_id = call.data["entry_id"]
+        enabled = call.data["enabled"]
+        duration = call.data.get("duration", 0)
+        unit = call.data.get("unit", "min")
+        
+        # Find the sensor by entry_id
+        sensor = None
+        for stored_entry_id, entry_data in hass.data[DOMAIN].items():
+            if stored_entry_id == entry_id and "sensor" in entry_data:
+                sensor = entry_data["sensor"]
+                break
+        
+        if sensor:
+            await sensor.async_set_default_timer_config(enabled, duration, unit)
+        else:
+            raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
+
+    hass.services.async_register(
+        DOMAIN, "set_default_timer_config", set_default_timer_config, schema=SERVICE_SET_DEFAULT_TIMER_CONFIG_SCHEMA
+    )
 
     hass.data[DOMAIN]["services_registered"] = True
     return True

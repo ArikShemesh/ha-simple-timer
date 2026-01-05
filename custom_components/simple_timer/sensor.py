@@ -107,6 +107,11 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._last_reset_was_catchup = False
         self._catchup_reset_info = None
 
+        # Default timer config
+        self._default_timer_enabled = False
+        self._default_timer_duration = 0.0
+        self._default_timer_unit = "min"
+
         # Storage setup
         self._storage_lock = asyncio.Lock()
         self._store = Store(hass, self.STORAGE_VERSION, self.STORAGE_KEY_FORMAT.format(self._entry_id))
@@ -232,6 +237,12 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             ATTR_TIMER_START_METHOD: self._timer_start_method,
             "show_seconds": show_seconds_setting,  # Expose show_seconds from config entry
             "reverse_mode": getattr(self, '_timer_reverse_mode', False),
+            
+            # Default timer attributes for frontend sync
+            "default_timer_enabled": self._default_timer_enabled,
+            "default_timer_duration": self._default_timer_duration,
+            "default_timer_unit": self._default_timer_unit,
+            "default_timer_reverse_mode": self._default_timer_reverse_mode,
         }
 
         if self._last_reset_was_catchup:
@@ -639,6 +650,14 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 self._watchdog_message = None
             self._last_on_timestamp = now
             self.hass.async_create_task(self._start_realtime_accumulation())
+
+            # Auto-start default timer if enabled and idle
+            _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Switch ON detected. Default timer enabled: {self._default_timer_enabled}, State: {self._timer_state}")
+            if self._default_timer_enabled and self._timer_state == "idle" and self._default_timer_duration > 0:
+                _LOGGER.info(f"Simple Timer: [{self._entry_id}] Auto-starting default timer ({self._default_timer_duration} {self._default_timer_unit}, reverse={self._default_timer_reverse_mode})")
+                self.hass.async_create_task(
+                    self.async_start_timer(self._default_timer_duration, self._default_timer_unit, reverse_mode=self._default_timer_reverse_mode)
+                )
 
         # Switch transitioned to a non-ON state
         elif to_state.state != STATE_ON:
@@ -1194,6 +1213,25 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
         return True
 
+    async def async_set_default_timer_config(self, enabled: bool, duration: float, unit: str, reverse_mode: bool = False):
+        """Update default timer configuration and save to storage."""
+        self._default_timer_enabled = enabled
+        self._default_timer_duration = duration
+        self._default_timer_unit = unit
+        self._default_timer_reverse_mode = reverse_mode
+        
+        async with self._storage_lock:
+            data = await self._store.async_load() or {}
+            data["default_timer"] = {
+                "enabled": enabled,
+                "duration": duration,
+                "unit": unit,
+                "reverse_mode": reverse_mode
+            }
+            await self._store.async_save(data)
+            
+        self.async_write_ha_state()
+
     async def async_added_to_hass(self):
         """Called when entity is added to hass - startup-safe initialization."""
         _LOGGER.info(f"Simple Timer: [{self._entry_id}] Entity added to hass - startup safe mode")
@@ -1399,6 +1437,14 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             
             # Load storage data
             storage_data = await self._load_storage_data()
+            
+            # Restore default timer config
+            if "default_timer" in storage_data:
+                dt_config = storage_data["default_timer"]
+                self._default_timer_enabled = dt_config.get("enabled", False)
+                self._default_timer_duration = dt_config.get("duration", 0.0)
+                self._default_timer_unit = dt_config.get("unit", "min")
+                _LOGGER.info(f"Simple Timer: [{self._entry_id}] Restored default timer config: {self._default_timer_enabled}, {self._default_timer_duration} {self._default_timer_unit}")
             
             # Initialize reset scheduling with configurable reset time
             await self._setup_reset_scheduling(storage_data)
