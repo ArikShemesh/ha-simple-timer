@@ -364,17 +364,18 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             formatted_time = f"{hours:02d}:{minutes:02d}"
             return formatted_time, "(hh:mm)"
 
-    async def _ensure_switch_state(self, desired_state: str, action_description: str, blocking: bool = True) -> None:
+    async def _ensure_switch_state(self, desired_state: str, action_description: str, blocking: bool = True, force: bool = False) -> None:
         """Ensure switch is in desired state, attempt to correct if not, and warn on failure."""
         if not self._switch_entity_id:
             return
             
         current_state = self.hass.states.get(self._switch_entity_id)
+
         if not current_state:
             return
             
-        # If state is already correct, do nothing
-        if current_state.state == desired_state:
+        # If state is already correct and NOT forcing, do nothing
+        if current_state.state == desired_state and not force:
             return
             
         # State mismatch - attempt to correct
@@ -1061,6 +1062,11 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         """Handle timer completion with runtime compensation."""
         _LOGGER.info(f"Simple Timer: [{self._entry_id}] Timer finished")
         
+        # Guard against zombie execution during shutdown
+        if self._stop_event_received or self.hass.state == CoreState.stopping:
+            _LOGGER.info(f"Simple Timer: [{self._entry_id}] Timer finished during shutdown - ignoring to preserve state")
+            return
+        
         if self._timer_state != "active":
             return
             
@@ -1151,9 +1157,8 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
     async def _handle_ha_shutdown(self, event):
         """Handle Home Assistant shutdown."""
-        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Home Assistant shutdown - cancelling tasks")
-        
         self._stop_event_received = True
+        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Home Assistant shutdown - cancelling tasks")
         
         # Cancel all tasks
         if self._accumulation_task and not self._accumulation_task.done():
@@ -1636,6 +1641,9 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         notification_entity, show_seconds = await self._get_card_notification_config()
         formatted_time, label = self._format_time_for_notification(current_usage, show_seconds)
         
+        # FIX: Clear last_on_timestamp BEFORE cleanup to prevent final accumulation update from adding offline time
+        self._last_on_timestamp = None
+
         # Clean up timer state FIRST to ensure we are in a clean idle state
         await self._cleanup_timer_state()
         
@@ -1666,7 +1674,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             if self._switch_entity_id:
                 try:
                     # Use robust retry logic
-                    await self._ensure_switch_state_with_retries("off", "Expired timer turn-off")
+                    await self._ensure_switch_state_with_retries("off", "Expired timer turn-off", force=True)
                 except Exception as e:
                     _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Could not turn off switch: {e}")
             
@@ -1674,7 +1682,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             await asyncio.sleep(1)
             await self._send_notification(f"Timer was turned off - daily usage {formatted_time} {label}")
 
-    async def _ensure_switch_state_with_retries(self, desired_state: str, context: str):
+    async def _ensure_switch_state_with_retries(self, desired_state: str, context: str, force: bool = False):
         """Ensure switch state with retries to handle startup unavailability."""
         if not self._switch_entity_id:
             return
@@ -1682,14 +1690,14 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         # First attempt (blocking to try and get it right immediately)
         # We wrap this in try/except to ensure we proceed to scheduling retry even if first attempt fails
         try:
-             await self._ensure_switch_state(desired_state, context, blocking=True)
+             await self._ensure_switch_state(desired_state, context, blocking=True, force=force)
         except Exception as e:
              _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Initial switch attempt failed: {e}")
 
         # Schedule background verification
-        self.hass.async_create_task(self._verify_and_retry_switch_state(desired_state, self._switch_entity_id))
+        self.hass.async_create_task(self._verify_and_retry_switch_state(desired_state, self._switch_entity_id, force=force))
 
-    async def _verify_and_retry_switch_state(self, desired_state: str, entity_id: str, attempt: int = 1):
+    async def _verify_and_retry_switch_state(self, desired_state: str, entity_id: str, attempt: int = 1, force: bool = False):
         """Background task to verify switch state and retry if needed."""
         # Wait before checking (exponential-ish backoff: 2s, 5s, 10s, 20s)
         delays = [2, 5, 10, 20]
@@ -1704,19 +1712,21 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
              _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Aborting switch retry (off) because timer is now active")
              return
              
-        # Safety Check: If we are trying to turn ON (reverse mode expiration), but user stopped it/timer active?
-        # Less critical, but good to check.
-        
         current_state_obj = self.hass.states.get(entity_id)
         if not current_state_obj:
              # Entity missing, definitely retry
              _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Switch entity missing during verify, scheduling retry {attempt+1}")
-             self.hass.async_create_task(self._verify_and_retry_switch_state(desired_state, entity_id, attempt + 1))
+             self.hass.async_create_task(self._verify_and_retry_switch_state(desired_state, entity_id, attempt + 1, force=force))
              return
              
         actual = current_state_obj.state
-        # If state matches, we are good!
-        if actual == desired_state:
+        
+        # Check if state matches
+        # If forcing (on first retry attempt), we ignore the match check to deal with stale HA state
+        state_match = (actual == desired_state)
+        should_skip_check = (force and attempt == 1)
+        
+        if state_match and not should_skip_check:
              return
              
         # If unavailable/unknown, we retry
@@ -1731,7 +1741,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Retry attempt {attempt} failed: {e}")
         
         # Schedule next check
-        self.hass.async_create_task(self._verify_and_retry_switch_state(desired_state, entity_id, attempt + 1))
+        self.hass.async_create_task(self._verify_and_retry_switch_state(desired_state, entity_id, attempt + 1, force=force))
 
     async def _handle_expired_reverse_timer(self):
         """Handle reverse mode timer that expired while HA was offline."""
@@ -1767,7 +1777,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                     else:
                         _LOGGER.error(f"Simple Timer: [{self._entry_id}] Could not get updated switch state!")
                     
-                    await self._ensure_switch_state("on", "Expired reverse timer completion turn-on", blocking=False)
+                    await self._ensure_switch_state("on", "Expired reverse timer completion turn-on", blocking=False, force=True)
                     
                 except Exception as switch_error:
                     _LOGGER.error(f"Simple Timer: [{self._entry_id}] ERROR turning switch ON: {switch_error}")
