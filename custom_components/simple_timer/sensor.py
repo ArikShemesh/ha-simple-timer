@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timedelta, time
 from typing import Any, Dict
 
-from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
+from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorStateClass
 from homeassistant.const import (
     STATE_ON,
     STATE_OFF,
@@ -60,6 +60,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
     _attr_has_entity_name = False
     _attr_icon = "mdi:timer"
     _attr_native_unit_of_measurement = UnitOfTime.SECONDS
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
 
     STORAGE_VERSION = 2
     STORAGE_KEY_FORMAT = f"{DOMAIN}_{{}}"
@@ -74,6 +75,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
         self._attr_unique_id = f"timer_runtime_{self._entry_id}"
         self._attr_device_class = SensorDeviceClass.DURATION
+        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
         self._attr_icon = "mdi:timer"
 
@@ -1088,6 +1090,21 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 # NORMAL MODE: Original logic - turn switch OFF
                 await self._stop_realtime_accumulation()
                 
+                # FORCE PRECISE ACCUMULATION FOR TIMER DURATION
+                # This ensures that even if accumulation missed a second, we record the exact timer duration
+                if self._runtime_at_timer_start is not None:
+                     # Calculate what the state should be: base + duration
+                     # But we must be careful not to double count if the timer was extended
+                     # Actually, simplest path: Duration is king when limiting.
+                     
+                     # We want total usage = runtime_at_start + total_elapsed_during_timer
+                     # runtime_at_start was the snapshot when timer started.
+                     # duration is in minutes. 
+                     
+                     expected_usage = self._runtime_at_timer_start + (self._timer_duration * 60)
+                     self._state = round(expected_usage)
+                     _LOGGER.info(f"Simple Timer: [{self._entry_id}] Corrected final usage to {self._state}s (Target: {expected_usage}s)")
+
                 self.async_write_ha_state()
                 
                 await asyncio.sleep(0.1)

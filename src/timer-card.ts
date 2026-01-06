@@ -98,6 +98,7 @@ class TimerCard extends LitElement {
   _isDuplicate: boolean = false;
   _notificationSentForCurrentCycle: boolean = false;
   _entitiesLoaded: boolean = false;
+  _serverTimeOffset: number = 0; // Offset in ms to add to local time to get server time
 
   _effectiveSwitchEntity: string | null = null;
   _effectiveSensorEntity: string | null = null;
@@ -563,6 +564,7 @@ class TimerCard extends LitElement {
 
     this._determineEffectiveEntities();
     this._updateLiveRuntime();
+    this._syncServerTime(); // Sync time on load
     this._updateCountdown();
   }
 
@@ -704,7 +706,9 @@ class TimerCard extends LitElement {
         // actually, restarting handling it is cleaner.
         // But to be super safe, let's just use the current captured finishesAt which is now fresh because we restarted.
 
-        const now = new Date().getTime();
+
+        // Calculate drift-corrected now
+        const now = new Date().getTime() + this._serverTimeOffset;
         const remaining = Math.max(0, Math.round((finishesAt - now) / 1000));
 
         // Format countdown based on show_seconds setting
@@ -1379,6 +1383,25 @@ class TimerCard extends LitElement {
 
   static get styles() {
     return cardStyles;
+  }
+
+  async _syncServerTime() {
+    if (!this.hass) return;
+    try {
+      // Fetch server timestamp
+      const result: any = await this.hass.callApi('POST', 'template', {
+        template: "{{ now().timestamp() }}"
+      });
+      const serverTimestamp = parseFloat(result);
+      if (!isNaN(serverTimestamp)) {
+        const serverTimeMs = serverTimestamp * 1000;
+        const localTimeMs = new Date().getTime();
+        this._serverTimeOffset = serverTimeMs - localTimeMs;
+        // console.log("TimerCard: Server time sync. Offset (ms):", this._serverTimeOffset);
+      }
+    } catch (e) {
+      console.warn("TimerCard: Failed to sync server time", e);
+    }
   }
 }
 customElements.define("timer-card", TimerCard);
