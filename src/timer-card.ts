@@ -40,6 +40,7 @@ interface HomeAssistant {
   };
   callService(domain: string, service: string, data?: Record<string, unknown>): Promise<void>;
   callApi<T = unknown>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, parameters?: Record<string, unknown>, headers?: Record<string, string>): Promise<T>;
+  callWS<T>(msg: { type: string;[key: string]: any }): Promise<T>;
   config: {
     components: {
       [domain: string]: {
@@ -79,6 +80,7 @@ class TimerCard extends LitElement {
       _effectiveSwitchEntity: { state: true },
       _effectiveSensorEntity: { state: true },
       _validationMessages: { state: true },
+      _isDuplicate: { state: true },
     };
   }
 
@@ -93,6 +95,7 @@ class TimerCard extends LitElement {
 
   buttons: TimerButton[] = [];
   _validationMessages: string[] = [];
+  _isDuplicate: boolean = false;
   _notificationSentForCurrentCycle: boolean = false;
   _entitiesLoaded: boolean = false;
 
@@ -538,6 +541,7 @@ class TimerCard extends LitElement {
 
   connectedCallback(): void {
     super.connectedCallback();
+    this._checkDuplicateUsage();
 
     // Restore slider value per instance
     const instanceId = this._config?.timer_instance_id || 'default';
@@ -582,6 +586,7 @@ class TimerCard extends LitElement {
     // Do NOT sync if only HASS changed (prevents fighting between multiple card instances)
     if (changedProperties.has("_config")) {
       this._syncDefaultTimer();
+      this._checkDuplicateUsage();
     }
   }
 
@@ -1057,7 +1062,106 @@ class TimerCard extends LitElement {
     return "#" + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1);
   }
 
+  async _fetchLovelaceConfig(): Promise<any> {
+    if (!this.hass) return null;
+    try {
+      const urlPath = this._getDashboardUrlPath();
+      return await this.hass.callWS({
+        type: 'lovelace/config',
+        url_path: urlPath
+      });
+    } catch (e) {
+      console.warn("TimerCard: Failed to fetch lovelace config", e);
+      return null;
+    }
+  }
+
+  _getDashboardUrlPath(): string | null {
+    const path = window.location.pathname;
+    const parts = path.split('/');
+    if (parts.length > 1 && parts[1] !== 'lovelace') {
+      return parts[1];
+    }
+    return null;
+  }
+
+  _findUsedTimerInstances(config: any): string[] {
+    const used: string[] = [];
+    if (!config) return used;
+
+    const traverse = (node: any) => {
+      if (!node || typeof node !== 'object') return;
+
+      if (node.type === 'custom:timer-card' && node.timer_instance_id) {
+        used.push(node.timer_instance_id);
+      }
+
+      ['views', 'cards', 'sections', 'badges'].forEach(key => {
+        if (Array.isArray(node[key])) {
+          node[key].forEach(traverse);
+        }
+      });
+
+      if (node.card) traverse(node.card);
+    };
+
+    traverse(config);
+    return used;
+  }
+
+  async _checkDuplicateUsage() {
+    if (!this._config?.timer_instance_id || !this.hass) return;
+
+    const config = await this._fetchLovelaceConfig();
+    const used = this._findUsedTimerInstances(config);
+    const myId = this._config.timer_instance_id;
+
+    // Count how many times my ID appears in the config
+    const count = used.filter(id => id === myId).length;
+
+    // If > 1, it implies there is at least one other card using this ID
+    if (count > 1) {
+      if (!this._isDuplicate) {
+        console.warn(`TimerCard: Duplicate instance usage detected for '${myId}'. Blocking card.`);
+        this._isDuplicate = true;
+      }
+    } else {
+      if (this._isDuplicate) {
+        this._isDuplicate = false;
+      }
+    }
+  }
+
   render() {
+    if (this._isDuplicate) {
+      // Try to find the friendly name of the instance
+      let instanceName = this._config?.timer_instance_id;
+      if (this.hass && this._config?.timer_instance_id) {
+        const allSensors = Object.keys(this.hass.states).filter(entityId => entityId.startsWith('sensor.'));
+        const sensorId = allSensors.find(entityId => {
+          const s = this.hass!.states[entityId];
+          return s.attributes.entry_id === this._config!.timer_instance_id;
+        });
+
+        if (sensorId) {
+          const s = this.hass.states[sensorId];
+          // Prefer instance_title if available, otherwise friendly_name
+          instanceName = s.attributes.instance_title || s.attributes.friendly_name || instanceName;
+        }
+      }
+
+      return html`
+        <ha-card style="background: #ff9800; color: white; padding: 16px;">
+          <div style="font-weight: bold; font-size: 1.2em; display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+            <ha-icon icon="mdi:alert"></ha-icon>
+            Duplicate Timer Instance
+          </div>
+          <p>This timer instance ('${instanceName}') is controlled by another card on this dashboard.</p>
+          <p>Either remove the duplicate card or edit this card and select a unique timer instance.</p>
+        </ha-card>
+      `;
+    }
+
     let message: string | null = null;
     let isWarning = false;
 
@@ -1071,7 +1175,7 @@ class TimerCard extends LitElement {
         ) as HAState | undefined;
 
         if (!configuredSensorState) {
-          message = `Timer Control Instance '${this._config.timer_instance_id}' not found. Please select a valid instance in the card editor.`;
+          message = `Please select a valid instance in the card editor.`;
           isWarning = true;
         } else if (typeof configuredSensorState.attributes.switch_entity_id !== 'string' || !(configuredSensorState.attributes.switch_entity_id && this.hass.states[configuredSensorState.attributes.switch_entity_id])) {
           message = `Timer Control Instance '${this._config.timer_instance_id}' linked to missing or invalid switch '${configuredSensorState.attributes.switch_entity_id}'. Please check instance configuration.`;

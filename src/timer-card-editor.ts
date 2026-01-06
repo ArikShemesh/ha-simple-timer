@@ -45,6 +45,7 @@ interface HomeAssistant {
   };
   callService(domain: string, service: string, data?: Record<string, unknown>): Promise<void>;
   callApi<T = unknown>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, parameters?: Record<string, unknown>, headers?: Record<string, string>): Promise<T>;
+  callWS<T>(msg: { type: string;[key: string]: any }): Promise<T>;
   config: {
     components: {
       [domain: string]: {
@@ -83,6 +84,7 @@ class TimerCardEditor extends LitElement {
   _configFullyLoaded: boolean = false; // Track if we've received a complete config
 
   private _timerInstancesOptions: Array<{ value: string; label: string }> = [];
+  private _usedInstances: Set<string> = new Set();
   private _tempSliderMaxValue: string | null = null;
   private _newTimerButtonValue: string = "";
 
@@ -361,9 +363,33 @@ class TimerCardEditor extends LitElement {
 
       this._timerInstancesOptions = await this._getSimpleTimerInstances();
 
+      // Fetch currently used instances from Lovelace config to prevent duplicates
+      const lovelaceConfig = await this._fetchLovelaceConfig();
+      const usedList = this._findUsedTimerInstances(lovelaceConfig);
+      this._usedInstances = new Set(usedList);
+
       if (!this._configFullyLoaded) {
         this.requestUpdate();
         return;
+      }
+
+      // Auto-Resolution: Check for duplicates
+      if (this._config?.timer_instance_id) {
+        const currentId = this._config.timer_instance_id;
+        const count = usedList.filter(id => id === currentId).length;
+        // If count > 1, it means this ID is used by at least one OTHER card (plus this one, or multiple others)
+        if (count > 1) {
+          console.warn(`TimerCardEditor: Duplicate usage detected for '${currentId}' (count: ${count}). Auto-clearing.`);
+          const updatedConfig: TimerCardConfig = { ...this._config, timer_instance_id: null };
+          this._config = updatedConfig;
+          this.dispatchEvent(
+            new CustomEvent("config-changed", {
+              detail: { config: this._config },
+              bubbles: true,
+              composed: true,
+            }),
+          );
+        }
       }
 
       // Only validate that existing configured instances still exist
@@ -395,6 +421,58 @@ class TimerCardEditor extends LitElement {
 
       this.requestUpdate();
     }
+  }
+
+  async _fetchLovelaceConfig(): Promise<any> {
+    if (!this.hass) return null;
+    try {
+      const urlPath = this._getDashboardUrlPath();
+      return await this.hass.callWS({
+        type: 'lovelace/config',
+        url_path: urlPath
+      });
+    } catch (e) {
+      console.warn("TimerCardEditor: Failed to fetch lovelace config", e);
+      return null;
+    }
+  }
+
+  _getDashboardUrlPath(): string | null {
+    const path = window.location.pathname;
+    const parts = path.split('/');
+    // Check if it is a specific dashboard
+    // Standard default: /lovelace/... or /lovelace
+    // Specific: /dashboard-name/...
+    if (parts.length > 1 && parts[1] !== 'lovelace') {
+      return parts[1];
+    }
+    return null; // Default dashboard
+  }
+
+  _findUsedTimerInstances(config: any): string[] {
+    const used: string[] = [];
+    if (!config) return used;
+
+    const traverse = (node: any) => {
+      if (!node || typeof node !== 'object') return;
+
+      if (node.type === 'custom:timer-card' && node.timer_instance_id) {
+        used.push(node.timer_instance_id);
+      }
+
+      // Arrays of views, cards, sections, etc.
+      ['views', 'cards', 'sections', 'badges'].forEach(key => {
+        if (Array.isArray(node[key])) {
+          node[key].forEach(traverse);
+        }
+      });
+
+      // Single card wrappers (like conditional, etc sometimes wrap 'card')
+      if (node.card) traverse(node.card);
+    };
+
+    traverse(config);
+    return used;
   }
 
   _handleNewTimerInput(event: InputEvent): void {
@@ -565,11 +643,19 @@ class TimerCardEditor extends LitElement {
             naturalMenuWidth
             required
           >
-            ${instanceOptions.map(option => html`
-              <mwc-list-item .value=${option.value}>
-                ${option.label}
+            ${instanceOptions.map(option => {
+      const isUsed = this._usedInstances.has(option.value);
+      const isCurrent = option.value === this._config?.timer_instance_id;
+      // Disable if used AND not the currently selected one
+      const disabled = isUsed && !isCurrent;
+      const label = option.label + (disabled ? " (Already assigned)" : "");
+
+      return html`
+              <mwc-list-item .value=${option.value} .disabled=${disabled}>
+                ${label}
               </mwc-list-item>
-            `)}
+            `;
+    })}
           </ha-select>
         </div>
         
