@@ -643,10 +643,8 @@ class TimerCard extends LitElement {
     // Compare and Sync if different
     const isDifferent = (
       configEnabled !== currentEnabled ||
-      (configEnabled && (
-        Math.abs(configDuration - currentDuration) > 0.001 ||
-        configUnit !== currentUnit
-      ))
+      Math.abs(configDuration - currentDuration) > 0.001 ||
+      configUnit !== currentUnit
     );
 
     if (isDifferent) {
