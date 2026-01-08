@@ -524,6 +524,18 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             if self._timer_state == "active":
                 _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Reset occurred during an active timer. Adjusting timer's base runtime.")
                 self._runtime_at_timer_start = 0.0 - self._calculate_timer_elapsed_since_start()
+                
+                # PERSISTENCE FIX: Save the adjusted runtime_at_start to storage immediately.
+                # Otherwise, if HA restarts, it will load the old (positive) runtime_at_start
+                # and ignore this daily reset, leading to incorrect usage calculation.
+                async with self._storage_lock:
+                    try:
+                        data = await self._store.async_load() or {}
+                        data["runtime_at_start"] = self._runtime_at_timer_start
+                        await self._store.async_save(data)
+                        _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Persisted adjusted runtime_at_start: {self._runtime_at_timer_start}s")
+                    except Exception as e:
+                        _LOGGER.error(f"Simple Timer: [{self._entry_id}] Failed to persist adjusted runtime_at_start: {e}")
 
             self._state = 0.0
             self._last_on_timestamp = None
