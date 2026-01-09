@@ -386,7 +386,19 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             )
             
             # Wait a moment for state change to propagate
-            await asyncio.sleep(1.0)
+            # Retry a few times to account for slow state updates from integrations
+            max_retries = 3
+            wait_time = 1.0
+            
+            for attempt in range(max_retries):
+                await asyncio.sleep(wait_time)
+                
+                updated_state = self.hass.states.get(self._switch_entity_id)
+                if updated_state and updated_state.state == desired_state:
+                    return
+                
+                # If checking failed, wait a bit longer next time
+                wait_time += 1.0
             
             # Verify correction worked
             updated_state = self.hass.states.get(self._switch_entity_id)
