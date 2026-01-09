@@ -3,7 +3,7 @@ import voluptuous as vol
 import logging
 import os
 import json
-import shutil
+
 import asyncio
 import homeassistant.helpers.config_validation as cv
 
@@ -16,48 +16,6 @@ from homeassistant.components.lovelace.resources import ResourceStorageCollectio
 from .const import DOMAIN, PLATFORMS
 
 _LOGGER = logging.getLogger(__name__)
-
-def _copy_file_sync(source_file: str, dest_file: str, www_dir: str) -> bool:
-    """Synchronous file copy function to be run in executor."""
-    try:
-        # Create www/simple-timer directory if it doesn't exist
-        os.makedirs(www_dir, exist_ok=True)
-        
-        # Copy the file if source exists
-        if os.path.exists(source_file):
-            shutil.copy2(source_file, dest_file)
-            return True
-        else:
-            return False
-    except Exception:
-        return False
-
-async def copy_frontend_files(hass: HomeAssistant) -> bool:
-    """Copy frontend files from integration dist folder to www folder."""
-    try:
-        # Source: custom_components/simple_timer/dist/timer-card.js
-        integration_path = os.path.dirname(__file__)
-        source_file = os.path.join(integration_path, "dist", "timer-card.js")
-        
-        # Destination: config/www/simple-timer/timer-card.js
-        www_dir = hass.config.path("www", "simple-timer")
-        dest_file = os.path.join(www_dir, "timer-card.js")
-        
-        # Run the file copy in executor to avoid blocking I/O
-        success = await hass.async_add_executor_job(
-            _copy_file_sync, source_file, dest_file, www_dir
-        )
-        
-        if success:
-            _LOGGER.debug(f"Copied {source_file} to {dest_file}")
-            return True
-        else:
-            _LOGGER.warning(f"Source file not found: {source_file}")
-            return False
-            
-    except Exception as e:
-        _LOGGER.error(f"Failed to copy frontend files: {e}")
-        return False
 
 async def init_resource(hass: HomeAssistant, url: str, ver: str) -> bool:
     """Add extra JS module for lovelace mode YAML and new lovelace resource
@@ -108,35 +66,23 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
     if hass.data.setdefault(DOMAIN, {}).get("services_registered"):
         return True
 
-    # Copy frontend files from integration to www folder
-    await copy_frontend_files(hass)
-
-    # Option 1: Register static path pointing to www folder (after copy)
+    # Serve directly from custom_components
+    integration_path = os.path.dirname(__file__)
     await hass.http.async_register_static_paths([
         StaticPathConfig(
             "/local/simple-timer/timer-card.js",
-            hass.config.path("www/simple-timer/timer-card.js"),
+            os.path.join(integration_path, "dist", "timer-card.js"),
             True
         )
     ])
-    
-    # Option 2: Alternative - serve directly from custom_components (uncomment to use)
-    # integration_path = os.path.dirname(__file__)
-    # await hass.http.async_register_static_paths([
-    #     StaticPathConfig(
-    #         "/local/simple-timer/timer-card.js",
-    #         os.path.join(integration_path, "dist", "timer-card.js"),
-    #         True
-    #     )
-    # ])
 
     # Initialize the frontend resource
     version = getattr(hass.data["integrations"][DOMAIN], "version", "1.0.0")
     
     # Calculate cache_id using version and file mtime
     try:
-        www_dir = hass.config.path("www", "simple-timer")
-        js_path = os.path.join(www_dir, "timer-card.js")
+        integration_path = os.path.dirname(__file__)
+        js_path = os.path.join(integration_path, "dist", "timer-card.js")
         file_mtime = os.path.getmtime(js_path)
         cache_id = f"{version}.{int(file_mtime)}"
     except Exception:
@@ -341,8 +287,7 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
         try:
             _LOGGER.info("Simple Timer: Reloading resources")
             
-            # Copy updated files
-            await copy_frontend_files(hass)
+
             
             # Read version from manifest using async executor to avoid blocking
             def read_manifest():
@@ -356,8 +301,8 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
             # Calculate cache_id using version and file mtime
             def get_cache_id(ver):
                 try:
-                    www_dir = hass.config.path("www", "simple-timer")
-                    js_path = os.path.join(www_dir, "timer-card.js")
+                    integration_path = os.path.dirname(__file__)
+                    js_path = os.path.join(integration_path, "dist", "timer-card.js")
                     file_mtime = os.path.getmtime(js_path)
                     return f"{ver}.{int(file_mtime)}"
                 except Exception:
