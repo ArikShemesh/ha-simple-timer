@@ -389,7 +389,6 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
     hass.services.async_register(
         DOMAIN, "set_default_timer_config", set_default_timer_config, schema=SERVICE_SET_DEFAULT_TIMER_CONFIG_SCHEMA
     )
-
     hass.data[DOMAIN]["services_registered"] = True
     return True
 
@@ -416,3 +415,48 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
     return unload_ok
+
+async def _async_cleanup_resources(hass: HomeAssistant) -> None:
+    """Remove resources and legacy files."""
+    # Remove Lovelace resource
+    if "lovelace" in hass.data:
+        resources = hass.data["lovelace"].resources
+        # Ensure resources are loaded
+        if not resources.loaded:
+            await resources.async_get_info()
+
+        for item in resources.async_items():
+            if item.get("url", "").startswith("/local/simple-timer/timer-card.js"):
+                _LOGGER.info("Simple Timer: Removing dashboard resource")
+                if isinstance(resources, ResourceStorageCollection):
+                    await resources.async_delete_item(item["id"])
+                break
+    
+    # Remove legacy www file if it exists
+    def cleanup_legacy_files():
+        try:
+            www_file = hass.config.path("www", "simple-timer", "timer-card.js")
+            if os.path.exists(www_file):
+                _LOGGER.info("Simple Timer: Removing legacy www file")
+                os.remove(www_file)
+                
+                # Try to remove directory if empty
+                www_dir = hass.config.path("www", "simple-timer")
+                if os.path.exists(www_dir) and not os.listdir(www_dir):
+                    os.rmdir(www_dir)
+        except Exception as e:
+            _LOGGER.warning(f"Simple Timer: Error cleaning up legacy files: {e}")
+
+    await hass.async_add_executor_job(cleanup_legacy_files)
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Remove a Simple Timer config entry."""
+    # Check if there are other entries for this domain
+    other_entries = [
+        e for e in hass.config_entries.async_entries(DOMAIN)
+        if e.entry_id != entry.entry_id
+    ]
+
+    # If this is the last entry, remove the resources
+    if not other_entries:
+        await _async_cleanup_resources(hass)
