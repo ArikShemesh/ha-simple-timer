@@ -280,11 +280,6 @@ If you find this integration useful, please consider:
 
 ## Star History
 
-<a href="https://www.star-history.com/#ArikShemesh/ha-simple-timer&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=ArikShemesh/ha-simple-timer&type=date&theme=dark&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=ArikShemesh/ha-simple-timer&type=date&legend=top-left" />
- </picture>
-</a>
+[![Star History Chart](https://api.star-history.com/svg?repos=ArikShemesh/ha-simple-timer&type=date&theme=dark)](https://star-history.com/#ArikShemesh/ha-simple-timer&type=date)
 
 **Made with ❤️ for the Home Assistant community**
