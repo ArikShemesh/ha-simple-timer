@@ -141,7 +141,6 @@ slider_unit: min              # Unit for slider: 's', 'min', 'h', 'd'
 # STYLING (Optional)
 # -------------------------------------------------------------------------
 # Icons
-power_button_icon: mdi:power
 entity_state_icon: mdi:lightbulb
 
 # Colors (Hex or RGBA)
@@ -172,14 +171,13 @@ Option | Type | Default | Description
 `show_daily_usage` | boolean | true | Display daily usage statistics
 `turn_off_on_cancel` | boolean | true | Whether to turn off the entity when the timer is cancelled
 `use_default_timer` | boolean | false | Enable auto-start when device turns on (requires a * suffix in timer_buttons). `Note: Unavailable if Reverse Mode is enabled`
-`power_button_icon` | string | mdi:power | Icon for the power button (e.g., `mdi:power`)
 `slider_thumb_color` | string | - | Custom color for the slider thumb (hex or rgba)
 `slider_background_color` | string | - | Custom color for the slider track
 `timer_button_font_color` | string | - | Custom font color for timer buttons
 `timer_button_background_color` | string | - | Custom background color for timer buttons
 `power_button_background_color` | string | - | Custom background color for the power button
 `power_button_icon_color` | string | - | Custom icon color for the power button
-`entity_state_icon` | string | - | Custom icon for the state button (top-left). Defaults to `power_button_icon`
+`entity_state_icon` | string | - | Custom icon for the state button (top-left)
 `entity_state_button_icon_color` | string | - | Custom icon color for the entity state button (top-left)
 `entity_state_button_icon_color_on` | string | - | Custom icon color for the entity state button when ON
 `entity_state_button_background_color` | string | - | Custom background color for the entity state button (top-left)
