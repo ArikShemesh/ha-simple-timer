@@ -16,6 +16,8 @@ A simple Home Assistant integration that turns entities on and off with a precis
 
 🕐 Flexible Timer Control - Set countdown timers in seconds, minutes, hours, or days for any switch, input_boolean, light, or fan
 
+⚡ **Default Timer** - Automatically starts a countdown when the device is turned on manually (Auto-Off functionality)
+
 📊 **Daily Runtime Tracking** - Automatically tracks and displays daily usage time
 
 🔄 **Smart Auto-Cancel** - Timer automatically cancels if the controlled device is turned off externally
@@ -56,6 +58,9 @@ Use this link to open the repository in HACS and click on Download
 1. Download the latest release from [GitHub Releases](https://github.com/ArikShemesh/ha-simple-timer/releases)
 2. Extract the `custom_components/simple_timer` folder to your Home Assistant `custom_components` directory
 3. **Restart Home Assistant**
+4. **Add Dashboard Resource:** Go to **Settings → Dashboards → ⁝ (Three dots) → Resources** and add a new resource with:
+   - **URL:** `/local/simple-timer/timer-card.js`
+   - **Resource Type:** `JavaScript Module`
 
 **That's it!** The timer card is automatically installed and ready to use - no additional steps required.
 
@@ -95,28 +100,61 @@ If you use the 3-dots menu to rename, open **Configure** once afterward to sync 
 ### Visual Configuration (Recommended)
 Use the card editor in the Home Assistant UI for easy configuration.
 
-### YAML Configuration
+### Full Configuration Reference
+Copy this block to your dashboard configuration and uncomment/edit the lines you need.
+
 ```yaml
 type: custom:timer-card
+# -------------------------------------------------------------------------
+# REQUIRED: Link to your timer instance
+# -------------------------------------------------------------------------
+timer_instance_id: your_timer_entry_id  # Select the integration entry ID
+
+# -------------------------------------------------------------------------
+# TIMER SETTINGS
+# -------------------------------------------------------------------------
+# Presets: Use numbers (minutes) or strings with units ("30s", "1h", "1d").
+# Add '*' to a value to set it as the Default Timer (auto-starts when device turns on).
 timer_buttons:
+  - 15
   - 30
-  - 1.5h
-  - 15s
-  - 1day
-hide_slider: false
-timer_instance_id: your_instance_entry_id
-card_title: Water Heater
+  - 45
+  - 1h
+  - 60* # Example: 60 minutes is the default auto-start duration
+
+# Note: reverse_mode and use_default_timer are mutually exclusive.
+# reverse_mode will always take priority if both are set to true.
+use_default_timer: false      # Set to true to enable the auto-start feature (requires a '*' button)
+reverse_mode: false           # If true, timer works as "Delayed Start" (turns ON when time ends)
+turn_off_on_cancel: true      # Turn off the device when timer is cancelled?
+
+# -------------------------------------------------------------------------
+# SLIDER & DISPLAY
+# -------------------------------------------------------------------------
+card_title: "Water Heater"    # Custom title
+hide_slider: false            # Set true to hide the slider
+show_daily_usage: true        # Show/Hide the daily usage stats
+slider_max: 120               # Maximum value for the slider
+slider_unit: min              # Unit for slider: 's', 'min', 'h', 'd'
+
+# -------------------------------------------------------------------------
+# STYLING (Optional)
+# -------------------------------------------------------------------------
+# Icons
 power_button_icon: mdi:power
-slider_max: 120
-reverse_mode: false
-slider_unit: min
-show_daily_usage: true
-slider_thumb_color: null
-slider_background_color: null
-timer_button_font_color: null
-timer_button_background_color: null
-power_button_background_color: null
-power_button_icon_color: null
+entity_state_icon: mdi:lightbulb
+
+# Colors (Hex or RGBA)
+slider_thumb_color: "#2ab69c"
+slider_background_color: "#424242"
+timer_button_font_color: "#ffffff"
+timer_button_background_color: "#424242"
+power_button_icon_color: "#03a9f4"
+power_button_background_color: "#424242"
+entity_state_button_icon_color: "#727272"
+entity_state_button_background_color: "#1c1c1c"
+entity_state_button_icon_color_on: "#03a9f4"
+entity_state_button_background_color_on: "#1c1c1c"
 ```
 
 ### Configuration Options
@@ -127,21 +165,25 @@ Option | Type | Default | Description
 `timer_instance_id` | string | - | Entry ID of your timer instance
 `timer_buttons` | array | [15,30,60,90,120,150] | Timer duration buttons. Supports mixed units (e.g., `[30, "15s", "1.5h", "1day"]`)
 `card_title` | string | - | Custom title for the card
-`power_button_icon` | string | mdi:power | Icon for the power button (e.g., `mdi:power`)
-`slider_max` | integer | 120 | Slider max value (1-1000)
+`slider_max` | integer | 120 | The maximum value for the slider (supported range: 1–9999)
 `slider_unit` | string | min | Unit for the slider (`s`, `min`, `h`)
-`reverse_mode` | boolean | false | Enable delayed start (turns device ON when timer ends)
+`reverse_mode` | boolean | false | Enable delayed start (turns device ON when timer ends). `Note: Disables Default Timer feature when active`
 `hide_slider` | boolean | false | Hide the slider control completely
 `show_daily_usage` | boolean | true | Display daily usage statistics
+`turn_off_on_cancel` | boolean | true | Whether to turn off the entity when the timer is cancelled
+`use_default_timer` | boolean | false | Enable auto-start when device turns on (requires a * suffix in timer_buttons). `Note: Unavailable if Reverse Mode is enabled`
+`power_button_icon` | string | mdi:power | Icon for the power button (e.g., `mdi:power`)
 `slider_thumb_color` | string | - | Custom color for the slider thumb (hex or rgba)
 `slider_background_color` | string | - | Custom color for the slider track
 `timer_button_font_color` | string | - | Custom font color for timer buttons
 `timer_button_background_color` | string | - | Custom background color for timer buttons
 `power_button_background_color` | string | - | Custom background color for the power button
 `power_button_icon_color` | string | - | Custom icon color for the power button
-`turn_off_on_cancel` | boolean | true | Whether to turn off the entity when the timer is cancelled
-`entity_state_button_background_color` | string | - | Custom background color for the entity state button (top-left)
+`entity_state_icon` | string | - | Custom icon for the state button (top-left). Defaults to `power_button_icon`
 `entity_state_button_icon_color` | string | - | Custom icon color for the entity state button (top-left)
+`entity_state_button_icon_color_on` | string | - | Custom icon color for the entity state button when ON
+`entity_state_button_background_color` | string | - | Custom background color for the entity state button (top-left)
+`entity_state_button_background_color_on` | string | - | Custom background color for the entity state button when ON
 
 ## ❓ Frequently Asked Questions
 
@@ -152,7 +194,8 @@ Yes! Add multiple integrations for different devices.
 Yes, active timers resume automatically with offline time compensation.
 
 ### Can I customize the timer buttons?
-Yes! You can configure values with explicit units. Example: timer_buttons: [30, "45s", "1.5h", "1d"] in the card YAML.
+Yes! You can configure values with explicit units. Example: `timer_buttons: [30, "45s", "1.5h", "1d"]`. 
+To use the **Default Timer** feature, append an asterisk (`*`) to one value (e.g., `"30*"`) to set it as the auto-start duration.
 
 ### Why does my usage show a warning message?
 This appears when HA was offline during a timer to indicate potential time sync issues.
@@ -187,6 +230,12 @@ If the automatic card installation fails:
 2. **Verify disk space:** Ensure sufficient space for file copying
 3. **Check integration logs:** Look for specific error messages
 4. **Manual fallback:** You can still manually copy the card file from the integration's `dist` folder
+
+### Card Not Updating After Upgrade
+
+If you don't see new features (like the Default Timer option) after updating:
+1. **Clear browser cache:** Hard refresh with Ctrl+F5 (Windows) or Cmd+Shift+R (Mac)
+2. **Reload Resources:** Call the `simple_timer.reload_resources` service from Developer Tools → Services to force the frontend to load the latest version.
 
 ## 📝 Getting Help
 
