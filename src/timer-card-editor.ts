@@ -45,6 +45,7 @@ interface HomeAssistant {
   };
   callService(domain: string, service: string, data?: Record<string, unknown>): Promise<void>;
   callApi<T = unknown>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, parameters?: Record<string, unknown>, headers?: Record<string, string>): Promise<T>;
+  callWS<T>(msg: { type: string;[key: string]: any }): Promise<T>;
   config: {
     components: {
       [domain: string]: {
@@ -83,6 +84,7 @@ class TimerCardEditor extends LitElement {
   _configFullyLoaded: boolean = false; // Track if we've received a complete config
 
   private _timerInstancesOptions: Array<{ value: string; label: string }> = [];
+  private _usedInstances: Set<string> = new Set();
   private _tempSliderMaxValue: string | null = null;
   private _newTimerButtonValue: string = "";
 
@@ -204,8 +206,8 @@ class TimerCardEditor extends LitElement {
 
       configButtons.forEach(val => {
         const strVal = String(val).trim().toLowerCase();
-        // Allow pure numbers (including decimals) or numbers with unit suffix
-        const match = strVal.match(/^(\d+(?:\.\d+)?)\s*(s|sec|seconds|m|min|minutes|h|hr|hours|d|day|days)?$/);
+        // Allow pure numbers (including decimals), numbers with unit suffix, optionally ending with *
+        const match = strVal.match(/^(\d+(?:\.\d+)?)\s*(s|sec|seconds|m|min|minutes|h|hr|hours|d|day|days)?(\*)?$/);
 
         if (match) {
           const numVal = parseFloat(match[1]);
@@ -235,17 +237,30 @@ class TimerCardEditor extends LitElement {
 
           // Normalize pure numbers to number type for existing logic compatibility
           if (!unitStr || ['m', 'min', 'minutes'].includes(unitStr)) {
+            // Minutes case (pure number or "15min")
             if (numVal > 0 && numVal <= 9999) {
-              if (!seen.has(String(numVal))) {
-                validatedButtons.push(numVal);
-                seen.add(String(numVal));
+              const isDefault = strVal.endsWith('*');
+              if (isDefault) {
+                // Default timers are allowed even if minute value exists
+                validatedButtons.push(val);
+              } else {
+                if (!seen.has(String(numVal))) {
+                  validatedButtons.push(numVal);
+                  seen.add(String(numVal));
+                }
               }
             }
           } else {
-            // Keep strings with other units
-            if (!seen.has(strVal)) {
-              validatedButtons.push(val); // Keep original casing/format or normalize? prefer original if valid
-              seen.add(strVal);
+            // Strings with other units (e.g. "30s", "1h")
+            const isDefault = strVal.endsWith('*');
+            if (isDefault) {
+              // Default timers are allowed even if string value exists
+              validatedButtons.push(val);
+            } else {
+              if (!seen.has(strVal)) {
+                validatedButtons.push(val);
+                seen.add(strVal);
+              }
             }
           }
         }
@@ -295,7 +310,10 @@ class TimerCardEditor extends LitElement {
       power_button_icon_color: cfg.power_button_icon_color || null,
       entity_state_button_background_color: cfg.entity_state_button_background_color || null,
       entity_state_button_icon_color: cfg.entity_state_button_icon_color || null,
-      turn_off_on_cancel: cfg.turn_off_on_cancel !== false
+      entity_state_button_background_color_on: cfg.entity_state_button_background_color_on || null,
+      entity_state_button_icon_color_on: cfg.entity_state_button_icon_color_on || null,
+      turn_off_on_cancel: cfg.turn_off_on_cancel !== false,
+      use_default_timer: cfg.use_default_timer || false
     };
 
     if (cfg.timer_instance_id) {
@@ -345,9 +363,33 @@ class TimerCardEditor extends LitElement {
 
       this._timerInstancesOptions = await this._getSimpleTimerInstances();
 
+      // Fetch currently used instances from Lovelace config to prevent duplicates
+      const lovelaceConfig = await this._fetchLovelaceConfig();
+      const usedList = this._findUsedTimerInstances(lovelaceConfig);
+      this._usedInstances = new Set(usedList);
+
       if (!this._configFullyLoaded) {
         this.requestUpdate();
         return;
+      }
+
+      // Auto-Resolution: Check for duplicates
+      if (this._config?.timer_instance_id) {
+        const currentId = this._config.timer_instance_id;
+        const count = usedList.filter(id => id === currentId).length;
+        // If count > 1, it means this ID is used by at least one OTHER card (plus this one, or multiple others)
+        if (count > 1) {
+          console.warn(`TimerCardEditor: Duplicate usage detected for '${currentId}' (count: ${count}). Auto-clearing.`);
+          const updatedConfig: TimerCardConfig = { ...this._config, timer_instance_id: null };
+          this._config = updatedConfig;
+          this.dispatchEvent(
+            new CustomEvent("config-changed", {
+              detail: { config: this._config },
+              bubbles: true,
+              composed: true,
+            }),
+          );
+        }
       }
 
       // Only validate that existing configured instances still exist
@@ -381,6 +423,58 @@ class TimerCardEditor extends LitElement {
     }
   }
 
+  async _fetchLovelaceConfig(): Promise<any> {
+    if (!this.hass) return null;
+    try {
+      const urlPath = this._getDashboardUrlPath();
+      return await this.hass.callWS({
+        type: 'lovelace/config',
+        url_path: urlPath
+      });
+    } catch (e) {
+      console.warn("TimerCardEditor: Failed to fetch lovelace config", e);
+      return null;
+    }
+  }
+
+  _getDashboardUrlPath(): string | null {
+    const path = window.location.pathname;
+    const parts = path.split('/');
+    // Check if it is a specific dashboard
+    // Standard default: /lovelace/... or /lovelace
+    // Specific: /dashboard-name/...
+    if (parts.length > 1 && parts[1] !== 'lovelace') {
+      return parts[1];
+    }
+    return null; // Default dashboard
+  }
+
+  _findUsedTimerInstances(config: any): string[] {
+    const used: string[] = [];
+    if (!config) return used;
+
+    const traverse = (node: any) => {
+      if (!node || typeof node !== 'object') return;
+
+      if (node.type === 'custom:timer-card' && node.timer_instance_id) {
+        used.push(node.timer_instance_id);
+      }
+
+      // Arrays of views, cards, sections, etc.
+      ['views', 'cards', 'sections', 'badges'].forEach(key => {
+        if (Array.isArray(node[key])) {
+          node[key].forEach(traverse);
+        }
+      });
+
+      // Single card wrappers (like conditional, etc sometimes wrap 'card')
+      if (node.card) traverse(node.card);
+    };
+
+    traverse(config);
+    return used;
+  }
+
   _handleNewTimerInput(event: InputEvent): void {
     const target = event.target as HTMLInputElement;
     this._newTimerButtonValue = target.value;
@@ -391,16 +485,17 @@ class TimerCardEditor extends LitElement {
     if (!val) return;
 
     // Validate using the same regex as the card
-    const match = val.match(/^(\d+(?:\.\d+)?)\s*(s|sec|seconds|m|min|minutes|h|hr|hours|d|day|days)?$/i);
+    const match = val.match(/^(\d+(?:\.\d+)?)\s*(s|sec|seconds|m|min|minutes|h|hr|hours|d|day|days)?(\*)?$/i);
 
     if (!match) {
-      alert("Invalid format! Use format like: 30, 30s, 10m, 1.5h, 1d");
+      alert("Invalid format! Use format like: 30, 30s, 10m, 1.5h, 1d. Add * for default timer (e.g. 30*)");
       return;
     }
 
     const numVal = parseFloat(match[1]);
     const isFloat = match[1].includes('.');
     const unitStr = (match[2] || 'min').toLowerCase();
+    const isDefault = !!match[3];
     const isHours = unitStr.startsWith('h');
     const isDays = unitStr.startsWith('d');
 
@@ -447,7 +542,7 @@ class TimerCardEditor extends LitElement {
     // Optional: normalize pure numbers to number type for consistency with legacy, 
     // but the regex allows units. 
     // If no unit provided, match[2] is undefined.
-    if (!match[2]) {
+    if (!match[2] && !isDefault) {
       valueToAdd = numVal;
     }
 
@@ -456,6 +551,11 @@ class TimerCardEditor extends LitElement {
       this._newTimerButtonValue = ""; // Clear input anyway
       this.requestUpdate();
       return;
+    }
+
+    if (isDefault) {
+      // Remove existing default timer if any
+      currentButtons = currentButtons.filter(b => !String(b).includes('*'));
     }
 
     currentButtons.push(valueToAdd);
@@ -517,6 +617,8 @@ class TimerCardEditor extends LitElement {
     const defaultPowerButtonIconColor = this._getThemeColorHex('--primary-color', '#03a9f4');
     const defaultEntityStateButtonBackgroundColor = this._getThemeColorHex('--ha-card-background', this._getThemeColorHex('--card-background-color', '#1c1c1c'));
     const defaultEntityStateButtonIconColor = this._getThemeColorHex('--secondary-text-color', '#727272');
+    const defaultEntityStateButtonBackgroundColorOn = this._getThemeColorHex('--ha-card-background', this._getThemeColorHex('--card-background-color', '#1c1c1c'));
+    const defaultEntityStateButtonIconColorOn = this._getThemeColorHex('--primary-color', '#03a9f4');
 
     return html`
       <div class="card-config">
@@ -541,11 +643,19 @@ class TimerCardEditor extends LitElement {
             naturalMenuWidth
             required
           >
-            ${instanceOptions.map(option => html`
-              <mwc-list-item .value=${option.value}>
-                ${option.label}
+            ${instanceOptions.map(option => {
+      const isUsed = this._usedInstances.has(option.value);
+      const isCurrent = option.value === this._config?.timer_instance_id;
+      // Disable if used AND not the currently selected one
+      const disabled = isUsed && !isCurrent;
+      const label = option.label + (disabled ? " (Already assigned)" : "");
+
+      return html`
+              <mwc-list-item .value=${option.value} .disabled=${disabled}>
+                ${label}
               </mwc-list-item>
-            `)}
+            `;
+    })}
           </ha-select>
         </div>
         
@@ -808,15 +918,16 @@ class TimerCardEditor extends LitElement {
                     style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
                   />
                   <ha-textfield
-                    .label=${"Entity State Button Background"}
+                    .label=${"State Icon Background (Off)"}
                     .value=${this._config?.entity_state_button_background_color || ""}
                     .configValue=${"entity_state_button_background_color"}
                     @input=${this._valueChanged}
                     .placeholder=${"Theme default (Transparent)"}
-                    .helper=${"Top-right button"}
+                    .helper=${"Leave empty to use theme color"}
                     style="flex: 1; min-width: 0;"
                   ></ha-textfield>
                 </div>
+                
                 
                 <!-- Entity State Button Icon Color -->
                 <div style="display: flex; gap: 8px; align-items: center;">
@@ -836,12 +947,68 @@ class TimerCardEditor extends LitElement {
                     style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
                   />
                   <ha-textfield
-                    .label=${"Entity State Button Icon Color"}
+                    .label=${"State Icon Color (Off)"}
                     .value=${this._config?.entity_state_button_icon_color || ""}
                     .configValue=${"entity_state_button_icon_color"}
                     @input=${this._valueChanged}
                     .placeholder=${"Theme default"}
-                    .helper=${"Top-right button"}
+                    .helper=${"Leave empty to use theme color"}
+                    style="flex: 1; min-width: 0;"
+                  ></ha-textfield>
+                </div>
+
+                <!-- Entity State Button Background Color (On) -->
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <input
+                    type="color"
+                    value=${this._config?.entity_state_button_background_color_on || defaultEntityStateButtonBackgroundColorOn}
+                    @input=${(ev: Event) => {
+        const target = ev.target as HTMLInputElement;
+        this._valueChanged({
+          target: {
+            configValue: "entity_state_button_background_color_on",
+            value: target.value
+          },
+          stopPropagation: () => { }
+        } as any);
+      }}
+                    style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
+                  />
+                  <ha-textfield
+                    .label=${"State Icon Background (On)"}
+                    .value=${this._config?.entity_state_button_background_color_on || ""}
+                    .configValue=${"entity_state_button_background_color_on"}
+                    @input=${this._valueChanged}
+                    .placeholder=${"Theme default"}
+                    .helper=${"Leave empty to use theme color"}
+                    style="flex: 1; min-width: 0;"
+                  ></ha-textfield>
+                </div>
+
+                <!-- Entity State Button Icon Color (On) -->
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <input
+                    type="color"
+                    value=${this._config?.entity_state_button_icon_color_on || defaultEntityStateButtonIconColorOn}
+                    @input=${(ev: Event) => {
+        const target = ev.target as HTMLInputElement;
+        this._valueChanged({
+          target: {
+            configValue: "entity_state_button_icon_color_on",
+            value: target.value
+          },
+          stopPropagation: () => { }
+        } as any);
+      }}
+                    style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
+                  />
+                  <ha-textfield
+                    .label=${"State Icon Color (On)"}
+                    .value=${this._config?.entity_state_button_icon_color_on || ""}
+                    .configValue=${"entity_state_button_icon_color_on"}
+                    @input=${this._valueChanged}
+                    .placeholder=${"Theme default"}
+                    .helper=${"Leave empty to use theme color"}
                     style="flex: 1; min-width: 0;"
                   ></ha-textfield>
                 </div>
@@ -855,6 +1022,18 @@ class TimerCardEditor extends LitElement {
             <ha-switch
               .checked=${this._config?.turn_off_on_cancel !== false}
               .configValue=${"turn_off_on_cancel"}
+              @change=${this._valueChanged}
+            ></ha-switch>
+          </ha-formfield>
+        </div>
+
+        <div class="config-row">
+          <ha-formfield .label=${this._config?.reverse_mode ? "Use Default Timer (Disabled in Reverse Mode)" : "Use Default Timer (auto-start when entity turns on)"}
+                        title=${this._config?.reverse_mode ? "Default Timer cannot be used with Reverse Mode (Delayed Start)" : ""}>
+            <ha-switch
+              .checked=${(this._config?.use_default_timer || false) && !this._config?.reverse_mode}
+              .disabled=${this._config?.reverse_mode || false}
+              .configValue=${"use_default_timer"}
               @change=${this._valueChanged}
             ></ha-switch>
           </ha-formfield>
@@ -896,12 +1075,18 @@ class TimerCardEditor extends LitElement {
             <div class="timer-chips-container">
              <label class="config-label">Timer Presets</label>
              <div class="chips-wrapper">
-                ${(this._config?.timer_buttons || DEFAULT_TIMER_BUTTONS).map(btn => html`
-                    <div class="timer-chip">
-                        <span>${typeof btn === 'number' ? btn + 'm' : btn}</span>
+                ${(this._config?.timer_buttons || DEFAULT_TIMER_BUTTONS).map(btn => {
+        const isDefault = String(btn).endsWith('*');
+        const displayVal = String(btn).replace('*', '');
+        const label = typeof btn === 'number' ? btn + 'm' : displayVal;
+        const chipClass = isDefault ? 'timer-chip default-timer' : 'timer-chip';
+        return html`
+                    <div class="${chipClass}" style="${isDefault ? 'border: 1px solid var(--primary-color); background-color: rgba(var(--rgb-primary-color), 0.1);' : ''}">
+                        <span>${label}${isDefault ? ' (Default)' : ''}</span>
                         <span class="remove-chip" @click=${() => this._removeTimerButton(btn)}>✕</span>
                     </div>
-                `)}
+                `;
+      })}
              </div>
             </div>
             
@@ -916,7 +1101,7 @@ class TimerCardEditor extends LitElement {
                <div class="add-btn" @click=${this._addTimerButton} role="button">ADD</div>
             </div>
             <div class="helper-text" style="font-size: 0.8em; color: var(--secondary-text-color); margin-top: 4px;">
-                Supports seconds (s), minutes (m), hours (h), days (d). Example: 30s, 10, 1.5h, 1d
+                Supports seconds (s), minutes (m), hours (h), days (d). Example: 30s, 10, 1.5h, 1d. Add * for default timer (e.g. 30*)
             </div>
         </div>
           ${(!this._config?.timer_buttons?.length && this._config?.hide_slider) ? html`
@@ -988,6 +1173,8 @@ class TimerCardEditor extends LitElement {
       updatedConfig.slider_unit = value;
     } else if (configValue === "turn_off_on_cancel") {
       updatedConfig.turn_off_on_cancel = value; // boolean
+    } else if (configValue === "use_default_timer") {
+      updatedConfig.use_default_timer = value; // boolean
     } else {
       // For text/color fields where empty string means delete/null
       if (value && value !== '') {
@@ -999,7 +1186,8 @@ class TimerCardEditor extends LitElement {
           'slider_thumb_color', 'slider_background_color',
           'timer_button_font_color', 'timer_button_background_color',
           'power_button_background_color', 'power_button_icon_color',
-          'entity_state_button_background_color', 'entity_state_button_icon_color'
+          'entity_state_button_background_color', 'entity_state_button_icon_color',
+          'entity_state_button_background_color_on', 'entity_state_button_icon_color_on'
         ].includes(configValue)) {
           (updatedConfig as any)[configValue] = null;
         } else {

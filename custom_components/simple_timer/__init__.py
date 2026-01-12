@@ -3,7 +3,7 @@ import voluptuous as vol
 import logging
 import os
 import json
-import shutil
+
 import asyncio
 import homeassistant.helpers.config_validation as cv
 
@@ -16,48 +16,6 @@ from homeassistant.components.lovelace.resources import ResourceStorageCollectio
 from .const import DOMAIN, PLATFORMS
 
 _LOGGER = logging.getLogger(__name__)
-
-def _copy_file_sync(source_file: str, dest_file: str, www_dir: str) -> bool:
-    """Synchronous file copy function to be run in executor."""
-    try:
-        # Create www/simple-timer directory if it doesn't exist
-        os.makedirs(www_dir, exist_ok=True)
-        
-        # Copy the file if source exists
-        if os.path.exists(source_file):
-            shutil.copy2(source_file, dest_file)
-            return True
-        else:
-            return False
-    except Exception:
-        return False
-
-async def copy_frontend_files(hass: HomeAssistant) -> bool:
-    """Copy frontend files from integration dist folder to www folder."""
-    try:
-        # Source: custom_components/simple_timer/dist/timer-card.js
-        integration_path = os.path.dirname(__file__)
-        source_file = os.path.join(integration_path, "dist", "timer-card.js")
-        
-        # Destination: config/www/simple-timer/timer-card.js
-        www_dir = hass.config.path("www", "simple-timer")
-        dest_file = os.path.join(www_dir, "timer-card.js")
-        
-        # Run the file copy in executor to avoid blocking I/O
-        success = await hass.async_add_executor_job(
-            _copy_file_sync, source_file, dest_file, www_dir
-        )
-        
-        if success:
-            _LOGGER.debug(f"Copied {source_file} to {dest_file}")
-            return True
-        else:
-            _LOGGER.warning(f"Source file not found: {source_file}")
-            return False
-            
-    except Exception as e:
-        _LOGGER.error(f"Failed to copy frontend files: {e}")
-        return False
 
 async def init_resource(hass: HomeAssistant, url: str, ver: str) -> bool:
     """Add extra JS module for lovelace mode YAML and new lovelace resource
@@ -108,31 +66,29 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
     if hass.data.setdefault(DOMAIN, {}).get("services_registered"):
         return True
 
-    # Copy frontend files from integration to www folder
-    await copy_frontend_files(hass)
-
-    # Option 1: Register static path pointing to www folder (after copy)
+    # Serve directly from custom_components
+    integration_path = os.path.dirname(__file__)
     await hass.http.async_register_static_paths([
         StaticPathConfig(
             "/local/simple-timer/timer-card.js",
-            hass.config.path("www/simple-timer/timer-card.js"),
+            os.path.join(integration_path, "dist", "timer-card.js"),
             True
         )
     ])
-    
-    # Option 2: Alternative - serve directly from custom_components (uncomment to use)
-    # integration_path = os.path.dirname(__file__)
-    # await hass.http.async_register_static_paths([
-    #     StaticPathConfig(
-    #         "/local/simple-timer/timer-card.js",
-    #         os.path.join(integration_path, "dist", "timer-card.js"),
-    #         True
-    #     )
-    # ])
 
     # Initialize the frontend resource
     version = getattr(hass.data["integrations"][DOMAIN], "version", "1.0.0")
-    await init_resource(hass, "/local/simple-timer/timer-card.js", str(version))
+    
+    # Calculate cache_id using version and file mtime
+    try:
+        integration_path = os.path.dirname(__file__)
+        js_path = os.path.join(integration_path, "dist", "timer-card.js")
+        file_mtime = os.path.getmtime(js_path)
+        cache_id = f"{version}.{int(file_mtime)}"
+    except Exception:
+        cache_id = str(version)
+
+    await init_resource(hass, "/local/simple-timer/timer-card.js", cache_id)
 
     # Schema for the timer services
     SERVICE_START_TIMER_SCHEMA = vol.Schema({
@@ -331,8 +287,7 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
         try:
             _LOGGER.info("Simple Timer: Reloading resources")
             
-            # Copy updated files
-            await copy_frontend_files(hass)
+
             
             # Read version from manifest using async executor to avoid blocking
             def read_manifest():
@@ -343,17 +298,29 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
             
             version = await hass.async_add_executor_job(read_manifest)
             
-            # Re-register resource with new version
-            await init_resource(hass, "/local/simple-timer/timer-card.js", version)
+            # Calculate cache_id using version and file mtime
+            def get_cache_id(ver):
+                try:
+                    integration_path = os.path.dirname(__file__)
+                    js_path = os.path.join(integration_path, "dist", "timer-card.js")
+                    file_mtime = os.path.getmtime(js_path)
+                    return f"{ver}.{int(file_mtime)}"
+                except Exception:
+                    return str(ver)
             
-            _LOGGER.info(f"Simple Timer: Resources updated to version {version}")
+            cache_id = await hass.async_add_executor_job(get_cache_id, version)
+
+            # Re-register resource with new version
+            await init_resource(hass, "/local/simple-timer/timer-card.js", cache_id)
+            
+            _LOGGER.info(f"Simple Timer: Resources updated to version {cache_id}")
             
             # Send notification
             await hass.services.async_call(
                 "persistent_notification",
                 "create",
                 {
-                    "message": f"Simple Timer resources reloaded with version {version}. Please refresh your browser (Ctrl+Shift+R).",
+                    "message": f"Simple Timer resources reloaded with version {cache_id}. Please refresh your browser (Ctrl+Shift+R).",
                     "title": "Simple Timer Resources Updated",
                     "notification_id": "simple_timer_resource_reload"
                 }
@@ -391,7 +358,37 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
     hass.services.async_register(
         DOMAIN, "reload_resources", reload_resources, schema=vol.Schema({})
     )
+    
+    # Schema for setting default timer config
+    SERVICE_SET_DEFAULT_TIMER_CONFIG_SCHEMA = vol.Schema({
+        vol.Required("entry_id"): cv.string,
+        vol.Required("enabled"): cv.boolean,
+        vol.Optional("duration", default=0): cv.positive_float,
+        vol.Optional("unit", default="min"): vol.In(["s", "sec", "seconds", "m", "min", "minutes", "h", "hr", "hours", "d", "day", "days"]),
+    })
 
+    async def set_default_timer_config(call: ServiceCall):
+        """Handle the service call to configure the default timer."""
+        entry_id = call.data["entry_id"]
+        enabled = call.data["enabled"]
+        duration = call.data.get("duration", 0)
+        unit = call.data.get("unit", "min")
+        
+        # Find the sensor by entry_id
+        sensor = None
+        for stored_entry_id, entry_data in hass.data[DOMAIN].items():
+            if stored_entry_id == entry_id and "sensor" in entry_data:
+                sensor = entry_data["sensor"]
+                break
+        
+        if sensor:
+            await sensor.async_set_default_timer_config(enabled, duration, unit)
+        else:
+            raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
+
+    hass.services.async_register(
+        DOMAIN, "set_default_timer_config", set_default_timer_config, schema=SERVICE_SET_DEFAULT_TIMER_CONFIG_SCHEMA
+    )
     hass.data[DOMAIN]["services_registered"] = True
     return True
 
@@ -418,3 +415,48 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
     return unload_ok
+
+async def _async_cleanup_resources(hass: HomeAssistant) -> None:
+    """Remove resources and legacy files."""
+    # Remove Lovelace resource
+    if "lovelace" in hass.data:
+        resources = hass.data["lovelace"].resources
+        # Ensure resources are loaded
+        if not resources.loaded:
+            await resources.async_get_info()
+
+        for item in resources.async_items():
+            if item.get("url", "").startswith("/local/simple-timer/timer-card.js"):
+                _LOGGER.info("Simple Timer: Removing dashboard resource")
+                if isinstance(resources, ResourceStorageCollection):
+                    await resources.async_delete_item(item["id"])
+                break
+    
+    # Remove legacy www file if it exists
+    def cleanup_legacy_files():
+        try:
+            www_file = hass.config.path("www", "simple-timer", "timer-card.js")
+            if os.path.exists(www_file):
+                _LOGGER.info("Simple Timer: Removing legacy www file")
+                os.remove(www_file)
+                
+                # Try to remove directory if empty
+                www_dir = hass.config.path("www", "simple-timer")
+                if os.path.exists(www_dir) and not os.listdir(www_dir):
+                    os.rmdir(www_dir)
+        except Exception as e:
+            _LOGGER.warning(f"Simple Timer: Error cleaning up legacy files: {e}")
+
+    await hass.async_add_executor_job(cleanup_legacy_files)
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Remove a Simple Timer config entry."""
+    # Check if there are other entries for this domain
+    other_entries = [
+        e for e in hass.config_entries.async_entries(DOMAIN)
+        if e.entry_id != entry.entry_id
+    ]
+
+    # If this is the last entry, remove the resources
+    if not other_entries:
+        await _async_cleanup_resources(hass)

@@ -17,6 +17,9 @@ interface HAState {
     watchdog_message?: string;
     show_seconds?: boolean; // This comes from backend now
     reset_time?: string; // Reset time from backend
+    default_timer_enabled?: boolean;
+    default_timer_duration?: number;
+    default_timer_unit?: string;
     [key: string]: any;
   };
   last_changed: string;
@@ -37,6 +40,7 @@ interface HomeAssistant {
   };
   callService(domain: string, service: string, data?: Record<string, unknown>): Promise<void>;
   callApi<T = unknown>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, parameters?: Record<string, unknown>, headers?: Record<string, string>): Promise<T>;
+  callWS<T>(msg: { type: string;[key: string]: any }): Promise<T>;
   config: {
     components: {
       [domain: string]: {
@@ -48,7 +52,7 @@ interface HomeAssistant {
 }
 
 const DOMAIN = "simple_timer";
-const CARD_VERSION = "1.4.0";
+const CARD_VERSION = "1.4.1";
 const DEFAULT_TIMER_BUTTONS = [15, 30, 60, 90, 120, 150]; // Default for new cards only
 
 console.info(
@@ -62,6 +66,7 @@ interface TimerButton {
   unit: string; // 'min', 's', 'h'
   labelUnit: string; // 'Min', 'Sec', 'Hr'
   minutesEquivalent: number;
+  isDefault?: boolean;
 }
 
 class TimerCard extends LitElement {
@@ -75,6 +80,7 @@ class TimerCard extends LitElement {
       _effectiveSwitchEntity: { state: true },
       _effectiveSensorEntity: { state: true },
       _validationMessages: { state: true },
+      _isDuplicate: { state: true },
     };
   }
 
@@ -89,8 +95,10 @@ class TimerCard extends LitElement {
 
   buttons: TimerButton[] = [];
   _validationMessages: string[] = [];
+  _isDuplicate: boolean = false;
   _notificationSentForCurrentCycle: boolean = false;
   _entitiesLoaded: boolean = false;
+  _serverTimeOffset: number = 0; // Offset in ms to add to local time to get server time
 
   _effectiveSwitchEntity: string | null = null;
   _effectiveSensorEntity: string | null = null;
@@ -150,7 +158,10 @@ class TimerCard extends LitElement {
       power_button_icon_color: cfg.power_button_icon_color || null,
       entity_state_button_background_color: cfg.entity_state_button_background_color || null,
       entity_state_button_icon_color: cfg.entity_state_button_icon_color || null,
-      turn_off_on_cancel: cfg.turn_off_on_cancel !== false
+      entity_state_button_background_color_on: cfg.entity_state_button_background_color_on || null,
+      entity_state_button_icon_color_on: cfg.entity_state_button_icon_color_on || null,
+      turn_off_on_cancel: cfg.turn_off_on_cancel !== false,
+      use_default_timer: cfg.use_default_timer || false
     };
 
     if (cfg.timer_instance_id) {
@@ -205,13 +216,14 @@ class TimerCard extends LitElement {
 
         const strVal = String(val).trim().toLowerCase();
 
-        // Match numbers (including decimals) optionally followed by unit
-        const match = strVal.match(/^(\d+(?:\.\d+)?)\s*(s|sec|seconds|m|min|minutes|h|hr|hours|d|day|days)?$/);
+        // Match numbers (including decimals) optionally followed by unit, optionally ending with *
+        const match = strVal.match(/^(\d+(?:\.\d+)?)\s*(s|sec|seconds|m|min|minutes|h|hr|hours|d|day|days)?(\*)?$/);
 
         if (match) {
           const numVal = parseFloat(match[1]);
           const isFloat = match[1].includes('.');
           const unitStr = match[2] || 'min';
+          const isDefault = !!match[3];
           const isHours = unitStr.startsWith('h');
           const isDays = unitStr.startsWith('d');
 
@@ -258,11 +270,16 @@ class TimerCard extends LitElement {
 
           if (displayValue > 0) {
             const uniqueKey = `${minutesEquivalent}`;
-            if (uniqueValues.has(uniqueKey)) {
-              duplicateValues.push(val);
+            if (isDefault) {
+              // Always accept default timer (it doesn't conflict with grid buttons)
+              validatedTimerButtons.push({ displayValue, unit, labelUnit, minutesEquivalent, isDefault });
             } else {
-              uniqueValues.add(uniqueKey);
-              validatedTimerButtons.push({ displayValue, unit, labelUnit, minutesEquivalent });
+              if (uniqueValues.has(uniqueKey)) {
+                duplicateValues.push(val);
+              } else {
+                uniqueValues.add(uniqueKey);
+                validatedTimerButtons.push({ displayValue, unit, labelUnit, minutesEquivalent, isDefault });
+              }
             }
           } else {
             invalidValues.push(val);
@@ -389,14 +406,8 @@ class TimerCard extends LitElement {
         start_method: startMethod
       });
     } else {
-      // NORMAL MODE: Turn ON switch, then start timer
-      this.hass.callService("homeassistant", "turn_on", { entity_id: switchId })
-        .then(() => {
-          this.hass!.callService(DOMAIN, "start_timer", { entry_id: entryId, duration: minutes, unit: unit, start_method: startMethod });
-        })
-        .catch(error => {
-          console.error("Timer-card: Error turning on switch or starting timer:", error);
-        });
+      // NORMAL MODE: Start timer directly (Backend handles turning switch ON)
+      this.hass!.callService(DOMAIN, "start_timer", { entry_id: entryId, duration: minutes, unit: unit, start_method: startMethod });
     }
 
     this._notificationSentForCurrentCycle = false;
@@ -531,6 +542,7 @@ class TimerCard extends LitElement {
 
   connectedCallback(): void {
     super.connectedCallback();
+    this._checkDuplicateUsage();
 
     // Restore slider value per instance
     const instanceId = this._config?.timer_instance_id || 'default';
@@ -552,6 +564,7 @@ class TimerCard extends LitElement {
 
     this._determineEffectiveEntities();
     this._updateLiveRuntime();
+    this._syncServerTime(); // Sync time on load
     this._updateCountdown();
   }
 
@@ -569,6 +582,80 @@ class TimerCard extends LitElement {
       this._determineEffectiveEntities();
       this._updateLiveRuntime();
       this._updateCountdown();
+    }
+
+    // Only sync if CONFIG changed or on first load (which has _config).
+    // Do NOT sync if only HASS changed (prevents fighting between multiple card instances)
+    if (changedProperties.has("_config")) {
+      this._syncDefaultTimer();
+      this._checkDuplicateUsage();
+    }
+  }
+
+  _syncDefaultTimer(): void {
+    if (!this._config) return;
+
+    if (!this._entitiesLoaded || !this.hass || !this._effectiveSensorEntity) {
+      console.warn("Timer-card: Sync skipped - entities not loaded or missing dependencies",
+        { loaded: this._entitiesLoaded, hasHass: !!this.hass, sensor: this._effectiveSensorEntity });
+      return;
+    }
+
+    const sensor = this.hass.states[this._effectiveSensorEntity];
+    if (!sensor) {
+      console.warn("Timer-card: Sync skipped - sensor state not found", this._effectiveSensorEntity);
+      return;
+    }
+
+    const entryId = sensor.attributes.entry_id;
+    if (!entryId) {
+      console.warn("Timer-card: Sync skipped - entry_id not found in sensor attributes");
+      return;
+    }
+
+    // Determine Desired State from Card Config
+    const isReverseMode = this._config.reverse_mode || false;
+    let configEnabled = this._config.use_default_timer || false;
+
+    // Logic Mutual Exclusion: Reverse Mode overrides Default Timer
+    if (isReverseMode) {
+      configEnabled = false;
+    }
+
+    let configDuration = 0;
+    let configUnit = 'min';
+
+    // Find the default timer button (marked with *)
+    const defaultBtn = this.buttons.find(b => b.isDefault);
+    if (defaultBtn) {
+      configDuration = defaultBtn.displayValue;
+      configUnit = defaultBtn.unit;
+    } else {
+      // Safety: If enabled but no default timer button exists, force disabled logic
+      configEnabled = false;
+    }
+
+    // Determine Current Backend State
+    const currentEnabled = sensor.attributes.default_timer_enabled;
+    const currentDuration = sensor.attributes.default_timer_duration || 0;
+    const currentUnit = sensor.attributes.default_timer_unit || 'min';
+
+    // Compare and Sync if different
+    const isDifferent = (
+      configEnabled !== currentEnabled ||
+      Math.abs(configDuration - currentDuration) > 0.001 ||
+      configUnit !== currentUnit
+    );
+
+    if (isDifferent) {
+      console.info(`Timer-card: Syncing default timer to backend...`);
+      this.hass.callService(DOMAIN, "set_default_timer_config", {
+        entry_id: entryId,
+        enabled: configEnabled,
+        duration: configDuration,
+        unit: configUnit
+      }).then(() => console.log("Timer-card: Sync successful"))
+        .catch(err => console.error("Timer-card: Failed to sync default timer config:", err));
     }
   }
 
@@ -617,7 +704,9 @@ class TimerCard extends LitElement {
         // actually, restarting handling it is cleaner.
         // But to be super safe, let's just use the current captured finishesAt which is now fresh because we restarted.
 
-        const now = new Date().getTime();
+
+        // Calculate drift-corrected now
+        const now = new Date().getTime() + this._serverTimeOffset;
         const remaining = Math.max(0, Math.round((finishesAt - now) / 1000));
 
         // Format countdown based on show_seconds setting
@@ -907,8 +996,10 @@ class TimerCard extends LitElement {
     const powerIcon = this._config?.power_button_icon_color;
     const stateBg = this._config?.entity_state_button_background_color;
     const stateIcon = this._config?.entity_state_button_icon_color;
+    const stateBgOn = this._config?.entity_state_button_background_color_on;
+    const stateIconOn = this._config?.entity_state_button_icon_color_on;
 
-    if (!powerBg && !powerIcon && !stateBg && !stateIcon) {
+    if (!powerBg && !powerIcon && !stateBg && !stateIcon && !stateBgOn && !stateIconOn) {
       return ''; // No custom styling needed
     }
 
@@ -929,7 +1020,8 @@ class TimerCard extends LitElement {
       `;
     }
 
-    // Entity State Button (Top Right)
+    // Entity State Button
+    // Default (Off) State
     if (stateBg || stateIcon) {
       styles += `
         .entity-state-button {
@@ -940,6 +1032,22 @@ class TimerCard extends LitElement {
         }
         .entity-state-button.reverse ha-icon[icon] {
           ${stateIcon ? `color: ${stateIcon} !important;` : ''}
+        }
+      `;
+    }
+
+    // On State
+    if (stateBgOn || stateIconOn) {
+      styles += `
+        .entity-state-button.on {
+          ${stateBgOn ? `background-color: ${stateBgOn} !important;` : ''}
+        }
+        .entity-state-button.on ha-icon[icon] {
+          ${stateIconOn ? `color: ${stateIconOn} !important;` : ''}
+        }
+        /* Ensure specific override if needed */
+        .entity-state-button.on.reverse ha-icon[icon] {
+          ${stateIconOn ? `color: ${stateIconOn} !important;` : ''}
         }
       `;
     }
@@ -956,7 +1064,106 @@ class TimerCard extends LitElement {
     return "#" + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1);
   }
 
+  async _fetchLovelaceConfig(): Promise<any> {
+    if (!this.hass) return null;
+    try {
+      const urlPath = this._getDashboardUrlPath();
+      return await this.hass.callWS({
+        type: 'lovelace/config',
+        url_path: urlPath
+      });
+    } catch (e) {
+      console.warn("TimerCard: Failed to fetch lovelace config", e);
+      return null;
+    }
+  }
+
+  _getDashboardUrlPath(): string | null {
+    const path = window.location.pathname;
+    const parts = path.split('/');
+    if (parts.length > 1 && parts[1] !== 'lovelace') {
+      return parts[1];
+    }
+    return null;
+  }
+
+  _findUsedTimerInstances(config: any): string[] {
+    const used: string[] = [];
+    if (!config) return used;
+
+    const traverse = (node: any) => {
+      if (!node || typeof node !== 'object') return;
+
+      if (node.type === 'custom:timer-card' && node.timer_instance_id) {
+        used.push(node.timer_instance_id);
+      }
+
+      ['views', 'cards', 'sections', 'badges'].forEach(key => {
+        if (Array.isArray(node[key])) {
+          node[key].forEach(traverse);
+        }
+      });
+
+      if (node.card) traverse(node.card);
+    };
+
+    traverse(config);
+    return used;
+  }
+
+  async _checkDuplicateUsage() {
+    if (!this._config?.timer_instance_id || !this.hass) return;
+
+    const config = await this._fetchLovelaceConfig();
+    const used = this._findUsedTimerInstances(config);
+    const myId = this._config.timer_instance_id;
+
+    // Count how many times my ID appears in the config
+    const count = used.filter(id => id === myId).length;
+
+    // If > 1, it implies there is at least one other card using this ID
+    if (count > 1) {
+      if (!this._isDuplicate) {
+        console.warn(`TimerCard: Duplicate instance usage detected for '${myId}'. Blocking card.`);
+        this._isDuplicate = true;
+      }
+    } else {
+      if (this._isDuplicate) {
+        this._isDuplicate = false;
+      }
+    }
+  }
+
   render() {
+    if (this._isDuplicate) {
+      // Try to find the friendly name of the instance
+      let instanceName = this._config?.timer_instance_id;
+      if (this.hass && this._config?.timer_instance_id) {
+        const allSensors = Object.keys(this.hass.states).filter(entityId => entityId.startsWith('sensor.'));
+        const sensorId = allSensors.find(entityId => {
+          const s = this.hass!.states[entityId];
+          return s.attributes.entry_id === this._config!.timer_instance_id;
+        });
+
+        if (sensorId) {
+          const s = this.hass.states[sensorId];
+          // Prefer instance_title if available, otherwise friendly_name
+          instanceName = s.attributes.instance_title || s.attributes.friendly_name || instanceName;
+        }
+      }
+
+      return html`
+        <ha-card style="background: #ff9800; color: white; padding: 16px;">
+          <div style="font-weight: bold; font-size: 1.2em; display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+            <ha-icon icon="mdi:alert"></ha-icon>
+            Duplicate Timer Instance
+          </div>
+          <p>This timer instance ('${instanceName}') is controlled by another card on this dashboard.</p>
+          <p>Either remove the duplicate card or edit this card and select a unique timer instance.</p>
+        </ha-card>
+      `;
+    }
+
     let message: string | null = null;
     let isWarning = false;
 
@@ -970,7 +1177,7 @@ class TimerCard extends LitElement {
         ) as HAState | undefined;
 
         if (!configuredSensorState) {
-          message = `Timer Control Instance '${this._config.timer_instance_id}' not found. Please select a valid instance in the card editor.`;
+          message = `Please select a valid instance in the card editor.`;
           isWarning = true;
         } else if (typeof configuredSensorState.attributes.switch_entity_id !== 'string' || !(configuredSensorState.attributes.switch_entity_id && this.hass.states[configuredSensorState.attributes.switch_entity_id])) {
           message = `Timer Control Instance '${this._config.timer_instance_id}' linked to missing or invalid switch '${configuredSensorState.attributes.switch_entity_id}'. Please check instance configuration.`;
@@ -1063,7 +1270,7 @@ class TimerCard extends LitElement {
         <div class="card-content">
 
           
-          <!-- Independent Power Toggle (Always Visible now, Top Right) -->
+          <!-- Independent Power Toggle (Always Visible now) -->
           <div class="entity-state-button ${isOn ? 'on' : ''}"
                 @click=${this._handleIndependentPower}
                 title="Toggle Power (Independent)">
@@ -1123,6 +1330,9 @@ class TimerCard extends LitElement {
            ${this.buttons.length > 0 || (this._config?.hide_slider && isTimerActive) ? html`
           <div class="button-grid">
             ${this.buttons.map(button => {
+      // Skip default timer buttons from grid
+      if (button.isDefault) return '';
+
       // Highlight if current duration matches button (visual indicator only)
       const isActive = isTimerActive && Math.abs(timerDurationInMinutes - button.minutesEquivalent) < 0.001 && sensor.attributes.timer_start_method === 'button';
 
@@ -1171,6 +1381,25 @@ class TimerCard extends LitElement {
 
   static get styles() {
     return cardStyles;
+  }
+
+  async _syncServerTime() {
+    if (!this.hass) return;
+    try {
+      // Fetch server timestamp
+      const result: any = await this.hass.callApi('POST', 'template', {
+        template: "{{ now().timestamp() }}"
+      });
+      const serverTimestamp = parseFloat(result);
+      if (!isNaN(serverTimestamp)) {
+        const serverTimeMs = serverTimestamp * 1000;
+        const localTimeMs = new Date().getTime();
+        this._serverTimeOffset = serverTimeMs - localTimeMs;
+        // console.log("TimerCard: Server time sync. Offset (ms):", this._serverTimeOffset);
+      }
+    } catch (e) {
+      console.warn("TimerCard: Failed to sync server time", e);
+    }
   }
 }
 customElements.define("timer-card", TimerCard);

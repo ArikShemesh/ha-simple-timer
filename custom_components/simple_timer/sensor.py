@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timedelta, time
 from typing import Any, Dict
 
-from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
+from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorStateClass
 from homeassistant.const import (
     STATE_ON,
     STATE_OFF,
@@ -22,6 +22,7 @@ from homeassistant.helpers.event import (
     async_track_time_change,
     async_call_later,
     async_track_point_in_utc_time,
+    async_track_time_interval,
 )
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.storage import Store
@@ -59,6 +60,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
     _attr_has_entity_name = False
     _attr_icon = "mdi:timer"
     _attr_native_unit_of_measurement = UnitOfTime.SECONDS
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
 
     STORAGE_VERSION = 2
     STORAGE_KEY_FORMAT = f"{DOMAIN}_{{}}"
@@ -73,6 +75,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
         self._attr_unique_id = f"timer_runtime_{self._entry_id}"
         self._attr_device_class = SensorDeviceClass.DURATION
+        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
         self._attr_icon = "mdi:timer"
 
@@ -101,11 +104,18 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._timer_update_task = None
         self._is_performing_reset = False
         self._timer_start_method = None
+        self._last_accumulated_seconds = 0
 
         # Reset scheduling
         self._next_reset_date = None
         self._last_reset_was_catchup = False
         self._catchup_reset_info = None
+
+        # Default timer config
+        self._default_timer_enabled = False
+        self._default_timer_duration = 0.0
+        self._default_timer_unit = "min"
+        self._default_timer_reverse_mode = False
 
         # Storage setup
         self._storage_lock = asyncio.Lock()
@@ -232,6 +242,12 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             ATTR_TIMER_START_METHOD: self._timer_start_method,
             "show_seconds": show_seconds_setting,  # Expose show_seconds from config entry
             "reverse_mode": getattr(self, '_timer_reverse_mode', False),
+            
+            # Default timer attributes for frontend sync
+            "default_timer_enabled": self._default_timer_enabled,
+            "default_timer_duration": self._default_timer_duration,
+            "default_timer_unit": self._default_timer_unit,
+            "default_timer_reverse_mode": self._default_timer_reverse_mode,
         }
 
         if self._last_reset_was_catchup:
@@ -348,28 +364,41 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             formatted_time = f"{hours:02d}:{minutes:02d}"
             return formatted_time, "(hh:mm)"
 
-    async def _ensure_switch_state(self, desired_state: str, action_description: str) -> None:
+    async def _ensure_switch_state(self, desired_state: str, action_description: str, blocking: bool = True, force: bool = False) -> None:
         """Ensure switch is in desired state, attempt to correct if not, and warn on failure."""
         if not self._switch_entity_id:
             return
             
         current_state = self.hass.states.get(self._switch_entity_id)
+
         if not current_state:
             return
             
-        # If state is already correct, do nothing
-        if current_state.state == desired_state:
+        # If state is already correct and NOT forcing, do nothing
+        if current_state.state == desired_state and not force:
             return
             
         # State mismatch - attempt to correct
         try:
             action = "turn_on" if desired_state == "on" else "turn_off"
             await self.hass.services.async_call(
-                "homeassistant", action, {"entity_id": self._switch_entity_id}, blocking=True
+                "homeassistant", action, {"entity_id": self._switch_entity_id}, blocking=blocking
             )
             
             # Wait a moment for state change to propagate
-            await asyncio.sleep(1.0)
+            # Retry a few times to account for slow state updates from integrations
+            max_retries = 3
+            wait_time = 1.0
+            
+            for attempt in range(max_retries):
+                await asyncio.sleep(wait_time)
+                
+                updated_state = self.hass.states.get(self._switch_entity_id)
+                if updated_state and updated_state.state == desired_state:
+                    return
+                
+                # If checking failed, wait a bit longer next time
+                wait_time += 1.0
             
             # Verify correction worked
             updated_state = self.hass.states.get(self._switch_entity_id)
@@ -507,6 +536,18 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             if self._timer_state == "active":
                 _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Reset occurred during an active timer. Adjusting timer's base runtime.")
                 self._runtime_at_timer_start = 0.0 - self._calculate_timer_elapsed_since_start()
+                
+                # PERSISTENCE FIX: Save the adjusted runtime_at_start to storage immediately.
+                # Otherwise, if HA restarts, it will load the old (positive) runtime_at_start
+                # and ignore this daily reset, leading to incorrect usage calculation.
+                async with self._storage_lock:
+                    try:
+                        data = await self._store.async_load() or {}
+                        data["runtime_at_start"] = self._runtime_at_timer_start
+                        await self._store.async_save(data)
+                        _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Persisted adjusted runtime_at_start: {self._runtime_at_timer_start}s")
+                    except Exception as e:
+                        _LOGGER.error(f"Simple Timer: [{self._entry_id}] Failed to persist adjusted runtime_at_start: {e}")
 
             self._state = 0.0
             self._last_on_timestamp = None
@@ -546,40 +587,32 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
     async def _start_timer_update_task(self):
         """Start timer update task."""
-        if self._timer_update_task and not self._timer_update_task.done():
+        if self._timer_update_task:
             return
-        self._timer_update_task = self.hass.async_create_task(self._timer_update_loop())
+            
+        # Use standard HA timer helper instead of a custom loop
+        self._timer_update_task = async_track_time_interval(
+            self.hass, self._async_timer_update_tick, timedelta(seconds=1)
+        )
 
     async def _stop_timer_update_task(self):
         """Stop timer update task."""
-        if self._timer_update_task and not self._timer_update_task.done():
-            self._timer_update_task.cancel()
-            try:
-                await self._timer_update_task
-            except asyncio.CancelledError:
-                pass
+        if self._timer_update_task:
+            self._timer_update_task()  # Remove callback
             self._timer_update_task = None
 
-    async def _timer_update_loop(self):
-        """Timer update loop."""
-        try:
-            iteration = 0
-            while self._timer_state == "active" and self._timer_finishes_at and not self._stop_event_received:
-                iteration += 1
-                
-                if self._calculate_timer_remaining() <= 0:
-                    break
-                
-                # Use slower updates initially to be gentler on startup
-                update_interval = 5 if iteration <= 12 else 1
-                
-                self.async_write_ha_state()
-                await asyncio.sleep(update_interval)
-                
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            _LOGGER.error(f"Simple Timer: [{self._entry_id}] Error in timer update loop: {e}")
+    @callback
+    async def _async_timer_update_tick(self, now):
+        """Timer update tick."""
+        if self._timer_state != "active" or not self._timer_finishes_at or self._stop_event_received:
+            await self._stop_timer_update_task()
+            return
+
+        if self._calculate_timer_remaining() <= 0:
+            await self._stop_timer_update_task()
+            return
+        
+        self.async_write_ha_state()
 
     async def _async_setup_switch_listener(self) -> None:
         """Set up switch state change listener."""
@@ -639,6 +672,14 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 self._watchdog_message = None
             self._last_on_timestamp = now
             self.hass.async_create_task(self._start_realtime_accumulation())
+
+            # Auto-start default timer if enabled and idle
+            _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Switch ON detected. Default timer enabled: {self._default_timer_enabled}, State: {self._timer_state}")
+            if self._default_timer_enabled and self._timer_state == "idle" and self._default_timer_duration > 0:
+                _LOGGER.info(f"Simple Timer: [{self._entry_id}] Auto-starting default timer ({self._default_timer_duration} {self._default_timer_unit}, reverse={self._default_timer_reverse_mode})")
+                self.hass.async_create_task(
+                    self.async_start_timer(self._default_timer_duration, self._default_timer_unit, reverse_mode=self._default_timer_reverse_mode)
+                )
 
         # Switch transitioned to a non-ON state
         elif to_state.state != STATE_ON:
@@ -711,83 +752,81 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         if self._stop_event_received:
             return
         
-        if self._accumulation_task and not self._accumulation_task.done():
+        # If already running, don't start again
+        if self._accumulation_task:
             return
+            
+        current_switch_state = self.hass.states.get(self._switch_entity_id) if self._switch_entity_id else None
         
-        if not self._last_on_timestamp:
-            current_switch_state = self.hass.states.get(self._switch_entity_id) if self._switch_entity_id else None
-            if current_switch_state and current_switch_state.state == STATE_ON:
+        # Only start if switch is ON (or we are in a permissive state)
+        if current_switch_state and current_switch_state.state == STATE_ON:
+            if not self._last_on_timestamp:
                 self._last_on_timestamp = dt_util.utcnow()
-            else:
-                return
+        else:
+             return
+             
+        # Initialize session state
+        # We perform accumulation by adding the elapsed time of CURRENT session to the base state
+        # The base state is the state at the beginning of THIS accumulation session
+        self._last_accumulated_seconds = 0
         
-        self._accumulation_task = self.hass.async_create_task(self._async_accumulate_runtime())
+        # Use standard HA timer helper instead of a custom loop
+        # Update once per second - the frontend card handles smooth interpolation
+        self._accumulation_task = async_track_time_interval(
+            self.hass, self._async_update_accumulated_runtime, timedelta(seconds=1)
+        )
 
     async def _stop_realtime_accumulation(self) -> None:
         """Stop real-time accumulation task."""
-        if self._accumulation_task and not self._accumulation_task.done():
-            self._accumulation_task.cancel()
-            try:
-                await self._accumulation_task
-            except asyncio.CancelledError:
-                pass
+        if self._accumulation_task:
+            self._accumulation_task()  # This is a remove callback for async_track_time_interval
             self._accumulation_task = None
-
-    async def _async_accumulate_runtime(self) -> None:
-        """Accumulate runtime while switch is on using actual elapsed time."""
-        try:
-            # For timer-based accumulation, use a more precise approach
-            # Initialize base runtime for this accumulation session
-            base_runtime = self._state
-            last_whole_second = -1
             
-            while not self._stop_event_received:
-                if not self._switch_entity_id:
-                    break
-                
-                current_switch_state = self.hass.states.get(self._switch_entity_id)
-                
-                # OBSERVER LOGIC: Accumulate ONLY if switch is ON
-                should_accumulate = (
-                    current_switch_state 
-                    and self._last_on_timestamp
-                    and (
-                        current_switch_state.state == STATE_ON 
-                        or current_switch_state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN)
-                    )
-                )
+        # Ensure final state update when stopping
+        if self._last_on_timestamp:
+             # Final update to capture any sub-second remainder or final segment
+             self._async_update_accumulated_runtime(dt_util.utcnow(), final_update=True)
 
-                if should_accumulate:
-                    # Calculate total elapsed time from when switch turned on
-                    now = dt_util.utcnow()
-                    total_elapsed = (now - self._last_on_timestamp).total_seconds()
-                    current_whole_second = round(total_elapsed)
-                    
-                    # Only update when we cross a whole second boundary
-                    if current_whole_second != last_whole_second:
-                        self._state = base_runtime + current_whole_second
-                        last_whole_second = current_whole_second
-                        self.async_write_ha_state()
-                    
-                    await asyncio.sleep(0.05)  # Check 20 times per second for accuracy
-                else:
-                    break # Stop loop if definitively OFF
-                    
-        except asyncio.CancelledError:
-            # If the timer is finishing normally OR a reset is happening, do nothing.
-            if getattr(self, '_is_finishing_normally', False) or getattr(self, '_is_performing_reset', False):
-                raise
+    @callback
+    def _async_update_accumulated_runtime(self, now, final_update=False) -> None:
+        """Periodically update the accumulated runtime."""
+        if self._stop_event_received or not self._switch_entity_id:
+            if not final_update:
+                self.hass.async_create_task(self._stop_realtime_accumulation())
+            return
 
-            # Ensure final state is correct when cancelled MANUALLY or externally
-            # The accumulation loop updates self._state incrementally.
-            # If the loop exited, we trust the accumulated value.
-            if self._last_on_timestamp:
-               pass
+        current_switch_state = self.hass.states.get(self._switch_entity_id)
+        
+        # Accumulate ONLY if switch is ON
+        should_accumulate = (
+            current_switch_state 
+            and self._last_on_timestamp
+            and (
+                current_switch_state.state == STATE_ON 
+                or current_switch_state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN)
+            )
+        )
 
-            self.async_write_ha_state()
-            raise
-        except Exception as e:
-            _LOGGER.error(f"Simple Timer: [{self._entry_id}] Error in accumulation task: {e}")
+        if should_accumulate:
+            # Calculate total elapsed time from when switch turned on
+            # We calculate purely based on (NOW - START) to avoid drift
+            total_elapsed = (dt_util.utcnow() - self._last_on_timestamp).total_seconds()
+            current_whole_second = round(total_elapsed)
+            
+            # Since self._state is monotonic, we only add the *difference* since last update
+            # OR we can just rely on the fact that self._state should be base + elapsed,
+            # but self._state might be modified by other things (like resets).
+            # The safest way for "accumulation" is:
+            # self._state += (current_whole_second - self._last_accumulated_seconds)
+            
+            diff = current_whole_second - self._last_accumulated_seconds
+            if diff > 0:
+                self._state += diff
+                self._last_accumulated_seconds = current_whole_second
+                self.async_write_ha_state()
+        else:
+            if not final_update:
+                self.hass.async_create_task(self._stop_realtime_accumulation())
 
     async def async_start_timer(self, duration: float, unit: str = "min", reverse_mode: bool = False, start_method: str = "button") -> None:
         """Start a countdown timer with synchronized accumulation."""
@@ -1047,6 +1086,11 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         """Handle timer completion with runtime compensation."""
         _LOGGER.info(f"Simple Timer: [{self._entry_id}] Timer finished")
         
+        # Guard against zombie execution during shutdown
+        if self._stop_event_received or self.hass.state == CoreState.stopping:
+            _LOGGER.info(f"Simple Timer: [{self._entry_id}] Timer finished during shutdown - ignoring to preserve state")
+            return
+        
         if self._timer_state != "active":
             return
             
@@ -1064,7 +1108,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                     await self.hass.services.async_call(
                         "homeassistant", "turn_on", {"entity_id": self._switch_entity_id}, blocking=True
                     )
-                    await self._ensure_switch_state("on", "Reverse timer completion turn-on")
+                    await self._ensure_switch_state("on", "Reverse timer completion turn-on", blocking=True)
                     
                     # Reset state to not count the timer wait time as usage
                     # In reverse mode, usage should start from when switch turns ON
@@ -1076,6 +1120,21 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 # NORMAL MODE: Original logic - turn switch OFF
                 await self._stop_realtime_accumulation()
                 
+                # FORCE PRECISE ACCUMULATION FOR TIMER DURATION
+                # This ensures that even if accumulation missed a second, we record the exact timer duration
+                if self._runtime_at_timer_start is not None:
+                     # Calculate what the state should be: base + duration
+                     # But we must be careful not to double count if the timer was extended
+                     # Actually, simplest path: Duration is king when limiting.
+                     
+                     # We want total usage = runtime_at_start + total_elapsed_during_timer
+                     # runtime_at_start was the snapshot when timer started.
+                     # duration is in minutes. 
+                     
+                     expected_usage = self._runtime_at_timer_start + (self._timer_duration * 60)
+                     self._state = round(expected_usage)
+                     _LOGGER.info(f"Simple Timer: [{self._entry_id}] Corrected final usage to {self._state}s (Target: {expected_usage}s)")
+
                 self.async_write_ha_state()
                 
                 await asyncio.sleep(0.1)
@@ -1087,7 +1146,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 await self._cleanup_timer_state()
                 
                 if self._switch_entity_id:
-                    await self._ensure_switch_state("off", "Timer completion turn-off")
+                    await self._ensure_switch_state("off", "Timer completion turn-off", blocking=True)
                     
                 await self._send_notification(f"Timer was turned off - daily usage {formatted_time} {label}")
             
@@ -1122,9 +1181,8 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
     async def _handle_ha_shutdown(self, event):
         """Handle Home Assistant shutdown."""
-        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Home Assistant shutdown - cancelling tasks")
-        
         self._stop_event_received = True
+        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Home Assistant shutdown - cancelling tasks")
         
         # Cancel all tasks
         if self._accumulation_task and not self._accumulation_task.done():
@@ -1193,6 +1251,25 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Manual sync entity registry update failed: {e}")
 
         return True
+
+    async def async_set_default_timer_config(self, enabled: bool, duration: float, unit: str, reverse_mode: bool = False):
+        """Update default timer configuration and save to storage."""
+        self._default_timer_enabled = enabled
+        self._default_timer_duration = duration
+        self._default_timer_unit = unit
+        self._default_timer_reverse_mode = reverse_mode
+        
+        async with self._storage_lock:
+            data = await self._store.async_load() or {}
+            data["default_timer"] = {
+                "enabled": enabled,
+                "duration": duration,
+                "unit": unit,
+                "reverse_mode": reverse_mode
+            }
+            await self._store.async_save(data)
+            
+        self.async_write_ha_state()
 
     async def async_added_to_hass(self):
         """Called when entity is added to hass - startup-safe initialization."""
@@ -1273,27 +1350,33 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             self._state = 0.0
 
     async def _wait_for_startup_completion(self):
-        """Wait for HA startup to complete with defensive readiness checks."""
+        """Wait for HA startup or essential dependencies with defensive checks."""
         try:
-            _LOGGER.info(f"Simple Timer: [{self._entry_id}] Waiting for HA startup completion...")
+            _LOGGER.info(f"Simple Timer: [{self._entry_id}] Waiting for HA startup or dependencies...")
             
-            # Primary safety: traditional timeout as fallback
-            max_total_wait = 60  # 1 minute maximum
+            # Setup switch entity ID from config early for checks
+            self._switch_entity_id = getattr(self._entry, 'data', {}).get('switch_entity_id')
+            
+            max_wait = 60
             start_time = dt_util.utcnow()
+            check_interval = 1
             
-            # Check HA core state first (most reliable indicator)
-            core_ready = await self._wait_for_core_state(max_total_wait)
-            if not core_ready:
-                elapsed = (dt_util.utcnow() - start_time).total_seconds()
-                _LOGGER.warning(f"Simple Timer: [{self._entry_id}] HA core not ready after {elapsed:.1f}s, continuing with initialization")
+            # 1. Wait for Core State Running
+            if self.hass.state != CoreState.running:
+                _LOGGER.info(f"Simple Timer: [{self._entry_id}] Waiting for HA Core (current: {self.hass.state})...")
+                await self._wait_for_core_state(CoreState.running)
             
-            # Optional additional readiness checks with individual timeouts
-            remaining_time = max_total_wait - (dt_util.utcnow() - start_time).total_seconds()
-            if remaining_time > 5:  # Only if we have time left
-                await self._check_optional_readiness(min(remaining_time, 15))
+            # 2. Wait for dependencies even after Core is running
+            # This ensures that even if Core says "running", we give integrations like Z-Wave/Zigbee
+            # a chance to fully initialize their entities.
+            while (dt_util.utcnow() - start_time).total_seconds() < max_wait:
+                if await self._are_dependencies_ready():
+                    _LOGGER.info(f"Simple Timer: [{self._entry_id}] Dependencies ready")
+                    break
+                await asyncio.sleep(check_interval)
             
             elapsed = (dt_util.utcnow() - start_time).total_seconds()
-            _LOGGER.info(f"Simple Timer: [{self._entry_id}] Startup wait completed after {elapsed:.1f}s, proceeding with initialization")
+            _LOGGER.info(f"Simple Timer: [{self._entry_id}] Startup wait completed after {elapsed:.1f}s")
             
             await self._complete_initialization()
             
@@ -1305,48 +1388,31 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             except Exception as init_error:
                 _LOGGER.error(f"Simple Timer: [{self._entry_id}] Error during fallback initialization: {init_error}")
 
-    async def _wait_for_core_state(self, max_wait: float) -> bool:
-        """Wait for HA core to reach running state with timeout."""
-        check_interval = 1
-        elapsed = 0
-        
-        while elapsed < max_wait:
-            if self.hass.state == CoreState.running:
-                _LOGGER.debug(f"Simple Timer: [{self._entry_id}] HA core ready after {elapsed:.1f}s")
-                return True
-            
-            await asyncio.sleep(check_interval)
-            elapsed += check_interval
-        
-        return False
+    async def _wait_for_core_state(self, target_state: CoreState):
+        """Wait for HA core to reach a specific state."""
+        start = dt_util.utcnow()
+        while self.hass.state != target_state:
+            if (dt_util.utcnow() - start).total_seconds() > 60:
+                _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Timed out waiting for CoreState.{target_state}")
+                return
+            await asyncio.sleep(1)
+        _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Reached CoreState.{target_state}")
 
-    async def _check_optional_readiness(self, max_wait: float):
-        """Check optional readiness indicators with individual timeouts."""
-        checks = [
-            ("Entity registry", self._safe_check_entity_registry),
-            ("Service registry", self._safe_check_service_registry),
-        ]
-        
-        # Only check switch if we have the entity ID from config
-        switch_entity_id = getattr(self._entry, 'data', {}).get('switch_entity_id')
-        if switch_entity_id:
-            self._switch_entity_id = switch_entity_id
-            checks.append(("Switch entity", self._safe_check_switch_entity))
-        
-        check_timeout = max_wait / len(checks)  # Divide time among checks
-        
-        for check_name, check_func in checks:
-            try:
-                # Individual check with timeout
-                ready = await asyncio.wait_for(check_func(), timeout=check_timeout)
-                if ready:
-                    _LOGGER.debug(f"Simple Timer: [{self._entry_id}] {check_name} ready")
-                else:
-                    _LOGGER.debug(f"Simple Timer: [{self._entry_id}] {check_name} not ready, continuing anyway")
-            except asyncio.TimeoutError:
-                _LOGGER.debug(f"Simple Timer: [{self._entry_id}] {check_name} check timed out")
-            except Exception as e:
-                _LOGGER.debug(f"Simple Timer: [{self._entry_id}] {check_name} check failed: {e}")
+    async def _are_dependencies_ready(self) -> bool:
+        """Check if all essential dependencies are ready."""
+        # 1. Entity Registry
+        if not await self._safe_check_entity_registry():
+            return False
+            
+        # 2. Service Registry
+        if not await self._safe_check_service_registry():
+            return False
+            
+        # 3. Switch Entity (if configured)
+        if not await self._safe_check_switch_entity():
+            return False
+            
+        return True
 
     async def _safe_check_entity_registry(self) -> bool:
         """Safely check if entity registry is ready."""
@@ -1399,6 +1465,14 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             
             # Load storage data
             storage_data = await self._load_storage_data()
+            
+            # Restore default timer config
+            if "default_timer" in storage_data:
+                dt_config = storage_data["default_timer"]
+                self._default_timer_enabled = dt_config.get("enabled", False)
+                self._default_timer_duration = dt_config.get("duration", 0.0)
+                self._default_timer_unit = dt_config.get("unit", "min")
+                _LOGGER.info(f"Simple Timer: [{self._entry_id}] Restored default timer config: {self._default_timer_enabled}, {self._default_timer_duration} {self._default_timer_unit}")
             
             # Initialize reset scheduling with configurable reset time
             await self._setup_reset_scheduling(storage_data)
@@ -1576,35 +1650,40 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             # Runtime should start from when timer finishes (now), not include countdown period
             _LOGGER.info(f"Simple Timer: [{self._entry_id}] Reverse mode timer expired - device will turn ON now")
             # Don't add the timer duration to runtime since device was OFF during countdown
+        else:
             # For normal mode: device was ON during timer, add full duration to runtime
             # Since timer expired offline, we assume it completed successfully.
             if self._timer_duration > 0 and hasattr(self, '_runtime_at_timer_start'):
                 expected_runtime = self._timer_duration * 60  # Whole seconds
-                self._state = self._runtime_at_timer_start + expected_runtime
+                # Use round() for more accurate integer seconds
+                self._state = self._runtime_at_timer_start + round(expected_runtime)
                 _LOGGER.info(f"Simple Timer: [{self._entry_id}] Set runtime for expired normal timer: {self._state}s (start: {self._runtime_at_timer_start}s + duration: {expected_runtime}s)")
         
-        # Add watchdog message
-        self._watchdog_message = "Warning: Home assistant was offline during a running timer! Usage time may be unsynchronized."
-        
-        # Get usage for notification
+        # Get usage for notification BEFORE cleaning up (as cleanup might affect state access?)
+        # Actually _state is safe.
         current_usage = self._state
         notification_entity, show_seconds = await self._get_card_notification_config()
         formatted_time, label = self._format_time_for_notification(current_usage, show_seconds)
         
-        # Clean up timer state
+        # FIX: Clear last_on_timestamp BEFORE cleanup to prevent final accumulation update from adding offline time
+        self._last_on_timestamp = None
+
+        # Clean up timer state FIRST to ensure we are in a clean idle state
         await self._cleanup_timer_state()
+        
+        # Add watchdog message AFTER cleanup so it persists
+        self._watchdog_message = "Warning: Home assistant was offline during a running timer! Usage time may be unsynchronized."
+        self.async_write_ha_state() # Ensure message is written to state
         
         # Handle switch state based on timer mode
         if reverse_mode:
             # For reverse mode: timer finished, turn switch ON and start accumulation
             if self._switch_entity_id:
                 try:
-                    await self.hass.services.async_call(
-                        "homeassistant", "turn_on", {"entity_id": self._switch_entity_id}, blocking=True
-                    )
-                    await self._ensure_switch_state("on", "Expired reverse timer turn-on")
+                    # Use robust retry logic
+                    await self._ensure_switch_state_with_retries("on", "Expired reverse timer turn-on")
                     
-                    # Start accumulation since device is now ON
+                    # Start accumulation since device is now ON (or will be soon)
                     self._last_on_timestamp = dt_util.utcnow()
                     await self._start_realtime_accumulation()
                     
@@ -1618,16 +1697,75 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             # For normal mode: timer finished, turn switch OFF
             if self._switch_entity_id:
                 try:
-                    await self.hass.services.async_call(
-                        "homeassistant", "turn_off", {"entity_id": self._switch_entity_id}, blocking=True
-                    )
-                    await self._ensure_switch_state("off", "Expired timer turn-off")
+                    # Use robust retry logic
+                    await self._ensure_switch_state_with_retries("off", "Expired timer turn-off", force=True)
                 except Exception as e:
                     _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Could not turn off switch: {e}")
             
             # Send notification
             await asyncio.sleep(1)
             await self._send_notification(f"Timer was turned off - daily usage {formatted_time} {label}")
+
+    async def _ensure_switch_state_with_retries(self, desired_state: str, context: str, force: bool = False):
+        """Ensure switch state with retries to handle startup unavailability."""
+        if not self._switch_entity_id:
+            return
+
+        # First attempt (blocking to try and get it right immediately)
+        # We wrap this in try/except to ensure we proceed to scheduling retry even if first attempt fails
+        try:
+             await self._ensure_switch_state(desired_state, context, blocking=True, force=force)
+        except Exception as e:
+             _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Initial switch attempt failed: {e}")
+
+        # Schedule background verification
+        self.hass.async_create_task(self._verify_and_retry_switch_state(desired_state, self._switch_entity_id, force=force))
+
+    async def _verify_and_retry_switch_state(self, desired_state: str, entity_id: str, attempt: int = 1, force: bool = False):
+        """Background task to verify switch state and retry if needed."""
+        # Wait before checking (exponential-ish backoff: 2s, 5s, 10s, 20s)
+        delays = [2, 5, 10, 20]
+        if attempt > len(delays):
+            return
+            
+        await asyncio.sleep(delays[attempt-1])
+        
+        # Safety Check: If we are trying to turn OFF, but a new timer has started and is active, ABORT.
+        # This prevents the retry logic from fighting a user who just started a new timer.
+        if desired_state == "off" and self._timer_state == "active":
+             _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Aborting switch retry (off) because timer is now active")
+             return
+             
+        current_state_obj = self.hass.states.get(entity_id)
+        if not current_state_obj:
+             # Entity missing, definitely retry
+             _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Switch entity missing during verify, scheduling retry {attempt+1}")
+             self.hass.async_create_task(self._verify_and_retry_switch_state(desired_state, entity_id, attempt + 1, force=force))
+             return
+             
+        actual = current_state_obj.state
+        
+        # Check if state matches
+        # If forcing (on first retry attempt), we ignore the match check to deal with stale HA state
+        state_match = (actual == desired_state)
+        should_skip_check = (force and attempt == 1)
+        
+        if state_match and not should_skip_check:
+             return
+             
+        # If unavailable/unknown, we retry
+        # If definitive mismatch (e.g. ON when should be OFF), we retry
+        
+        _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Switch state mismatch detected (Expected {desired_state}, got {actual}). Retrying attempt {attempt}...")
+        
+        action = "turn_on" if desired_state == "on" else "turn_off"
+        try:
+            await self.hass.services.async_call("homeassistant", action, {"entity_id": entity_id}, blocking=True)
+        except Exception as e:
+            _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Retry attempt {attempt} failed: {e}")
+        
+        # Schedule next check
+        self.hass.async_create_task(self._verify_and_retry_switch_state(desired_state, entity_id, attempt + 1, force=force))
 
     async def _handle_expired_reverse_timer(self):
         """Handle reverse mode timer that expired while HA was offline."""
@@ -1652,7 +1790,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 
                 try:
                     await self.hass.services.async_call(
-                        "homeassistant", "turn_on", {"entity_id": self._switch_entity_id}, blocking=True
+                        "homeassistant", "turn_on", {"entity_id": self._switch_entity_id}, blocking=False
                     )
                     
                     # Wait and check if it worked
@@ -1663,7 +1801,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                     else:
                         _LOGGER.error(f"Simple Timer: [{self._entry_id}] Could not get updated switch state!")
                     
-                    await self._ensure_switch_state("on", "Expired reverse timer completion turn-on")
+                    await self._ensure_switch_state("on", "Expired reverse timer completion turn-on", blocking=False, force=True)
                     
                 except Exception as switch_error:
                     _LOGGER.error(f"Simple Timer: [{self._entry_id}] ERROR turning switch ON: {switch_error}")
@@ -1732,9 +1870,16 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 # For reverse mode, we don't add offline time since device was OFF
                 reverse_mode = getattr(self, '_timer_reverse_mode', False)
                 if not reverse_mode:
-                    # Add offline time to the current state only for normal timers
-                    _LOGGER.info(f"Simple Timer: [{self._entry_id}] Adjusting for offline gap of {int(offline_seconds)}s")
-                    self._state += int(offline_seconds)
+                    # For normal timers, recalculate total usage from start time if available
+                    # This is more accurate than adding offline time to potentially stale state
+                    if self._runtime_at_timer_start is not None and self._timer_start_moment:
+                         elapsed = (now - self._timer_start_moment).total_seconds()
+                         self._state = self._runtime_at_timer_start + int(elapsed)
+                         _LOGGER.info(f"Simple Timer: [{self._entry_id}] Recalculated usage from start time: {self._state}s")
+                    else:
+                        # Fallback to adding offline time if we lack start data
+                        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Adjusting for offline gap of {int(offline_seconds)}s")
+                        self._state += int(offline_seconds)
                     
                     # CRITICAL: We MUST reset _last_on_timestamp to NOW.
                     # Why? Because self._state now includes everything up to NOW.
@@ -1754,10 +1899,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         reverse_mode = getattr(self, '_timer_reverse_mode', False)
         if reverse_mode:
             # For reverse mode, ensure switch stays OFF during countdown
-            await self._ensure_switch_state("off", "Reverse timer state verification on restart")
+            await self._ensure_switch_state("off", "Reverse timer state verification on restart", blocking=True)
         else:
             # For normal mode, ensure switch is ON
-            await self._ensure_switch_state("on", "Active timer state verification on restart")
+            await self._ensure_switch_state("on", "Active timer state verification on restart", blocking=True)
 
     async def _start_accumulation_if_needed(self):
         """Start accumulation if switch is on."""

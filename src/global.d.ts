@@ -21,8 +21,11 @@ interface TimerCardConfig {
   power_button_icon_color?: string | null;
   entity_state_button_background_color?: string | null;
   entity_state_button_icon_color?: string | null;
+  entity_state_button_background_color_on?: string | null;
+  entity_state_button_icon_color_on?: string | null;
   entity_state_icon?: string | null;
   turn_off_on_cancel?: boolean;
+  use_default_timer?: boolean;
 }
 
 // Define the structure for a Home Assistant state object

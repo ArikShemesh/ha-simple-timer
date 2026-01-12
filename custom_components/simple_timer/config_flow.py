@@ -508,7 +508,7 @@ class SimpleTimerOptionsFlow(config_entries.OptionsFlow):
                             name=sensor.name
                         )
                     
-                    _LOGGER.info(f"Simple Timer: FORCED complete sensor update - new name: '{sensor.name}', reset_time: '{reset_time}'")
+                    _LOGGER.info(f"Simple Timer: FORCED complete sensor update - new name: '{sensor.name}', reset_time: '{self.config_entry.data.get('reset_time')}'")
                 else:
                     _LOGGER.warning(f"Simple Timer: Sensor not found in hass.data for entry {self.config_entry.entry_id}")
         except Exception as e:
