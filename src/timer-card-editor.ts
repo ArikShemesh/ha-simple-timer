@@ -84,7 +84,6 @@ class TimerCardEditor extends LitElement {
   _configFullyLoaded: boolean = false; // Track if we've received a complete config
 
   private _timerInstancesOptions: Array<{ value: string; label: string }> = [];
-  private _usedInstances: Set<string> = new Set();
   private _tempSliderMaxValue: string | null = null;
   private _newTimerButtonValue: string = "";
 
@@ -205,9 +204,15 @@ class TimerCardEditor extends LitElement {
       const seen = new Set<string>();
 
       configButtons.forEach(val => {
-        const strVal = String(val).trim().toLowerCase();
-        // Allow pure numbers (including decimals), numbers with unit suffix, optionally ending with *
-        const match = strVal.match(/^(\d+(?:\.\d+)?)\s*(s|sec|seconds|m|min|minutes|h|hr|hours|d|day|days)?(\*)?$/);
+        let strVal = String(val).trim().toLowerCase();
+
+        // AUTO-MIGRATION: Strip legacy default timer asterisk (*)
+        if (strVal.endsWith('*')) {
+          strVal = strVal.slice(0, -1);
+        }
+
+        // Allow pure numbers (including decimals), numbers with unit suffix
+        const match = strVal.match(/^(\d+(?:\.\d+)?)\s*(s|sec|seconds|m|min|minutes|h|hr|hours|d|day|days)?$/);
 
         if (match) {
           const numVal = parseFloat(match[1]);
@@ -218,7 +223,6 @@ class TimerCardEditor extends LitElement {
 
           // User Restriction: Fractional numbers only allowed for hours and days
           if (isFloat && !isHours && !isDays) {
-            // Skip this value, it's invalid per rule
             return;
           }
 
@@ -239,35 +243,23 @@ class TimerCardEditor extends LitElement {
           if (!unitStr || ['m', 'min', 'minutes'].includes(unitStr)) {
             // Minutes case (pure number or "15min")
             if (numVal > 0 && numVal <= 9999) {
-              const isDefault = strVal.endsWith('*');
-              if (isDefault) {
-                // Default timers are allowed even if minute value exists
-                validatedButtons.push(val);
-              } else {
-                if (!seen.has(String(numVal))) {
-                  validatedButtons.push(numVal);
-                  seen.add(String(numVal));
-                }
+              if (!seen.has(String(numVal))) {
+                validatedButtons.push(numVal);
+                seen.add(String(numVal));
               }
             }
           } else {
             // Strings with other units (e.g. "30s", "1h")
-            const isDefault = strVal.endsWith('*');
-            if (isDefault) {
-              // Default timers are allowed even if string value exists
-              validatedButtons.push(val);
-            } else {
-              if (!seen.has(strVal)) {
-                validatedButtons.push(val);
-                seen.add(strVal);
-              }
+            // Use the cleaned strVal (without *)
+            if (!seen.has(strVal)) {
+              validatedButtons.push(val.toString().replace('*', '')); // Push raw value sans *
+              seen.add(strVal);
             }
           }
         }
       });
 
       // Sort: numbers first (sorted), then strings (alphabetical or just appended)
-      // Actually standard logic sorts numbers. 
       const numbers = validatedButtons.filter(b => typeof b === 'number') as number[];
       const strings = validatedButtons.filter(b => typeof b === 'string') as string[];
 
@@ -312,8 +304,7 @@ class TimerCardEditor extends LitElement {
       entity_state_button_icon_color: cfg.entity_state_button_icon_color || null,
       entity_state_button_background_color_on: cfg.entity_state_button_background_color_on || null,
       entity_state_button_icon_color_on: cfg.entity_state_button_icon_color_on || null,
-      turn_off_on_cancel: cfg.turn_off_on_cancel !== false,
-      use_default_timer: cfg.use_default_timer || false
+      turn_off_on_cancel: cfg.turn_off_on_cancel !== false
     };
 
     if (cfg.timer_instance_id) {
@@ -360,37 +351,7 @@ class TimerCardEditor extends LitElement {
 
   async _fetchTimerInstances() {
     if (this.hass) {
-
       this._timerInstancesOptions = await this._getSimpleTimerInstances();
-
-      // Fetch currently used instances from Lovelace config to prevent duplicates
-      const lovelaceConfig = await this._fetchLovelaceConfig();
-      const usedList = this._findUsedTimerInstances(lovelaceConfig);
-      this._usedInstances = new Set(usedList);
-
-      if (!this._configFullyLoaded) {
-        this.requestUpdate();
-        return;
-      }
-
-      // Auto-Resolution: Check for duplicates
-      if (this._config?.timer_instance_id) {
-        const currentId = this._config.timer_instance_id;
-        const count = usedList.filter(id => id === currentId).length;
-        // If count > 1, it means this ID is used by at least one OTHER card (plus this one, or multiple others)
-        if (count > 1) {
-          console.warn(`TimerCardEditor: Duplicate usage detected for '${currentId}' (count: ${count}). Auto-clearing.`);
-          const updatedConfig: TimerCardConfig = { ...this._config, timer_instance_id: null };
-          this._config = updatedConfig;
-          this.dispatchEvent(
-            new CustomEvent("config-changed", {
-              detail: { config: this._config },
-              bubbles: true,
-              composed: true,
-            }),
-          );
-        }
-      }
 
       // Only validate that existing configured instances still exist
       if (this._config?.timer_instance_id && this._timerInstancesOptions.length > 0) {
@@ -423,58 +384,6 @@ class TimerCardEditor extends LitElement {
     }
   }
 
-  async _fetchLovelaceConfig(): Promise<any> {
-    if (!this.hass) return null;
-    try {
-      const urlPath = this._getDashboardUrlPath();
-      return await this.hass.callWS({
-        type: 'lovelace/config',
-        url_path: urlPath
-      });
-    } catch (e) {
-      console.warn("TimerCardEditor: Failed to fetch lovelace config", e);
-      return null;
-    }
-  }
-
-  _getDashboardUrlPath(): string | null {
-    const path = window.location.pathname;
-    const parts = path.split('/');
-    // Check if it is a specific dashboard
-    // Standard default: /lovelace/... or /lovelace
-    // Specific: /dashboard-name/...
-    if (parts.length > 1 && parts[1] !== 'lovelace') {
-      return parts[1];
-    }
-    return null; // Default dashboard
-  }
-
-  _findUsedTimerInstances(config: any): string[] {
-    const used: string[] = [];
-    if (!config) return used;
-
-    const traverse = (node: any) => {
-      if (!node || typeof node !== 'object') return;
-
-      if (node.type === 'custom:timer-card' && node.timer_instance_id) {
-        used.push(node.timer_instance_id);
-      }
-
-      // Arrays of views, cards, sections, etc.
-      ['views', 'cards', 'sections', 'badges'].forEach(key => {
-        if (Array.isArray(node[key])) {
-          node[key].forEach(traverse);
-        }
-      });
-
-      // Single card wrappers (like conditional, etc sometimes wrap 'card')
-      if (node.card) traverse(node.card);
-    };
-
-    traverse(config);
-    return used;
-  }
-
   _handleNewTimerInput(event: InputEvent): void {
     const target = event.target as HTMLInputElement;
     this._newTimerButtonValue = target.value;
@@ -484,18 +393,18 @@ class TimerCardEditor extends LitElement {
     const val = this._newTimerButtonValue.trim();
     if (!val) return;
 
-    // Validate using the same regex as the card
-    const match = val.match(/^(\d+(?:\.\d+)?)\s*(s|sec|seconds|m|min|minutes|h|hr|hours|d|day|days)?(\*)?$/i);
+    // Validate using the same regex as the card (NO asterisk)
+    const match = val.match(/^(\d+(?:\.\d+)?)\s*(s|sec|seconds|m|min|minutes|h|hr|hours|d|day|days)?$/i);
 
     if (!match) {
-      alert("Invalid format! Use format like: 30, 30s, 10m, 1.5h, 1d. Add * for default timer (e.g. 30*)");
+      alert("Invalid format! Use format like: 30, 30s, 10m, 1.5h, 1d.");
       return;
     }
 
     const numVal = parseFloat(match[1]);
     const isFloat = match[1].includes('.');
     const unitStr = (match[2] || 'min').toLowerCase();
-    const isDefault = !!match[3];
+
     const isHours = unitStr.startsWith('h');
     const isDays = unitStr.startsWith('d');
 
@@ -534,15 +443,9 @@ class TimerCardEditor extends LitElement {
     let currentButtons = Array.isArray(this._config?.timer_buttons) ? [...this._config!.timer_buttons] : [];
 
     // Normalize logic: Store numbers as numbers (minutes), strings as strings (with units)
-    // If user enters "30", treat as 30 min (number)
-    // If user enters "30m", treat as "30m" (string)? OR normalize "30m" -> 30?
-    // Current backend/frontend supports mixed. Let's keep it simple: if valid, add as string unless it's pure number
-
     let valueToAdd: string | number = val;
-    // Optional: normalize pure numbers to number type for consistency with legacy, 
-    // but the regex allows units. 
-    // If no unit provided, match[2] is undefined.
-    if (!match[2] && !isDefault) {
+    // Optional: normalize pure numbers to number type for consistency
+    if (!match[2]) {
       valueToAdd = numVal;
     }
 
@@ -551,11 +454,6 @@ class TimerCardEditor extends LitElement {
       this._newTimerButtonValue = ""; // Clear input anyway
       this.requestUpdate();
       return;
-    }
-
-    if (isDefault) {
-      // Remove existing default timer if any
-      currentButtons = currentButtons.filter(b => !String(b).includes('*'));
     }
 
     currentButtons.push(valueToAdd);
@@ -608,6 +506,25 @@ class TimerCardEditor extends LitElement {
       instanceOptions.push({ value: "none_found", label: "No Simple Timer Instances Found" });
     }
 
+    // Determine if default timer is enabled for the selected instance
+    let isDefaultTimerEnabled = false;
+    let defaultTimerDetails = "";
+
+    if (this._config?.timer_instance_id && this.hass && this.hass.states) {
+      const states = Object.values(this.hass.states);
+      const sensorState = states.find((s: any) =>
+        s.entity_id.startsWith('sensor.') &&
+        s.attributes.entry_id === this._config.timer_instance_id
+      );
+
+      if (sensorState && sensorState.attributes.default_timer_enabled) {
+        isDefaultTimerEnabled = true;
+        const duration = sensorState.attributes.default_timer_duration;
+        const unit = sensorState.attributes.default_timer_unit || 'min';
+        defaultTimerDetails = `(${duration}${unit})`;
+      }
+    }
+
     // Get actual theme colors for defaults
     const defaultSliderThumbColor = "#2ab69c";
     const defaultSliderBackgroundColor = this._getThemeColorHex('--secondary-background-color', '#424242');
@@ -644,15 +561,9 @@ class TimerCardEditor extends LitElement {
             required
           >
             ${instanceOptions.map(option => {
-      const isUsed = this._usedInstances.has(option.value);
-      const isCurrent = option.value === this._config?.timer_instance_id;
-      // Disable if used AND not the currently selected one
-      const disabled = isUsed && !isCurrent;
-      const label = option.label + (disabled ? " (Already assigned)" : "");
-
       return html`
-              <mwc-list-item .value=${option.value} .disabled=${disabled}>
-                ${label}
+              <mwc-list-item .value=${option.value}>
+                ${option.label}
               </mwc-list-item>
             `;
     })}
@@ -1027,26 +938,28 @@ class TimerCardEditor extends LitElement {
           </ha-formfield>
         </div>
 
-        <div class="config-row">
-          <ha-formfield .label=${this._config?.reverse_mode ? "Use Default Timer (Disabled in Reverse Mode)" : "Use Default Timer (auto-start when entity turns on)"}
-                        title=${this._config?.reverse_mode ? "Default Timer cannot be used with Reverse Mode (Delayed Start)" : ""}>
-            <ha-switch
-              .checked=${(this._config?.use_default_timer || false) && !this._config?.reverse_mode}
-              .disabled=${this._config?.reverse_mode || false}
-              .configValue=${"use_default_timer"}
-              @change=${this._valueChanged}
-            ></ha-switch>
-          </ha-formfield>
-        </div>
+
 
         <div class="config-row">
-          <ha-formfield .label=${"Reverse Mode (Delayed Start)"}>
+          <ha-formfield .label=${"Reverse Mode (Delayed Start)" + (isDefaultTimerEnabled ? " (Disabled)" : "")}>
             <ha-switch
-              .checked=${this._config?.reverse_mode || false}
+              .checked=${(this._config?.reverse_mode || false) && !isDefaultTimerEnabled}
               .configValue=${"reverse_mode"}
               @change=${this._valueChanged}
+              .disabled=${isDefaultTimerEnabled}
             ></ha-switch>
           </ha-formfield>
+          ${isDefaultTimerEnabled ? html`
+            <div class="helper-text" style="color: var(--warning-color, orange); margin-top: 4px;">
+              Disabled because a 
+              <span 
+                @click=${(e: Event) => this._navigate(e, "/config/integrations/integration/simple_timer")} 
+                style="color: inherit; text-decoration: underline; font-weight: bold; cursor: pointer;">
+                Default Timer
+              </span>
+              is configured ${defaultTimerDetails}.
+            </div>
+          ` : ''}
         </div>
         
         <div class="config-row">
@@ -1076,13 +989,11 @@ class TimerCardEditor extends LitElement {
              <label class="config-label">Timer Presets</label>
              <div class="chips-wrapper">
                 ${(this._config?.timer_buttons || DEFAULT_TIMER_BUTTONS).map(btn => {
-        const isDefault = String(btn).endsWith('*');
-        const displayVal = String(btn).replace('*', '');
+        const displayVal = String(btn).replace('*', ''); // Cleanup in case * sneaked in
         const label = typeof btn === 'number' ? btn + 'm' : displayVal;
-        const chipClass = isDefault ? 'timer-chip default-timer' : 'timer-chip';
         return html`
-                    <div class="${chipClass}" style="${isDefault ? 'border: 1px solid var(--primary-color); background-color: rgba(var(--rgb-primary-color), 0.1);' : ''}">
-                        <span>${label}${isDefault ? ' (Default)' : ''}</span>
+                    <div class="timer-chip">
+                        <span>${label}</span>
                         <span class="remove-chip" @click=${() => this._removeTimerButton(btn)}>✕</span>
                     </div>
                 `;
@@ -1101,7 +1012,7 @@ class TimerCardEditor extends LitElement {
                <div class="add-btn" @click=${this._addTimerButton} role="button">ADD</div>
             </div>
             <div class="helper-text" style="font-size: 0.8em; color: var(--secondary-text-color); margin-top: 4px;">
-                Supports seconds (s), minutes (m), hours (h), days (d). Example: 30s, 10, 1.5h, 1d. Add * for default timer (e.g. 30*)
+                Supports seconds (s), minutes (m), hours (h), days (d). Example: 30s, 10, 1.5h, 1d.
             </div>
         </div>
           ${(!this._config?.timer_buttons?.length && this._config?.hide_slider) ? html`
@@ -1173,8 +1084,7 @@ class TimerCardEditor extends LitElement {
       updatedConfig.slider_unit = value;
     } else if (configValue === "turn_off_on_cancel") {
       updatedConfig.turn_off_on_cancel = value; // boolean
-    } else if (configValue === "use_default_timer") {
-      updatedConfig.use_default_timer = value; // boolean
+
     } else {
       // For text/color fields where empty string means delete/null
       if (value && value !== '') {
@@ -1246,6 +1156,50 @@ class TimerCardEditor extends LitElement {
       detail: { config: updated }, bubbles: true, composed: true
     }));
     this.requestUpdate();
+  }
+
+  private _navigate(ev: Event, path: string) {
+    ev.stopPropagation();
+    ev.preventDefault();
+
+    // 1. Fire standard event (best practice)
+    this.dispatchEvent(new CustomEvent("close-dialog", {
+      bubbles: true,
+      composed: true,
+    }));
+
+    // 2. Force close by traversing DOM to find the hosting dialog
+    // (Helps when event is swallowed or timing is off)
+    try {
+      let node: any = this;
+      while (node) {
+        if (node.tagName === 'HA-DIALOG' || node.tagName === 'MWC-DIALOG') {
+          if (typeof node.close === 'function') {
+            node.close();
+          }
+          break;
+        }
+
+        if (node.parentNode) {
+          node = node.parentNode;
+        } else if (node.host) {
+          // Break out of Shadow DOM
+          node = node.host;
+        } else {
+          break;
+        }
+      }
+    } catch (e) {
+      console.warn("TimerCardEditor: Failed to force close dialog", e);
+    }
+
+    // 3. Navigate
+    history.pushState(null, "", path);
+    const event = new Event("location-changed", {
+      bubbles: true,
+      composed: true,
+    });
+    window.dispatchEvent(event);
   }
 
   static get styles() {
