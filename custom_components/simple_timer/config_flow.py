@@ -12,6 +12,8 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
+import re
+
 def _validate_time_string(time_str: str) -> bool:
     """Validate time string format (HH:MM)."""
     try:
@@ -19,6 +21,60 @@ def _validate_time_string(time_str: str) -> bool:
         return True
     except ValueError:
         return False
+
+def _parse_duration_string(duration_str: str) -> tuple[float, str | None]:
+    """
+    Parse a duration string (e.g., '10', '10s', '1.5h').
+    Returns (value, unit). Unit is None if not specified (defaults to min elsewhere).
+    Raises ValueError if invalid format or violates constraints.
+    """
+    duration_str = str(duration_str).strip().lower()
+    if not duration_str:
+        return 0.0, None
+
+    # Regex allows number (positive or negative) optionally followed by unit
+    match = re.match(r"^(-?\d+(?:\.\d+)?)\s*(s|sec|seconds|m|min|minutes|h|hr|hours|d|day|days)?$", duration_str)
+    
+    if not match:
+        raise ValueError("invalid_format")
+
+    value_str = match.group(1)
+    value = float(value_str)
+    unit_str = match.group(2)
+    
+    # Normalize unit
+    if not unit_str:
+        unit = "min" # Default is minutes if no unit provided, for validation purposes
+    elif unit_str.startswith('s'):
+        unit = "s"
+    elif unit_str.startswith('d'):
+        unit = "d"
+    elif unit_str.startswith('h'):
+        unit = "h"
+    else:
+        unit = "min"
+
+    # Rule 1: Max value 9999
+    if value > 9999:
+        raise ValueError("value_exceeds_max")
+    
+    # Rule 2: Floating point checks
+    if '.' in value_str:
+        # Check decimal places
+        decimal_part = value_str.split('.')[1]
+        if len(decimal_part) > 1:
+            raise ValueError("max_one_decimal")
+            
+        # Float only allowed for hours and days
+        if unit not in ['h', 'd']:
+             raise ValueError("fraction_only_hours_days")
+
+    # Rule 3: Must be positive
+    if value < 0:
+        raise ValueError("negative_duration")
+
+    # If no unit was originally provided, return None for unit so caller knows
+    return value, (unit if unit_str else None)
 
 class SimpleTimerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Simple Timer."""
@@ -97,14 +153,14 @@ class SimpleTimerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 
                 # Validate switch entity
                 if not switch_entity_id:
-                    errors["switch_entity_id"] = "Please select an entity"
+                    errors["switch_entity_id"] = "Please select an entity" # This is usually internal validation, keep strict or migrate?
                 elif not isinstance(switch_entity_id, str):
                     errors["switch_entity_id"] = "Invalid entity format"
                 else:
                     # Check if entity exists
                     entity_state = self.hass.states.get(switch_entity_id)
                     if entity_state is None:
-                        errors["switch_entity_id"] = "Entity not found"
+                        errors["switch_entity_id"] = "entity_not_found"
                     else:
                         # Store the selected entity and move to name step
                         self._switch_entity_id = switch_entity_id
@@ -112,7 +168,7 @@ class SimpleTimerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         
             except Exception as e:
                 _LOGGER.error(f"Simple Timer: config_flow: Exception in step_user: {e}")
-                errors["base"] = "An error occurred. Please try again."
+                errors["base"] = "base"
 
         # Check if we have any compatible entities
         compatible_entities_exist = False
@@ -128,7 +184,7 @@ class SimpleTimerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     _LOGGER.warning(f"Simple Timer: config_flow: Error checking domain {domain}: {e}")
             
             if not compatible_entities_exist:
-                errors["base"] = "No controllable entities found"
+                errors["base"] = "no_entities_found"
 
         # Show entity selector
         data_schema = vol.Schema({
@@ -162,11 +218,28 @@ class SimpleTimerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 show_seconds = user_input.get("show_seconds", False)
                 selected_notifications = user_input.get("Select one or more notification entity (optional):", [])
                 reset_time_str = user_input.get("reset_time", "00:00")
+                default_duration_input = user_input.get("default_timer_duration", 0.0)
                 
+                # Parse duration
+                default_duration = 0.0
+                default_unit = "min" # Default
+
+                try:
+                    default_duration, parsed_unit = _parse_duration_string(default_duration_input)
+                    if parsed_unit:
+                        default_unit = parsed_unit
+                except ValueError as e:
+                    errors["default_timer_duration"] = str(e)
+
                 # Validate reset time
+                if "default_timer_duration" not in errors: # Only check if parse succeeded
+                     # Logic simplified: checks already done in _parse_duration_string
+                     pass
+
                 if not _validate_time_string(reset_time_str):
                     errors["reset_time"] = "Invalid time format. Use HH:MM (24-hour format)"
-                else:
+                    
+                if not errors:
                     # Update notification list from multi-select (handles both add and remove)
                     self._notification_entities = selected_notifications if selected_notifications else []
                     _LOGGER.info(f"Simple Timer: Updated notifications to: {self._notification_entities}")
@@ -183,7 +256,9 @@ class SimpleTimerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                                 "switch_entity_id": self._switch_entity_id,
                                 "notification_entities": self._notification_entities,
                                 "show_seconds": show_seconds,
-                                "reset_time": reset_time_str
+                                "reset_time": reset_time_str,
+                                "default_timer_duration": default_duration,
+                                "default_timer_unit": default_unit
                             }
                         )
                         
@@ -230,6 +305,13 @@ class SimpleTimerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         schema_dict[vol.Optional("reset_time", default="00:00")] = selector.TextSelector(
             selector.TextSelectorConfig(
                 type=selector.TextSelectorType.TIME
+            )
+        )
+
+        # Default Timer Configuration
+        schema_dict[vol.Optional("default_timer_duration", default="0")] = selector.TextSelector(
+            selector.TextSelectorConfig(
+                type=selector.TextSelectorType.TEXT
             )
         )
         
@@ -340,11 +422,27 @@ class SimpleTimerOptionsFlow(config_entries.OptionsFlow):
                 show_seconds = user_input.get("show_seconds", False)
                 selected_notifications = user_input.get("Select one or more notification entity (optional):", [])
                 reset_time_str = user_input.get("reset_time", "00:00")
+                default_duration_input = user_input.get("default_timer_duration", 0.0)
+                
+                # Parse duration
+                default_duration = 0.0
+                default_unit = "min" # Default
+
+                try:
+                    default_duration, parsed_unit = _parse_duration_string(default_duration_input)
+                    if parsed_unit:
+                        default_unit = parsed_unit
+                except ValueError as e:
+                    errors["default_timer_duration"] = str(e)
                 
                 # Validate reset time
+                if "default_timer_duration" not in errors: # Only check if parse succeeded
+                    # Logic simplified: checks done in parser
+                    pass
+
                 if not _validate_time_string(reset_time_str):
                     errors["reset_time"] = "Invalid time format. Use HH:MM (24-hour format)"
-                else:
+                elif not errors:
                     # Update notification list from multi-select (handles both add and remove)
                     self._notification_entities = selected_notifications if selected_notifications else []
                     _LOGGER.info(f"Simple Timer: Updated notifications to: {self._notification_entities}")
@@ -361,7 +459,7 @@ class SimpleTimerOptionsFlow(config_entries.OptionsFlow):
                             errors["switch_entity_id"] = "Entity not found"
                         else:
                             _LOGGER.info(f"Simple Timer: FINAL SUBMIT - Saving with notifications={self._notification_entities}, reset_time={reset_time_str}")
-                            await self._update_config_entry(name, switch_entity_id, show_seconds, reset_time_str)
+                            await self._update_config_entry(name, switch_entity_id, show_seconds, reset_time_str, default_duration, default_unit)
                             return self.async_create_entry(title="", data={})
                         
             except Exception as e:
@@ -373,6 +471,23 @@ class SimpleTimerOptionsFlow(config_entries.OptionsFlow):
         current_switch_entity = self.config_entry.data.get("switch_entity_id", "")
         current_show_seconds = self.config_entry.data.get("show_seconds", False)
         current_reset_time = self.config_entry.data.get("reset_time", "00:00")
+        current_default_duration = self.config_entry.data.get("default_timer_duration", 0.0)
+        current_default_unit = self.config_entry.data.get("default_timer_unit", "min")
+        
+        # Format current duration for display
+        # Reconstruct "1.5h" or "10" (no unit if min)
+        if current_default_duration == int(current_default_duration):
+             val_str = str(int(current_default_duration))
+        else:
+             val_str = str(current_default_duration)
+             
+        # Append unit if not minutes, or if user prefers explicit units? 
+        # Card logic implies "10" is minutes. "10s" is seconds. 
+        # So: if unit is min, just show number. If unit is other, append it.
+        if current_default_unit != "min":
+             val_str += current_default_unit
+             
+        display_default_duration = val_str
 
         # Validate current switch entity
         current_switch_exists = True
@@ -416,13 +531,23 @@ class SimpleTimerOptionsFlow(config_entries.OptionsFlow):
             )
         )
         
+        # Default Timer Configuration (Single Field)
+        schema_dict[vol.Optional("default_timer_duration", default=display_default_duration)] = selector.TextSelector(
+            selector.TextSelectorConfig(
+                type=selector.TextSelectorType.TEXT
+            )
+        )
+        
         # Add show_seconds at the bottom
         schema_dict[vol.Optional("show_seconds", default=current_show_seconds)] = bool
 
         data_schema = vol.Schema(schema_dict)
 
         # Add migration notice if old card settings might exist
-        description_placeholders = {}
+        description_placeholders = {
+            "migration_notice": ""
+        }
+        
         if self._notification_entities:
             description_placeholders["current_notifications"] = ", ".join(self._notification_entities)
         else:
@@ -456,14 +581,16 @@ class SimpleTimerOptionsFlow(config_entries.OptionsFlow):
                 data=new_data
             )
 
-    async def _update_config_entry(self, name: str, switch_entity_id: str, show_seconds: bool, reset_time: str):
+    async def _update_config_entry(self, name: str, switch_entity_id: str, show_seconds: bool, reset_time: str, default_duration: float, default_unit: str):
         """Update config entry and force immediate sensor sync."""
         new_data = {
             "name": name,
             "switch_entity_id": switch_entity_id,
             "notification_entities": self._notification_entities,
             "show_seconds": show_seconds,
-            "reset_time": reset_time
+            "reset_time": reset_time,
+            "default_timer_duration": default_duration,
+            "default_timer_unit": default_unit
         }
         
         _LOGGER.info(f"Simple Timer: Updating entry {self.config_entry.entry_id} with name='{name}', switch='{switch_entity_id}', notifications={self._notification_entities}, show_seconds={show_seconds}, reset_time={reset_time}")
@@ -495,11 +622,14 @@ class SimpleTimerOptionsFlow(config_entries.OptionsFlow):
                     
                     # Method 3: Force reset time update
                     await sensor._update_reset_time()
+
+                    # Method 4: Force default timer config update
+                    await sensor._update_default_timer_config()
                     
-                    # Method 4: Force state write
+                    # Method 5: Force state write
                     sensor.async_write_ha_state()
                     
-                    # Method 5: Force entity registry update
+                    # Method 6: Force entity registry update
                     from homeassistant.helpers import entity_registry as er
                     entity_registry = er.async_get(self.hass)
                     if entity_registry:

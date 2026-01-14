@@ -112,10 +112,11 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._catchup_reset_info = None
 
         # Default timer config
-        self._default_timer_enabled = False
-        self._default_timer_duration = 0.0
-        self._default_timer_unit = "min"
-        self._default_timer_reverse_mode = False
+        # Default timer config from entry data
+        self._default_timer_duration = entry.data.get("default_timer_duration", 0.0)
+        self._default_timer_unit = entry.data.get("default_timer_unit", "min")
+        self._default_timer_enabled = self._default_timer_duration > 0
+        self._default_timer_reverse_mode = False # Config flow currently doesn't support reverse mode default
 
         # Storage setup
         self._storage_lock = asyncio.Lock()
@@ -1252,24 +1253,14 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
         return True
 
-    async def async_set_default_timer_config(self, enabled: bool, duration: float, unit: str, reverse_mode: bool = False):
-        """Update default timer configuration and save to storage."""
-        self._default_timer_enabled = enabled
-        self._default_timer_duration = duration
-        self._default_timer_unit = unit
-        self._default_timer_reverse_mode = reverse_mode
+    async def _update_default_timer_config(self):
+        """Update default timer configuration from config entry."""
+        self._default_timer_duration = self._entry.data.get("default_timer_duration", 0.0)
+        self._default_timer_unit = self._entry.data.get("default_timer_unit", "min")
+        self._default_timer_enabled = self._default_timer_duration > 0
         
-        async with self._storage_lock:
-            data = await self._store.async_load() or {}
-            data["default_timer"] = {
-                "enabled": enabled,
-                "duration": duration,
-                "unit": unit,
-                "reverse_mode": reverse_mode
-            }
-            await self._store.async_save(data)
-            
         self.async_write_ha_state()
+        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Updated default timer config: {self._default_timer_enabled}, {self._default_timer_duration} {self._default_timer_unit}")
 
     async def async_added_to_hass(self):
         """Called when entity is added to hass - startup-safe initialization."""
@@ -1466,13 +1457,11 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             # Load storage data
             storage_data = await self._load_storage_data()
             
-            # Restore default timer config
+            # Restore default timer config (LEGACY STORAGE MIGRATION ONLY)
             if "default_timer" in storage_data:
-                dt_config = storage_data["default_timer"]
-                self._default_timer_enabled = dt_config.get("enabled", False)
-                self._default_timer_duration = dt_config.get("duration", 0.0)
-                self._default_timer_unit = dt_config.get("unit", "min")
-                _LOGGER.info(f"Simple Timer: [{self._entry_id}] Restored default timer config: {self._default_timer_enabled}, {self._default_timer_duration} {self._default_timer_unit}")
+                 # We only log this, we DO NOT restore it because Config Entry is now source of truth
+                 dt_config = storage_data["default_timer"]
+                 _LOGGER.info(f"Simple Timer: [{self._entry_id}] Found legacy default timer config in storage (ignored in favor of config entry): {dt_config}")
             
             # Initialize reset scheduling with configurable reset time
             await self._setup_reset_scheduling(storage_data)
@@ -1955,6 +1944,9 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         
         # Check for reset time changes
         await self._update_reset_time()
+
+        # Check for default timer changes
+        await self._update_default_timer_config()
         
         await self._handle_name_change()
         

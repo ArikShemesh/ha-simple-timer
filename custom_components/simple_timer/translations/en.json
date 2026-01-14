@@ -1,0 +1,61 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Select Entity",
+                "description": "Choose the entity to control with the timer.",
+                "data": {
+                    "switch_entity_id": "Switch Entity"
+                }
+            },
+            "name": {
+                "title": "Configure Timer",
+                "description": "Set the name and additional options for the timer.\n\nCurrent Notifications: {current_notifications}",
+                "data": {
+                    "name": "Name",
+                    "reset_time": "Reset Time (HH:MM)",
+                    "default_timer_duration": "Default Timer Duration (0 for none)",
+                    "show_seconds": "Show Seconds"
+                }
+            }
+        },
+        "error": {
+            "base": "An error occurred. Please try again.",
+            "invalid_format": "Invalid format",
+            "value_exceeds_max": "Value cannot exceed 9999",
+            "max_one_decimal": "Maximum 1 decimal place allowed",
+            "fraction_only_hours_days": "Fractional values are only allowed for Hours (h) and Days (d)",
+            "negative_duration": "Duration cannot be negative",
+            "entity_not_found": "Entity not found",
+            "no_entities_found": "No controllable entities found"
+        },
+        "abort": {
+            "already_configured": "This device is already configured"
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Timer Options",
+                "description": "{migration_notice}",
+                "data": {
+                    "name": "Name",
+                    "switch_entity_id": "Switch Entity",
+                    "reset_time": "Reset Time (HH:MM)",
+                    "default_timer_duration": "Default Timer Duration (0 for none)",
+                    "show_seconds": "Show Seconds"
+                }
+            }
+        },
+        "error": {
+            "base": "An error occurred. Please try again.",
+            "invalid_format": "Invalid format",
+            "value_exceeds_max": "Value cannot exceed 9999",
+            "max_one_decimal": "Maximum 1 decimal place allowed",
+            "fraction_only_hours_days": "Fractional values are only allowed for Hours (h) and Days (d)",
+            "negative_duration": "Duration cannot be negative",
+            "entity_not_found": "Entity not found",
+            "no_entities_found": "No controllable entities found"
+        }
+    }
+}

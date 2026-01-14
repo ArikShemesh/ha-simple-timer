@@ -47,22 +47,20 @@ A simple Home Assistant integration that turns entities on and off with a precis
 
 ### HACS (Recommended)
 
-⚠️ If you previously added this integration as a custom repository in HACS, it's recommended to remove the custom entry and reinstall it from the official HACS store.
-You will continue to receive updates in both cases, but switching ensures you're aligned with the official listing and avoids potential issues in the future.
-
 Use this link to open the repository in HACS and click on Download
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=ArikShemesh&repository=ha-simple-timer)
+
+⚠️ If you previously added this integration as a custom repository in HACS, it's recommended to remove the custom entry and reinstall it from the official HACS store.
+You will continue to receive updates in both cases, but switching ensures you're aligned with the official listing and avoids potential issues in the future.
 
 ### Manual Installation
 1. Download the latest release from [GitHub Releases](https://github.com/ArikShemesh/ha-simple-timer/releases)
 2. Extract the `custom_components/simple_timer` folder to your Home Assistant `custom_components` directory
 3. **Restart Home Assistant**
-4. **Add Dashboard Resource:** Go to **Settings → Dashboards → ⁝ (Three dots) → Resources** and add a new resource with:
-   - **URL:** `/local/simple-timer/timer-card.js`
-   - **Resource Type:** `JavaScript Module`
+4. **Note:** You do **NOT** need to add the dashboard resource manually. It is automatically registered when the integration starts.
 
-**That's it!** The timer card is automatically installed and ready to use - no additional steps required.
+**That's it!** The timer card is automatically installed and ready to use.
 
 ## ⚙️ Configuration
 
@@ -114,17 +112,14 @@ timer_instance_id: your_timer_entry_id  # Select the integration entry ID
 # TIMER SETTINGS
 # -------------------------------------------------------------------------
 # Presets: Use numbers (minutes) or strings with units ("30s", "1h", "1d").
-# Add '*' to a value to set it as the Default Timer (auto-starts when device turns on).
 timer_buttons:
   - 15
   - 30
   - 45
   - 1h
-  - 60* # Example: 60 minutes is the default auto-start duration
+  - 2d
 
-# Note: reverse_mode and use_default_timer are mutually exclusive.
 # reverse_mode will always take priority if both are set to true.
-use_default_timer: false      # Set to true to enable the auto-start feature (requires a '*' button)
 reverse_mode: false           # If true, timer works as "Delayed Start" (turns ON when time ends)
 turn_off_on_cancel: true      # Turn off the device when timer is cancelled?
 
@@ -166,11 +161,10 @@ Option | Type | Default | Description
 `card_title` | string | - | Custom title for the card
 `slider_max` | integer | 120 | The maximum value for the slider (supported range: 1–9999)
 `slider_unit` | string | min | Unit for the slider (`s`, `min`, `h`)
-`reverse_mode` | boolean | false | Enable delayed start (turns device ON when timer ends). `Note: Disables Default Timer feature when active`
+`reverse_mode` | boolean | false | Enable delayed start (turns device ON when timer ends). `Note: Disabled if Default Timer is enabled for this entity.`
 `hide_slider` | boolean | false | Hide the slider control completely
 `show_daily_usage` | boolean | true | Display daily usage statistics
 `turn_off_on_cancel` | boolean | true | Whether to turn off the entity when the timer is cancelled
-`use_default_timer` | boolean | false | Enable auto-start when device turns on (requires a * suffix in timer_buttons). `Note: Unavailable if Reverse Mode is enabled`
 `slider_thumb_color` | string | - | Custom color for the slider thumb (hex or rgba)
 `slider_background_color` | string | - | Custom color for the slider track
 `timer_button_font_color` | string | - | Custom font color for timer buttons
@@ -191,9 +185,62 @@ Yes! Add multiple integrations for different devices.
 ### Does the timer work if Home Assistant restarts?
 Yes, active timers resume automatically with offline time compensation.
 
+### Can I have multiple timer cards?
+Yes! You can add multiple cards for the same timer instance on different dashboards (or the same one). They will stay synchronized.
+
+### How to trigger a timer with automation?
+You can use the `simple_timer.start_timer` service in your automations or scripts.
+
+```yaml
+triggers:
+  - at: "10:00:00"
+    trigger: time
+actions:
+  - data:
+      entry_id: your_entry_id # Find this in the entity attributes (e.g.: 01KDQ6WPZDBB3EB89DX407GR6M)
+      duration: 30
+      unit: s
+      reverse_mode: false
+    action: simple_timer.start_timer
+```
+
+### Can I control my A/C or Climate entity?
+Not directly, but you can achieve this easily!
+1. Create a Helper (Input Boolean) for your timer (e.g., `input_boolean.ac_timer`).
+2. Point the Simple Timer integration to this helper.
+3. Create an automation that acts on the helper's state changes:
+
+```yaml
+alias: "A/C Timer Control"
+trigger:
+  - platform: state
+    entity_id: input_boolean.ac_timer
+    to: "on"
+    id: "start"
+  - platform: state
+    entity_id: input_boolean.ac_timer
+    to: "off"
+    id: "stop"
+action:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: "start"
+        sequence:
+          - service: climate.turn_on
+            target:
+              entity_id: climate.living_room_ac
+      - conditions:
+          - condition: trigger
+            id: "stop"
+        sequence:
+          - service: climate.turn_off
+            target:
+              entity_id: climate.living_room_ac
+```
+
 ### Can I customize the timer buttons?
 Yes! You can configure values with explicit units. Example: `timer_buttons: [30, "45s", "1.5h", "1d"]`. 
-To use the **Default Timer** feature, append an asterisk (`*`) to one value (e.g., `"30*"`) to set it as the auto-start duration.
 
 ### Why does my usage show a warning message?
 This appears when HA was offline during a timer to indicate potential time sync issues.
