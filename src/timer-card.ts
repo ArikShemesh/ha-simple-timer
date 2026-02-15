@@ -52,7 +52,7 @@ interface HomeAssistant {
 }
 
 const DOMAIN = "simple_timer";
-const CARD_VERSION = "1.4.2";
+const CARD_VERSION = "1.4.3";
 const DEFAULT_TIMER_BUTTONS = [15, 30, 60, 90, 120, 150]; // Default for new cards only
 
 console.info(
@@ -97,6 +97,7 @@ class TimerCard extends LitElement {
   _notificationSentForCurrentCycle: boolean = false;
   _entitiesLoaded: boolean = false;
   _serverTimeOffset: number = 0; // Offset in ms to add to local time to get server time
+  _lastSyncedUpdate: string | null = null; // Track last_updated to detect fresh updates
 
   _effectiveSwitchEntity: string | null = null;
   _effectiveSensorEntity: string | null = null;
@@ -586,13 +587,8 @@ class TimerCard extends LitElement {
     if (changedProperties.has("hass") || changedProperties.has("_config")) {
       this._determineEffectiveEntities();
       this._updateLiveRuntime();
+      this._syncServerTime();
       this._updateCountdown();
-    }
-
-    // Only sync if CONFIG changed or on first load (which has _config).
-    // Do NOT sync if only HASS changed (prevents fighting between multiple card instances)
-    if (changedProperties.has("_config")) {
-      // Config changed
     }
   }
 
@@ -1249,22 +1245,26 @@ class TimerCard extends LitElement {
     return cardStyles;
   }
 
-  async _syncServerTime() {
-    if (!this.hass) return;
-    try {
-      // Fetch server timestamp
-      const result: any = await this.hass.callApi('POST', 'template', {
-        template: "{{ now().timestamp() }}"
-      });
-      const serverTimestamp = parseFloat(result);
-      if (!isNaN(serverTimestamp)) {
-        const serverTimeMs = serverTimestamp * 1000;
-        const localTimeMs = new Date().getTime();
-        this._serverTimeOffset = serverTimeMs - localTimeMs;
-        // console.log("TimerCard: Server time sync. Offset (ms):", this._serverTimeOffset);
-      }
-    } catch (e) {
-      console.warn("TimerCard: Failed to sync server time", e);
+  _syncServerTime() {
+    if (!this.hass || !this._effectiveSensorEntity) return;
+    const sensor = this.hass.states[this._effectiveSensorEntity];
+    if (!sensor?.last_updated) return;
+
+    // Only compute offset when last_updated has JUST changed,
+    // meaning we're receiving a fresh state update right now.
+    // This avoids stale offset calculations from old last_updated values.
+    const currentLastUpdated = sensor.last_updated;
+    if (currentLastUpdated === this._lastSyncedUpdate) return;
+    this._lastSyncedUpdate = currentLastUpdated;
+
+    const serverTimeMs = new Date(currentLastUpdated).getTime();
+    const localTimeMs = new Date().getTime();
+    const offset = serverTimeMs - localTimeMs;
+    // Only apply if significant (> 2s), to avoid jitter from network latency
+    if (Math.abs(offset) > 2000) {
+      this._serverTimeOffset = offset;
+    } else {
+      this._serverTimeOffset = 0;
     }
   }
 }
