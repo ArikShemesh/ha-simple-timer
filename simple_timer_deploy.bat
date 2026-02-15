@@ -1,8 +1,5 @@
 @echo off
-cls
-powershell -Command "Clear-Host"
-setlocal enabledelayedexpansion
-REM Simple deployment script for Simple Timer Integration (Windows) - DEV
+set "TARGET_ENV=%~1"
 
 REM =======================================================
 REM LOAD CONFIGURATION
@@ -15,8 +12,59 @@ if not exist "deploy_config.bat" (
 )
 call deploy_config.bat
 
+REM =======================================================
+REM SELECT ENVIRONMENT
+REM =======================================================
+if "%TARGET_ENV%"=="" goto :SelectEnv
+goto :CheckEnv
+
+:SelectEnv
+cls
+echo.
+echo  Select target environment:
+echo.
+echo    1. PROD  (Real HA)
+echo    2. DEV   (Local HA)
+echo    3. Exit
+echo.
+choice /C 123 /N /M "  Enter choice (1, 2, or 3): "
+if errorlevel 3 (
+    echo Exiting...
+    exit /b 0
+)
+if errorlevel 2 (
+    set "TARGET_ENV=dev"
+    goto :CheckEnv
+)
+if errorlevel 1 (
+    set "TARGET_ENV=prod"
+    goto :CheckEnv
+)
+goto :SelectEnv
+
+:CheckEnv
+if /i "%TARGET_ENV%"=="prod" (
+    set "HA_CONFIG_DIR=%HA_PROD_CONFIG_DIR%"
+    set "HA_URL=%HA_PROD_URL%"
+    set "HA_API_TOKEN=%HA_PROD_API_TOKEN%"
+    call :ColorEcho "Cyan" "Deploying to PROD environment..."
+    goto :DoDeploy
+)
+if /i "%TARGET_ENV%"=="dev" (
+    set "HA_CONFIG_DIR=%HA_DEV_CONFIG_DIR%"
+    set "HA_URL=%HA_DEV_URL%"
+    set "HA_API_TOKEN=%HA_DEV_API_TOKEN%"
+    call :ColorEcho "Cyan" "Deploying to DEV environment..."
+    goto :DoDeploy
+)
+
+call :ColorEcho "Red" "[ERROR] Invalid environment selected: %TARGET_ENV%"
+pause
+exit /b 1
+
+:DoDeploy
 if "%HA_CONFIG_DIR%"=="" (
-    call :ColorEcho "Red" "[ERROR] HA_CONFIG_DIR is not set in deploy_config.bat!"
+    call :ColorEcho "Red" "[ERROR] HA_CONFIG_DIR is not set for %TARGET_ENV% environment!"
     pause
     exit /b 1
 )
@@ -29,8 +77,6 @@ set "SRC_DIST=custom_components\simple_timer\dist"
 set "DEST_INTEGRATION=%HA_CONFIG_DIR%\custom_components\simple_timer"
 set "DEST_WWW=%HA_CONFIG_DIR%\www"
 
-
-
 echo.
 call :ColorEcho "Cyan" "[1/3] Building card..."
 call npm run build
@@ -42,8 +88,8 @@ if %errorlevel% neq 0 (
 echo.
 call :ColorEcho "Cyan" "[2/3] Copying integration files..."
 if not exist "%DEST_INTEGRATION%" (
-    call :ColorEcho "Red" "[ERROR] Destination not found: %DEST_INTEGRATION%"
-    exit /b 1
+    call :ColorEcho "Yellow" "[INFO] Creating destination directory: %DEST_INTEGRATION%"
+    mkdir "%DEST_INTEGRATION%"
 )
 xcopy /E /I /Y "custom_components\simple_timer\*" "%DEST_INTEGRATION%\" >nul
 echo Integration files copied.
