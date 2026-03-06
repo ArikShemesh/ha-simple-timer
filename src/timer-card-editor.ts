@@ -284,6 +284,7 @@ class TimerCardEditor extends LitElement {
     const timerButtonsToSet = this._getValidatedTimerButtons(cfg.timer_buttons);
 
     const newConfigData: TimerCardConfig = {
+      ...cfg, // Preserve any HA-managed properties (e.g. visibility)
       type: cfg.type || "custom:timer-card",
       timer_buttons: timerButtonsToSet,
       card_title: cfg.card_title || null,
