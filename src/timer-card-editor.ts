@@ -554,20 +554,11 @@ class TimerCardEditor extends LitElement {
           <ha-select
             .label=${"Select Simple Timer Instance"}
             .value=${this._config?.timer_instance_id || ""}
-            .configValue=${"timer_instance_id"}
-            @selected=${this._valueChanged}
+            .options=${instanceOptions}
+            @selected=${this._instanceSelected}
             @closed=${(ev) => ev.stopPropagation()}
-            fixedMenuPosition
-            naturalMenuWidth
             required
           >
-            ${instanceOptions.map(option => {
-      return html`
-              <mwc-list-item .value=${option.value}>
-                ${option.label}
-              </mwc-list-item>
-            `;
-    })}
           </ha-select>
         </div>
         
@@ -609,16 +600,15 @@ class TimerCardEditor extends LitElement {
             <ha-select
               .label=${"Slider Unit"}
               .value=${this._config?.slider_unit || "min"}
-              .configValue=${"slider_unit"}
-              @selected=${this._valueChanged}
+              .options=${[
+                { value: "sec", label: "Seconds (s)" },
+                { value: "min", label: "Minutes (m)" },
+                { value: "hr", label: "Hours (h)" },
+                { value: "day", label: "Days (d)" }
+              ]}
+              @selected=${this._sliderUnitSelected}
               @closed=${(ev) => ev.stopPropagation()}
-              fixedMenuPosition
-              naturalMenuWidth
             >
-              <mwc-list-item value="sec">Seconds (s)</mwc-list-item>
-              <mwc-list-item value="min">Minutes (m)</mwc-list-item>
-              <mwc-list-item value="hr">Hours (h)</mwc-list-item>
-              <mwc-list-item value="day">Days (d)</mwc-list-item>
             </ha-select>
           </div>
         </div>
@@ -1036,6 +1026,24 @@ class TimerCardEditor extends LitElement {
     const n = Number(raw);
     if (!Number.isFinite(n)) return true;
     return !(n >= 1 && n <= 9999);               // enforce 1–9999 (no negatives)
+  }
+
+  private _instanceSelected(ev: CustomEvent): void {
+    ev.stopPropagation();
+    const value = ev.detail?.value ?? (ev.target as any)?.value;
+    if (value && value !== "none_found" && value !== "") {
+      this._updateConfig({ timer_instance_id: value });
+    } else {
+      this._updateConfig({ timer_instance_id: null });
+    }
+  }
+
+  private _sliderUnitSelected(ev: CustomEvent): void {
+    ev.stopPropagation();
+    const value = ev.detail?.value ?? (ev.target as any)?.value;
+    if (value) {
+      this._updateConfig({ slider_unit: value });
+    }
   }
 
   _valueChanged(ev: Event): void {
