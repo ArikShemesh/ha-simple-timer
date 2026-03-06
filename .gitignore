@@ -115,6 +115,10 @@ package-lock.json
 # VS Code
 .vscode/
 
+# Gemini
+.gemini/
+.planning/
+
 # macOS
 .DS_Store
 

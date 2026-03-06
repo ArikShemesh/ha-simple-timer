@@ -31,7 +31,7 @@ from homeassistant.util import dt as dt_util
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 
-from .const import DOMAIN
+from .const import DOMAIN, WARNING_MSG_OFFLINE
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -654,6 +654,28 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             return
         self._handle_switch_change(event)
 
+    async def _handle_config_entry_update(self, hass: HomeAssistant, entry: ConfigEntry):
+        """Handle config entry updates including reset time changes."""
+        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Config entry updated")
+        
+        # 1. Title/Name
+        last_title = getattr(self, "_last_known_title", None)
+        if entry.title != last_title:
+             self._last_known_title = entry.title
+             await self._handle_name_change()
+
+        # 2. Switch Entity
+        new_switch_entity = entry.data.get("switch_entity_id")
+        if new_switch_entity != self._switch_entity_id:
+            _LOGGER.info(f"Simple Timer: [{self._entry_id}] Switch entity changed to: {new_switch_entity}")
+            await self.async_update_switch_entity(new_switch_entity)
+        
+        # 3. Reset Time
+        await self._update_reset_time()
+
+        # 4. Default Timer Config
+        await self._update_default_timer_config()
+
     @callback
     def _handle_switch_change(self, event: Event) -> None:
         """Process switch state changes for runtime calculation."""
@@ -1186,11 +1208,13 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         _LOGGER.info(f"Simple Timer: [{self._entry_id}] Home Assistant shutdown - cancelling tasks")
         
         # Cancel all tasks
-        if self._accumulation_task and not self._accumulation_task.done():
-            self._accumulation_task.cancel()
+        if self._accumulation_task:
+            self._accumulation_task()
+            self._accumulation_task = None
             
-        if self._timer_update_task and not self._timer_update_task.done():
-            self._timer_update_task.cancel()
+        if self._timer_update_task:
+            self._timer_update_task()
+            self._timer_update_task = None
             
         if self._timer_unsub:
             self._timer_unsub()
@@ -1219,12 +1243,9 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             del self.hass.data[DOMAIN][self._entry_id]["sensor"]
         
         # Cancel tasks
-        if self._accumulation_task and not self._accumulation_task.done():
-            self._accumulation_task.cancel()
-            try:
-                await self._accumulation_task
-            except asyncio.CancelledError:
-                pass
+        if self._accumulation_task:
+            self._accumulation_task()
+            self._accumulation_task = None
         
         await self._stop_timer_update_task()
         
@@ -1236,8 +1257,8 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             self._state_listener_disposer()
             self._state_listener_disposer = None
         
-        await super().async_will_remove_from_hass()
         self.async_write_ha_state()
+        await super().async_will_remove_from_hass()
 
         try:
             from homeassistant.helpers import entity_registry as er
@@ -1661,7 +1682,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         await self._cleanup_timer_state()
         
         # Add watchdog message AFTER cleanup so it persists
-        self._watchdog_message = "Warning: Home assistant was offline during a running timer! Usage time may be unsynchronized."
+        self._watchdog_message = WARNING_MSG_OFFLINE
         self.async_write_ha_state() # Ensure message is written to state
         
         # Handle switch state based on timer mode
@@ -1765,7 +1786,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             self._is_finishing_normally = True
             
             # Add watchdog message before cleanup
-            self._watchdog_message = "Warning: Home assistant was offline during a running timer! Usage time may be unsynchronized."
+            self._watchdog_message = WARNING_MSG_OFFLINE
             
             # Turn switch ON first (delayed start completed)
             if self._switch_entity_id:
@@ -1854,7 +1875,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         if last_state and last_state.state != "unavailable":
             offline_seconds = (now - last_state.last_updated).total_seconds()
             if offline_seconds > 0:
-                self._watchdog_message = "Warning: Home assistant was offline during a running timer! Usage time may be unsynchronized."
+                self._watchdog_message = WARNING_MSG_OFFLINE
                 
                 # For reverse mode, we don't add offline time since device was OFF
                 reverse_mode = getattr(self, '_timer_reverse_mode', False)
@@ -1930,25 +1951,6 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         await asyncio.sleep(0.5)
         if self._is_switch_on() and self._last_on_timestamp and not self._stop_event_received:
             await self._start_realtime_accumulation()
-
-    async def _handle_config_entry_update(self, hass: HomeAssistant, entry: ConfigEntry):
-        """Handle config entry updates including reset time changes."""
-        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Config entry updated")
-        self._last_known_title = entry.title
-        self._last_known_data_name = entry.data.get("name")
-        
-        new_switch_entity = entry.data.get("switch_entity_id")
-        if new_switch_entity != self._switch_entity_id:
-            _LOGGER.info(f"Simple Timer: [{self._entry_id}] Switch entity changed to: {new_switch_entity}")
-            await self.async_update_switch_entity(new_switch_entity)
-        
-        # Check for reset time changes
-        await self._update_reset_time()
-
-        # Check for default timer changes
-        await self._update_default_timer_config()
-        
-        await self._handle_name_change()
         
     def _calculate_timer_elapsed_since_start(self) -> int:
         """Calculate elapsed time in seconds since the timer started."""
