@@ -136,6 +136,7 @@ class TimerCard extends LitElement {
     this.buttons = this._getValidatedTimerButtons(cfg.timer_buttons);
 
     this._config = {
+      ...cfg, // Preserve any HA-managed properties (e.g. visibility)
       type: cfg.type || "custom:timer-card",
       timer_buttons: cfg.timer_buttons || [...DEFAULT_TIMER_BUTTONS],
       card_title: cfg.card_title || null,
@@ -652,9 +653,9 @@ class TimerCard extends LitElement {
           const seconds = remaining % 60;
           this._timeRemaining = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
         } else {
-          const minutes = Math.floor(remaining / 60);
-          const seconds = remaining % 60;
-          this._timeRemaining = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+          const hours = Math.floor(remaining / 3600);
+          const minutes = Math.floor((remaining % 3600) / 60);
+          this._timeRemaining = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
         }
 
         if (remaining === 0) {
