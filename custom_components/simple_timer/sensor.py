@@ -357,13 +357,13 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             minutes = (total_seconds_int % 3600) // 60
             seconds = total_seconds_int % 60
             formatted_time = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-            return formatted_time, "(hh:mm:ss)"
+            return formatted_time, "(hh\u2236mm\u2236ss)"
         else:
             total_minutes = int(total_seconds // 60)
             hours = total_minutes // 60
             minutes = total_minutes % 60
             formatted_time = f"{hours:02d}:{minutes:02d}"
-            return formatted_time, "(hh:mm)"
+            return formatted_time, "(hh\u2236mm)"
 
     async def _ensure_switch_state(self, desired_state: str, action_description: str, blocking: bool = True, force: bool = False) -> None:
         """Ensure switch is in desired state, attempt to correct if not, and warn on failure."""
