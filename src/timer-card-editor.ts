@@ -557,8 +557,13 @@ class TimerCardEditor extends LitElement {
             .options=${instanceOptions}
             @selected=${this._instanceSelected}
             @closed=${(ev) => ev.stopPropagation()}
+            fixedMenuPosition
+            naturalMenuWidth
             required
           >
+            ${instanceOptions.map(option => html`
+              <mwc-list-item .value=${option.value}>${option.label}</mwc-list-item>
+            `)}
           </ha-select>
         </div>
         
@@ -608,7 +613,13 @@ class TimerCardEditor extends LitElement {
               ]}
               @selected=${this._sliderUnitSelected}
               @closed=${(ev) => ev.stopPropagation()}
+              fixedMenuPosition
+              naturalMenuWidth
             >
+              <mwc-list-item value="sec">Seconds (s)</mwc-list-item>
+              <mwc-list-item value="min">Minutes (m)</mwc-list-item>
+              <mwc-list-item value="hr">Hours (h)</mwc-list-item>
+              <mwc-list-item value="day">Days (d)</mwc-list-item>
             </ha-select>
           </div>
         </div>
