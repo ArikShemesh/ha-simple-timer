@@ -1,15 +1,26 @@
 # Describes the services for the Simple Timer integration
+# All services accept either `entry_id` or `entity_id` to identify the target
+# Simple Timer instance. Provide exactly one.
+
 start_timer:
   name: Start Timer
-  description: Starts a countdown timer for the device. The associated switch is turned on.
+  description: Starts a countdown timer for the device. The associated switch is turned on. Provide either entry_id or entity_id.
   fields:
     entry_id:
       name: Entry ID
       description: The config entry ID of the simple timer sensor.
-      required: true
+      required: false
       selector:
         config_entry:
           integration: simple_timer
+    entity_id:
+      name: Entity
+      description: The Simple Timer sensor entity (alternative to Entry ID; portable across systems).
+      required: false
+      selector:
+        entity:
+          integration: simple_timer
+          domain: sensor
     duration:
       name: Duration
       description: The duration of the timer in minutes.
@@ -29,15 +40,23 @@ start_timer:
 
 add_timer:
   name: Add to Timer
-  description: Extends a currently running timer by adding duration to it.
+  description: Extends a currently running timer by adding duration to it. Provide either entry_id or entity_id.
   fields:
     entry_id:
       name: Entry ID
       description: The config entry ID of the simple timer sensor.
-      required: true
+      required: false
       selector:
         config_entry:
           integration: simple_timer
+    entity_id:
+      name: Entity
+      description: The Simple Timer sensor entity (alternative to Entry ID).
+      required: false
+      selector:
+        entity:
+          integration: simple_timer
+          domain: sensor
     duration:
       name: Duration
       description: The duration to add in minutes.
@@ -70,15 +89,23 @@ add_timer:
 
 cancel_timer:
   name: Cancel Timer
-  description: Cancels an active countdown timer.
+  description: Cancels an active countdown timer. Provide either entry_id or entity_id.
   fields:
     entry_id:
       name: Entry ID
       description: The config entry ID of the simple timer sensor.
-      required: true
+      required: false
       selector:
         config_entry:
           integration: simple_timer
+    entity_id:
+      name: Entity
+      description: The Simple Timer sensor entity (alternative to Entry ID).
+      required: false
+      selector:
+        entity:
+          integration: simple_timer
+          domain: sensor
     turn_off_entity:
       name: Turn Off Entity
       description: If true, turns off the associated switch entity when cancelling.
@@ -89,15 +116,23 @@ cancel_timer:
 
 update_switch_entity:
   name: Update Switch Entity
-  description: Tells the sensor which switch entity to monitor for runtime calculation.
+  description: Tells the sensor which switch entity to monitor for runtime calculation. Provide either entry_id or entity_id.
   fields:
     entry_id:
       name: Entry ID
       description: The config entry ID of the simple timer sensor.
-      required: true
+      required: false
       selector:
         config_entry:
           integration: simple_timer
+    entity_id:
+      name: Entity
+      description: The Simple Timer sensor entity (alternative to Entry ID).
+      required: false
+      selector:
+        entity:
+          integration: simple_timer
+          domain: sensor
     switch_entity_id:
       name: Switch Entity
       description: The entity ID of the switch to monitor (e.g., switch.my_timer).
@@ -108,7 +143,7 @@ update_switch_entity:
 
 force_name_sync:
   name: Force Name Sync
-  description: Forces immediate synchronization of sensor names after entry rename.
+  description: Forces immediate synchronization of sensor names after entry rename. If neither entry_id nor entity_id is provided, syncs all Simple Timer sensors.
   fields:
     entry_id:
       name: Entry ID (Optional)
@@ -117,18 +152,34 @@ force_name_sync:
       selector:
         config_entry:
           integration: simple_timer
+    entity_id:
+      name: Entity (Optional)
+      description: The Simple Timer sensor entity to sync (alternative to Entry ID).
+      required: false
+      selector:
+        entity:
+          integration: simple_timer
+          domain: sensor
 
 manual_power_toggle:
   name: Manual Power Toggle
-  description: Manually toggles switch power and sends appropriate notifications.
+  description: Manually toggles switch power and sends appropriate notifications. Provide either entry_id or entity_id.
   fields:
     entry_id:
       name: Entry ID
       description: The config entry ID of the simple timer sensor.
-      required: true
+      required: false
       selector:
         config_entry:
           integration: simple_timer
+    entity_id:
+      name: Entity
+      description: The Simple Timer sensor entity (alternative to Entry ID).
+      required: false
+      selector:
+        entity:
+          integration: simple_timer
+          domain: sensor
     action:
       name: Action
       description: The action to perform (turn_on or turn_off).
@@ -141,27 +192,43 @@ manual_power_toggle:
 
 reset_daily_usage:
   name: Reset Daily Usage
-  description: Manually reset daily usage time to zero
+  description: Manually reset daily usage time to zero. Provide either entry_id or entity_id.
   fields:
     entry_id:
       name: Entry ID
       description: The config entry ID of the simple timer sensor
-      required: true
+      required: false
       selector:
         config_entry:
           integration: simple_timer
+    entity_id:
+      name: Entity
+      description: The Simple Timer sensor entity (alternative to Entry ID).
+      required: false
+      selector:
+        entity:
+          integration: simple_timer
+          domain: sensor
 
 test_notification:
   name: Test Notification
-  description: Test the notification functionality for a timer instance
+  description: Test the notification functionality for a timer instance. Provide either entry_id or entity_id.
   fields:
     entry_id:
       name: Entry ID
       description: The config entry ID of the simple timer sensor
-      required: true
+      required: false
       selector:
         config_entry:
           integration: simple_timer
+    entity_id:
+      name: Entity
+      description: The Simple Timer sensor entity (alternative to Entry ID).
+      required: false
+      selector:
+        entity:
+          integration: simple_timer
+          domain: sensor
     message:
       name: Message
       description: Test message to send
