@@ -107,6 +107,28 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
         },
         cv.has_at_least_one_key("entry_id", "entity_id"),
     ))
+    DAY_OPTIONS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+    DAY_TO_WEEKDAY = {d: i for i, d in enumerate(DAY_OPTIONS)}
+
+    SERVICE_SCHEDULE_TIMER_SCHEMA = vol.Schema(vol.All(
+        {
+            vol.Exclusive("entry_id", "target"): cv.string,
+            vol.Exclusive("entity_id", "target"): cv.entity_id,
+            vol.Required("start_time"): cv.time,
+            vol.Required("duration"): cv.positive_float,
+            vol.Optional("unit", default="min"): vol.In(UNIT_OPTIONS),
+            vol.Optional("repeat", default=False): cv.boolean,
+            vol.Optional("days", default=list): [vol.In(DAY_OPTIONS)],
+        },
+        cv.has_at_least_one_key("entry_id", "entity_id"),
+    ))
+    SERVICE_CANCEL_SCHEDULE_SCHEMA = vol.Schema(vol.All(
+        {
+            vol.Exclusive("entry_id", "target"): cv.string,
+            vol.Exclusive("entity_id", "target"): cv.entity_id,
+        },
+        cv.has_at_least_one_key("entry_id", "entity_id"),
+    ))
     SERVICE_ADD_TIMER_SCHEMA = vol.Schema(vol.All(
         {
             vol.Exclusive("entry_id", "target"): cv.string,
@@ -211,6 +233,23 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
         sensor = _get_sensor(*_resolve_entry_id(call))
         await sensor.async_add_timer(call.data["duration"], call.data.get("unit", "min"))
 
+    async def schedule_timer(call: ServiceCall):
+        """Handle the service call to arm a scheduled start."""
+        sensor = _get_sensor(*_resolve_entry_id(call))
+        days = [DAY_TO_WEEKDAY[d] for d in call.data.get("days", [])]
+        await sensor.async_schedule_timer(
+            call.data["start_time"],
+            call.data["duration"],
+            call.data.get("unit", "min"),
+            call.data.get("repeat", False),
+            days,
+        )
+
+    async def cancel_schedule(call: ServiceCall):
+        """Handle the service call to cancel an armed schedule."""
+        sensor = _get_sensor(*_resolve_entry_id(call))
+        await sensor.async_cancel_schedule()
+
     async def cancel_timer(call: ServiceCall):
         """Handle the service call to cancel the device timer."""
         sensor = _get_sensor(*_resolve_entry_id(call))
@@ -303,6 +342,12 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
     )
     hass.services.async_register(
         DOMAIN, "add_timer", add_timer, schema=SERVICE_ADD_TIMER_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, "schedule_timer", schedule_timer, schema=SERVICE_SCHEDULE_TIMER_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, "cancel_schedule", cancel_schedule, schema=SERVICE_CANCEL_SCHEDULE_SCHEMA
     )
     hass.services.async_register(
         DOMAIN, "cancel_timer", cancel_timer, schema=SERVICE_CANCEL_TIMER_SCHEMA

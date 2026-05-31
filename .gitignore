@@ -119,6 +119,9 @@ package-lock.json
 .gemini/
 .planning/
 
+# Claude
+.claude/
+
 # macOS
 .DS_Store
 

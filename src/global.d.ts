@@ -26,6 +26,7 @@ interface TimerCardConfig {
   entity_state_icon?: string | null;
   turn_off_on_cancel?: boolean;
   use_default_timer?: boolean;
+  show_schedule?: boolean;
 }
 
 // Define the structure for a Home Assistant state object

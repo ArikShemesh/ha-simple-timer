@@ -87,6 +87,103 @@ add_timer:
             - day
             - days
 
+schedule_timer:
+  name: Schedule Timer
+  description: Arm a future start. At the chosen time-of-day the switch turns on and runs a bounded timer for the given duration, then off. One-shot by default, or repeat on selected days. Provide either entry_id or entity_id.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: The config entry ID of the simple timer sensor.
+      required: false
+      selector:
+        config_entry:
+          integration: simple_timer
+    entity_id:
+      name: Entity
+      description: The Simple Timer sensor entity (alternative to Entry ID).
+      required: false
+      selector:
+        entity:
+          integration: simple_timer
+          domain: sensor
+    start_time:
+      name: Start Time
+      description: Time of day to start the timer (HH:MM). If already passed today, fires the next occurrence.
+      required: true
+      selector:
+        time:
+    duration:
+      name: Duration
+      description: How long to run once started.
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 1000
+          unit_of_measurement: "minutes"
+    unit:
+      name: Unit
+      description: The unit of the duration (min, sec, etc).
+      required: false
+      default: minutes
+      selector:
+        select:
+          options:
+            - s
+            - sec
+            - seconds
+            - m
+            - min
+            - minutes
+            - h
+            - hr
+            - hours
+            - d
+            - day
+            - days
+    repeat:
+      name: Repeat
+      description: If true, the schedule repeats on the selected days (or daily if none selected).
+      required: false
+      default: false
+      selector:
+        boolean:
+    days:
+      name: Days
+      description: Days of week to repeat on (only used when Repeat is on). Empty means every day.
+      required: false
+      selector:
+        select:
+          multiple: true
+          options:
+            - mon
+            - tue
+            - wed
+            - thu
+            - fri
+            - sat
+            - sun
+
+cancel_schedule:
+  name: Cancel Schedule
+  description: Cancel an armed scheduled start. Provide either entry_id or entity_id.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: The config entry ID of the simple timer sensor.
+      required: false
+      selector:
+        config_entry:
+          integration: simple_timer
+    entity_id:
+      name: Entity
+      description: The Simple Timer sensor entity (alternative to Entry ID).
+      required: false
+      selector:
+        entity:
+          integration: simple_timer
+          domain: sensor
+
 cancel_timer:
   name: Cancel Timer
   description: Cancels an active countdown timer. Provide either entry_id or entity_id.
