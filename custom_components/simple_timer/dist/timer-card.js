@@ -3,23 +3,23 @@
  * Copyright 2019 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */
-const t=globalThis,e=t.ShadowRoot&&(void 0===t.ShadyCSS||t.ShadyCSS.nativeShadow)&&"adoptedStyleSheets"in Document.prototype&&"replace"in CSSStyleSheet.prototype,i=Symbol(),o=new WeakMap;let n=class{constructor(t,e,o){if(this._$cssResult$=!0,o!==i)throw Error("CSSResult is not constructable. Use `unsafeCSS` or `css` instead.");this.cssText=t,this.t=e}get styleSheet(){let t=this.o;const i=this.t;if(e&&void 0===t){const e=void 0!==i&&1===i.length;e&&(t=o.get(i)),void 0===t&&((this.o=t=new CSSStyleSheet).replaceSync(this.cssText),e&&o.set(i,t))}return t}toString(){return this.cssText}};const s=(t,...e)=>{const o=1===t.length?t[0]:e.reduce((e,i,o)=>e+(t=>{if(!0===t._$cssResult$)return t.cssText;if("number"==typeof t)return t;throw Error("Value passed to 'css' function must be a 'css' function result: "+t+". Use 'unsafeCSS' to pass non-literal values, but take care to ensure page security.")})(i)+t[o+1],t[0]);return new n(o,t,i)},r=e?t=>t:t=>t instanceof CSSStyleSheet?(t=>{let e="";for(const i of t.cssRules)e+=i.cssText;return(t=>new n("string"==typeof t?t:t+"",void 0,i))(e)})(t):t,{is:a,defineProperty:l,getOwnPropertyDescriptor:d,getOwnPropertyNames:c,getOwnPropertySymbols:h,getPrototypeOf:u}=Object,_=globalThis,p=_.trustedTypes,g=p?p.emptyScript:"",m=_.reactiveElementPolyfillSupport,f=(t,e)=>t,v={toAttribute(t,e){switch(e){case Boolean:t=t?g:null;break;case Object:case Array:t=null==t?t:JSON.stringify(t)}return t},fromAttribute(t,e){let i=t;switch(e){case Boolean:i=null!==t;break;case Number:i=null===t?null:Number(t);break;case Object:case Array:try{i=JSON.parse(t)}catch(t){i=null}}return i}},b=(t,e)=>!a(t,e),y={attribute:!0,type:String,converter:v,reflect:!1,useDefault:!1,hasChanged:b};
+const t=globalThis,e=t.ShadowRoot&&(void 0===t.ShadyCSS||t.ShadyCSS.nativeShadow)&&"adoptedStyleSheets"in Document.prototype&&"replace"in CSSStyleSheet.prototype,i=Symbol(),o=new WeakMap;let n=class{constructor(t,e,o){if(this._$cssResult$=!0,o!==i)throw Error("CSSResult is not constructable. Use `unsafeCSS` or `css` instead.");this.cssText=t,this.t=e}get styleSheet(){let t=this.o;const i=this.t;if(e&&void 0===t){const e=void 0!==i&&1===i.length;e&&(t=o.get(i)),void 0===t&&((this.o=t=new CSSStyleSheet).replaceSync(this.cssText),e&&o.set(i,t))}return t}toString(){return this.cssText}};const s=(t,...e)=>{const o=1===t.length?t[0]:e.reduce((e,i,o)=>e+(t=>{if(!0===t._$cssResult$)return t.cssText;if("number"==typeof t)return t;throw Error("Value passed to 'css' function must be a 'css' function result: "+t+". Use 'unsafeCSS' to pass non-literal values, but take care to ensure page security.")})(i)+t[o+1],t[0]);return new n(o,t,i)},r=e?t=>t:t=>t instanceof CSSStyleSheet?(t=>{let e="";for(const i of t.cssRules)e+=i.cssText;return(t=>new n("string"==typeof t?t:t+"",void 0,i))(e)})(t):t,{is:a,defineProperty:l,getOwnPropertyDescriptor:c,getOwnPropertyNames:d,getOwnPropertySymbols:h,getPrototypeOf:u}=Object,p=globalThis,_=p.trustedTypes,g=_?_.emptyScript:"",m=p.reactiveElementPolyfillSupport,f=(t,e)=>t,b={toAttribute(t,e){switch(e){case Boolean:t=t?g:null;break;case Object:case Array:t=null==t?t:JSON.stringify(t)}return t},fromAttribute(t,e){let i=t;switch(e){case Boolean:i=null!==t;break;case Number:i=null===t?null:Number(t);break;case Object:case Array:try{i=JSON.parse(t)}catch(t){i=null}}return i}},v=(t,e)=>!a(t,e),y={attribute:!0,type:String,converter:b,reflect:!1,useDefault:!1,hasChanged:v};
 /**
  * @license
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
- */Symbol.metadata??=Symbol("metadata"),_.litPropertyMetadata??=new WeakMap;let $=class extends HTMLElement{static addInitializer(t){this._$Ei(),(this.l??=[]).push(t)}static get observedAttributes(){return this.finalize(),this._$Eh&&[...this._$Eh.keys()]}static createProperty(t,e=y){if(e.state&&(e.attribute=!1),this._$Ei(),this.prototype.hasOwnProperty(t)&&((e=Object.create(e)).wrapped=!0),this.elementProperties.set(t,e),!e.noAccessor){const i=Symbol(),o=this.getPropertyDescriptor(t,i,e);void 0!==o&&l(this.prototype,t,o)}}static getPropertyDescriptor(t,e,i){const{get:o,set:n}=d(this.prototype,t)??{get(){return this[e]},set(t){this[e]=t}};return{get:o,set(e){const s=o?.call(this);n?.call(this,e),this.requestUpdate(t,s,i)},configurable:!0,enumerable:!0}}static getPropertyOptions(t){return this.elementProperties.get(t)??y}static _$Ei(){if(this.hasOwnProperty(f("elementProperties")))return;const t=u(this);t.finalize(),void 0!==t.l&&(this.l=[...t.l]),this.elementProperties=new Map(t.elementProperties)}static finalize(){if(this.hasOwnProperty(f("finalized")))return;if(this.finalized=!0,this._$Ei(),this.hasOwnProperty(f("properties"))){const t=this.properties,e=[...c(t),...h(t)];for(const i of e)this.createProperty(i,t[i])}const t=this[Symbol.metadata];if(null!==t){const e=litPropertyMetadata.get(t);if(void 0!==e)for(const[t,i]of e)this.elementProperties.set(t,i)}this._$Eh=new Map;for(const[t,e]of this.elementProperties){const i=this._$Eu(t,e);void 0!==i&&this._$Eh.set(i,t)}this.elementStyles=this.finalizeStyles(this.styles)}static finalizeStyles(t){const e=[];if(Array.isArray(t)){const i=new Set(t.flat(1/0).reverse());for(const t of i)e.unshift(r(t))}else void 0!==t&&e.push(r(t));return e}static _$Eu(t,e){const i=e.attribute;return!1===i?void 0:"string"==typeof i?i:"string"==typeof t?t.toLowerCase():void 0}constructor(){super(),this._$Ep=void 0,this.isUpdatePending=!1,this.hasUpdated=!1,this._$Em=null,this._$Ev()}_$Ev(){this._$ES=new Promise(t=>this.enableUpdating=t),this._$AL=new Map,this._$E_(),this.requestUpdate(),this.constructor.l?.forEach(t=>t(this))}addController(t){(this._$EO??=new Set).add(t),void 0!==this.renderRoot&&this.isConnected&&t.hostConnected?.()}removeController(t){this._$EO?.delete(t)}_$E_(){const t=new Map,e=this.constructor.elementProperties;for(const i of e.keys())this.hasOwnProperty(i)&&(t.set(i,this[i]),delete this[i]);t.size>0&&(this._$Ep=t)}createRenderRoot(){const i=this.shadowRoot??this.attachShadow(this.constructor.shadowRootOptions);return((i,o)=>{if(e)i.adoptedStyleSheets=o.map(t=>t instanceof CSSStyleSheet?t:t.styleSheet);else for(const e of o){const o=document.createElement("style"),n=t.litNonce;void 0!==n&&o.setAttribute("nonce",n),o.textContent=e.cssText,i.appendChild(o)}})(i,this.constructor.elementStyles),i}connectedCallback(){this.renderRoot??=this.createRenderRoot(),this.enableUpdating(!0),this._$EO?.forEach(t=>t.hostConnected?.())}enableUpdating(t){}disconnectedCallback(){this._$EO?.forEach(t=>t.hostDisconnected?.())}attributeChangedCallback(t,e,i){this._$AK(t,i)}_$ET(t,e){const i=this.constructor.elementProperties.get(t),o=this.constructor._$Eu(t,i);if(void 0!==o&&!0===i.reflect){const n=(void 0!==i.converter?.toAttribute?i.converter:v).toAttribute(e,i.type);this._$Em=t,null==n?this.removeAttribute(o):this.setAttribute(o,n),this._$Em=null}}_$AK(t,e){const i=this.constructor,o=i._$Eh.get(t);if(void 0!==o&&this._$Em!==o){const t=i.getPropertyOptions(o),n="function"==typeof t.converter?{fromAttribute:t.converter}:void 0!==t.converter?.fromAttribute?t.converter:v;this._$Em=o,this[o]=n.fromAttribute(e,t.type)??this._$Ej?.get(o)??null,this._$Em=null}}requestUpdate(t,e,i){if(void 0!==t){const o=this.constructor,n=this[t];if(i??=o.getPropertyOptions(t),!((i.hasChanged??b)(n,e)||i.useDefault&&i.reflect&&n===this._$Ej?.get(t)&&!this.hasAttribute(o._$Eu(t,i))))return;this.C(t,e,i)}!1===this.isUpdatePending&&(this._$ES=this._$EP())}C(t,e,{useDefault:i,reflect:o,wrapped:n},s){i&&!(this._$Ej??=new Map).has(t)&&(this._$Ej.set(t,s??e??this[t]),!0!==n||void 0!==s)||(this._$AL.has(t)||(this.hasUpdated||i||(e=void 0),this._$AL.set(t,e)),!0===o&&this._$Em!==t&&(this._$Eq??=new Set).add(t))}async _$EP(){this.isUpdatePending=!0;try{await this._$ES}catch(t){Promise.reject(t)}const t=this.scheduleUpdate();return null!=t&&await t,!this.isUpdatePending}scheduleUpdate(){return this.performUpdate()}performUpdate(){if(!this.isUpdatePending)return;if(!this.hasUpdated){if(this.renderRoot??=this.createRenderRoot(),this._$Ep){for(const[t,e]of this._$Ep)this[t]=e;this._$Ep=void 0}const t=this.constructor.elementProperties;if(t.size>0)for(const[e,i]of t){const{wrapped:t}=i,o=this[e];!0!==t||this._$AL.has(e)||void 0===o||this.C(e,void 0,i,o)}}let t=!1;const e=this._$AL;try{t=this.shouldUpdate(e),t?(this.willUpdate(e),this._$EO?.forEach(t=>t.hostUpdate?.()),this.update(e)):this._$EM()}catch(e){throw t=!1,this._$EM(),e}t&&this._$AE(e)}willUpdate(t){}_$AE(t){this._$EO?.forEach(t=>t.hostUpdated?.()),this.hasUpdated||(this.hasUpdated=!0,this.firstUpdated(t)),this.updated(t)}_$EM(){this._$AL=new Map,this.isUpdatePending=!1}get updateComplete(){return this.getUpdateComplete()}getUpdateComplete(){return this._$ES}shouldUpdate(t){return!0}update(t){this._$Eq&&=this._$Eq.forEach(t=>this._$ET(t,this[t])),this._$EM()}updated(t){}firstUpdated(t){}};$.elementStyles=[],$.shadowRootOptions={mode:"open"},$[f("elementProperties")]=new Map,$[f("finalized")]=new Map,m?.({ReactiveElement:$}),(_.reactiveElementVersions??=[]).push("2.1.0");
+ */Symbol.metadata??=Symbol("metadata"),p.litPropertyMetadata??=new WeakMap;let x=class extends HTMLElement{static addInitializer(t){this._$Ei(),(this.l??=[]).push(t)}static get observedAttributes(){return this.finalize(),this._$Eh&&[...this._$Eh.keys()]}static createProperty(t,e=y){if(e.state&&(e.attribute=!1),this._$Ei(),this.prototype.hasOwnProperty(t)&&((e=Object.create(e)).wrapped=!0),this.elementProperties.set(t,e),!e.noAccessor){const i=Symbol(),o=this.getPropertyDescriptor(t,i,e);void 0!==o&&l(this.prototype,t,o)}}static getPropertyDescriptor(t,e,i){const{get:o,set:n}=c(this.prototype,t)??{get(){return this[e]},set(t){this[e]=t}};return{get:o,set(e){const s=o?.call(this);n?.call(this,e),this.requestUpdate(t,s,i)},configurable:!0,enumerable:!0}}static getPropertyOptions(t){return this.elementProperties.get(t)??y}static _$Ei(){if(this.hasOwnProperty(f("elementProperties")))return;const t=u(this);t.finalize(),void 0!==t.l&&(this.l=[...t.l]),this.elementProperties=new Map(t.elementProperties)}static finalize(){if(this.hasOwnProperty(f("finalized")))return;if(this.finalized=!0,this._$Ei(),this.hasOwnProperty(f("properties"))){const t=this.properties,e=[...d(t),...h(t)];for(const i of e)this.createProperty(i,t[i])}const t=this[Symbol.metadata];if(null!==t){const e=litPropertyMetadata.get(t);if(void 0!==e)for(const[t,i]of e)this.elementProperties.set(t,i)}this._$Eh=new Map;for(const[t,e]of this.elementProperties){const i=this._$Eu(t,e);void 0!==i&&this._$Eh.set(i,t)}this.elementStyles=this.finalizeStyles(this.styles)}static finalizeStyles(t){const e=[];if(Array.isArray(t)){const i=new Set(t.flat(1/0).reverse());for(const t of i)e.unshift(r(t))}else void 0!==t&&e.push(r(t));return e}static _$Eu(t,e){const i=e.attribute;return!1===i?void 0:"string"==typeof i?i:"string"==typeof t?t.toLowerCase():void 0}constructor(){super(),this._$Ep=void 0,this.isUpdatePending=!1,this.hasUpdated=!1,this._$Em=null,this._$Ev()}_$Ev(){this._$ES=new Promise(t=>this.enableUpdating=t),this._$AL=new Map,this._$E_(),this.requestUpdate(),this.constructor.l?.forEach(t=>t(this))}addController(t){(this._$EO??=new Set).add(t),void 0!==this.renderRoot&&this.isConnected&&t.hostConnected?.()}removeController(t){this._$EO?.delete(t)}_$E_(){const t=new Map,e=this.constructor.elementProperties;for(const i of e.keys())this.hasOwnProperty(i)&&(t.set(i,this[i]),delete this[i]);t.size>0&&(this._$Ep=t)}createRenderRoot(){const i=this.shadowRoot??this.attachShadow(this.constructor.shadowRootOptions);return((i,o)=>{if(e)i.adoptedStyleSheets=o.map(t=>t instanceof CSSStyleSheet?t:t.styleSheet);else for(const e of o){const o=document.createElement("style"),n=t.litNonce;void 0!==n&&o.setAttribute("nonce",n),o.textContent=e.cssText,i.appendChild(o)}})(i,this.constructor.elementStyles),i}connectedCallback(){this.renderRoot??=this.createRenderRoot(),this.enableUpdating(!0),this._$EO?.forEach(t=>t.hostConnected?.())}enableUpdating(t){}disconnectedCallback(){this._$EO?.forEach(t=>t.hostDisconnected?.())}attributeChangedCallback(t,e,i){this._$AK(t,i)}_$ET(t,e){const i=this.constructor.elementProperties.get(t),o=this.constructor._$Eu(t,i);if(void 0!==o&&!0===i.reflect){const n=(void 0!==i.converter?.toAttribute?i.converter:b).toAttribute(e,i.type);this._$Em=t,null==n?this.removeAttribute(o):this.setAttribute(o,n),this._$Em=null}}_$AK(t,e){const i=this.constructor,o=i._$Eh.get(t);if(void 0!==o&&this._$Em!==o){const t=i.getPropertyOptions(o),n="function"==typeof t.converter?{fromAttribute:t.converter}:void 0!==t.converter?.fromAttribute?t.converter:b;this._$Em=o,this[o]=n.fromAttribute(e,t.type)??this._$Ej?.get(o)??null,this._$Em=null}}requestUpdate(t,e,i){if(void 0!==t){const o=this.constructor,n=this[t];if(i??=o.getPropertyOptions(t),!((i.hasChanged??v)(n,e)||i.useDefault&&i.reflect&&n===this._$Ej?.get(t)&&!this.hasAttribute(o._$Eu(t,i))))return;this.C(t,e,i)}!1===this.isUpdatePending&&(this._$ES=this._$EP())}C(t,e,{useDefault:i,reflect:o,wrapped:n},s){i&&!(this._$Ej??=new Map).has(t)&&(this._$Ej.set(t,s??e??this[t]),!0!==n||void 0!==s)||(this._$AL.has(t)||(this.hasUpdated||i||(e=void 0),this._$AL.set(t,e)),!0===o&&this._$Em!==t&&(this._$Eq??=new Set).add(t))}async _$EP(){this.isUpdatePending=!0;try{await this._$ES}catch(t){Promise.reject(t)}const t=this.scheduleUpdate();return null!=t&&await t,!this.isUpdatePending}scheduleUpdate(){return this.performUpdate()}performUpdate(){if(!this.isUpdatePending)return;if(!this.hasUpdated){if(this.renderRoot??=this.createRenderRoot(),this._$Ep){for(const[t,e]of this._$Ep)this[t]=e;this._$Ep=void 0}const t=this.constructor.elementProperties;if(t.size>0)for(const[e,i]of t){const{wrapped:t}=i,o=this[e];!0!==t||this._$AL.has(e)||void 0===o||this.C(e,void 0,i,o)}}let t=!1;const e=this._$AL;try{t=this.shouldUpdate(e),t?(this.willUpdate(e),this._$EO?.forEach(t=>t.hostUpdate?.()),this.update(e)):this._$EM()}catch(e){throw t=!1,this._$EM(),e}t&&this._$AE(e)}willUpdate(t){}_$AE(t){this._$EO?.forEach(t=>t.hostUpdated?.()),this.hasUpdated||(this.hasUpdated=!0,this.firstUpdated(t)),this.updated(t)}_$EM(){this._$AL=new Map,this.isUpdatePending=!1}get updateComplete(){return this.getUpdateComplete()}getUpdateComplete(){return this._$ES}shouldUpdate(t){return!0}update(t){this._$Eq&&=this._$Eq.forEach(t=>this._$ET(t,this[t])),this._$EM()}updated(t){}firstUpdated(t){}};x.elementStyles=[],x.shadowRootOptions={mode:"open"},x[f("elementProperties")]=new Map,x[f("finalized")]=new Map,m?.({ReactiveElement:x}),(p.reactiveElementVersions??=[]).push("2.1.0");
 /**
  * @license
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */
-const x=globalThis,w=x.trustedTypes,S=w?w.createPolicy("lit-html",{createHTML:t=>t}):void 0,C="$lit$",T=`lit$${Math.random().toFixed(9).slice(2)}$`,E="?"+T,k=`<${E}>`,A=document,P=()=>A.createComment(""),M=t=>null===t||"object"!=typeof t&&"function"!=typeof t,I=Array.isArray,O="[ \t\n\f\r]",V=/<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g,U=/-->/g,L=/>/g,B=RegExp(`>|${O}(?:([^\\s"'>=/]+)(${O}*=${O}*(?:[^ \t\n\f\r"'\`<>=]|("|')|))|$)`,"g"),N=/'/g,D=/"/g,j=/^(?:script|style|textarea|title)$/i,H=(t=>(e,...i)=>({_$litType$:t,strings:e,values:i}))(1),R=Symbol.for("lit-noChange"),z=Symbol.for("lit-nothing"),W=new WeakMap,F=A.createTreeWalker(A,129);function q(t,e){if(!I(t)||!t.hasOwnProperty("raw"))throw Error("invalid template strings array");return void 0!==S?S.createHTML(e):e}const J=(t,e)=>{const i=t.length-1,o=[];let n,s=2===e?"<svg>":3===e?"<math>":"",r=V;for(let e=0;e<i;e++){const i=t[e];let a,l,d=-1,c=0;for(;c<i.length&&(r.lastIndex=c,l=r.exec(i),null!==l);)c=r.lastIndex,r===V?"!--"===l[1]?r=U:void 0!==l[1]?r=L:void 0!==l[2]?(j.test(l[2])&&(n=RegExp("</"+l[2],"g")),r=B):void 0!==l[3]&&(r=B):r===B?">"===l[0]?(r=n??V,d=-1):void 0===l[1]?d=-2:(d=r.lastIndex-l[2].length,a=l[1],r=void 0===l[3]?B:'"'===l[3]?D:N):r===D||r===N?r=B:r===U||r===L?r=V:(r=B,n=void 0);const h=r===B&&t[e+1].startsWith("/>")?" ":"";s+=r===V?i+k:d>=0?(o.push(a),i.slice(0,d)+C+i.slice(d)+T+h):i+T+(-2===d?e:h)}return[q(t,s+(t[i]||"<?>")+(2===e?"</svg>":3===e?"</math>":"")),o]};class G{constructor({strings:t,_$litType$:e},i){let o;this.parts=[];let n=0,s=0;const r=t.length-1,a=this.parts,[l,d]=J(t,e);if(this.el=G.createElement(l,i),F.currentNode=this.el.content,2===e||3===e){const t=this.el.content.firstChild;t.replaceWith(...t.childNodes)}for(;null!==(o=F.nextNode())&&a.length<r;){if(1===o.nodeType){if(o.hasAttributes())for(const t of o.getAttributeNames())if(t.endsWith(C)){const e=d[s++],i=o.getAttribute(t).split(T),r=/([.?@])?(.*)/.exec(e);a.push({type:1,index:n,name:r[2],strings:i,ctor:"."===r[1]?Q:"?"===r[1]?tt:"@"===r[1]?et:Z}),o.removeAttribute(t)}else t.startsWith(T)&&(a.push({type:6,index:n}),o.removeAttribute(t));if(j.test(o.tagName)){const t=o.textContent.split(T),e=t.length-1;if(e>0){o.textContent=w?w.emptyScript:"";for(let i=0;i<e;i++)o.append(t[i],P()),F.nextNode(),a.push({type:2,index:++n});o.append(t[e],P())}}}else if(8===o.nodeType)if(o.data===E)a.push({type:2,index:n});else{let t=-1;for(;-1!==(t=o.data.indexOf(T,t+1));)a.push({type:7,index:n}),t+=T.length-1}n++}}static createElement(t,e){const i=A.createElement("template");return i.innerHTML=t,i}}function K(t,e,i=t,o){if(e===R)return e;let n=void 0!==o?i._$Co?.[o]:i._$Cl;const s=M(e)?void 0:e._$litDirective$;return n?.constructor!==s&&(n?._$AO?.(!1),void 0===s?n=void 0:(n=new s(t),n._$AT(t,i,o)),void 0!==o?(i._$Co??=[])[o]=n:i._$Cl=n),void 0!==n&&(e=K(t,n._$AS(t,e.values),n,o)),e}class X{constructor(t,e){this._$AV=[],this._$AN=void 0,this._$AD=t,this._$AM=e}get parentNode(){return this._$AM.parentNode}get _$AU(){return this._$AM._$AU}u(t){const{el:{content:e},parts:i}=this._$AD,o=(t?.creationScope??A).importNode(e,!0);F.currentNode=o;let n=F.nextNode(),s=0,r=0,a=i[0];for(;void 0!==a;){if(s===a.index){let e;2===a.type?e=new Y(n,n.nextSibling,this,t):1===a.type?e=new a.ctor(n,a.name,a.strings,this,t):6===a.type&&(e=new it(n,this,t)),this._$AV.push(e),a=i[++r]}s!==a?.index&&(n=F.nextNode(),s++)}return F.currentNode=A,o}p(t){let e=0;for(const i of this._$AV)void 0!==i&&(void 0!==i.strings?(i._$AI(t,i,e),e+=i.strings.length-2):i._$AI(t[e])),e++}}class Y{get _$AU(){return this._$AM?._$AU??this._$Cv}constructor(t,e,i,o){this.type=2,this._$AH=z,this._$AN=void 0,this._$AA=t,this._$AB=e,this._$AM=i,this.options=o,this._$Cv=o?.isConnected??!0}get parentNode(){let t=this._$AA.parentNode;const e=this._$AM;return void 0!==e&&11===t?.nodeType&&(t=e.parentNode),t}get startNode(){return this._$AA}get endNode(){return this._$AB}_$AI(t,e=this){t=K(this,t,e),M(t)?t===z||null==t||""===t?(this._$AH!==z&&this._$AR(),this._$AH=z):t!==this._$AH&&t!==R&&this._(t):void 0!==t._$litType$?this.$(t):void 0!==t.nodeType?this.T(t):(t=>I(t)||"function"==typeof t?.[Symbol.iterator])(t)?this.k(t):this._(t)}O(t){return this._$AA.parentNode.insertBefore(t,this._$AB)}T(t){this._$AH!==t&&(this._$AR(),this._$AH=this.O(t))}_(t){this._$AH!==z&&M(this._$AH)?this._$AA.nextSibling.data=t:this.T(A.createTextNode(t)),this._$AH=t}$(t){const{values:e,_$litType$:i}=t,o="number"==typeof i?this._$AC(t):(void 0===i.el&&(i.el=G.createElement(q(i.h,i.h[0]),this.options)),i);if(this._$AH?._$AD===o)this._$AH.p(e);else{const t=new X(o,this),i=t.u(this.options);t.p(e),this.T(i),this._$AH=t}}_$AC(t){let e=W.get(t.strings);return void 0===e&&W.set(t.strings,e=new G(t)),e}k(t){I(this._$AH)||(this._$AH=[],this._$AR());const e=this._$AH;let i,o=0;for(const n of t)o===e.length?e.push(i=new Y(this.O(P()),this.O(P()),this,this.options)):i=e[o],i._$AI(n),o++;o<e.length&&(this._$AR(i&&i._$AB.nextSibling,o),e.length=o)}_$AR(t=this._$AA.nextSibling,e){for(this._$AP?.(!1,!0,e);t&&t!==this._$AB;){const e=t.nextSibling;t.remove(),t=e}}setConnected(t){void 0===this._$AM&&(this._$Cv=t,this._$AP?.(t))}}class Z{get tagName(){return this.element.tagName}get _$AU(){return this._$AM._$AU}constructor(t,e,i,o,n){this.type=1,this._$AH=z,this._$AN=void 0,this.element=t,this.name=e,this._$AM=o,this.options=n,i.length>2||""!==i[0]||""!==i[1]?(this._$AH=Array(i.length-1).fill(new String),this.strings=i):this._$AH=z}_$AI(t,e=this,i,o){const n=this.strings;let s=!1;if(void 0===n)t=K(this,t,e,0),s=!M(t)||t!==this._$AH&&t!==R,s&&(this._$AH=t);else{const o=t;let r,a;for(t=n[0],r=0;r<n.length-1;r++)a=K(this,o[i+r],e,r),a===R&&(a=this._$AH[r]),s||=!M(a)||a!==this._$AH[r],a===z?t=z:t!==z&&(t+=(a??"")+n[r+1]),this._$AH[r]=a}s&&!o&&this.j(t)}j(t){t===z?this.element.removeAttribute(this.name):this.element.setAttribute(this.name,t??"")}}class Q extends Z{constructor(){super(...arguments),this.type=3}j(t){this.element[this.name]=t===z?void 0:t}}class tt extends Z{constructor(){super(...arguments),this.type=4}j(t){this.element.toggleAttribute(this.name,!!t&&t!==z)}}class et extends Z{constructor(t,e,i,o,n){super(t,e,i,o,n),this.type=5}_$AI(t,e=this){if((t=K(this,t,e,0)??z)===R)return;const i=this._$AH,o=t===z&&i!==z||t.capture!==i.capture||t.once!==i.once||t.passive!==i.passive,n=t!==z&&(i===z||o);o&&this.element.removeEventListener(this.name,this,i),n&&this.element.addEventListener(this.name,this,t),this._$AH=t}handleEvent(t){"function"==typeof this._$AH?this._$AH.call(this.options?.host??this.element,t):this._$AH.handleEvent(t)}}class it{constructor(t,e,i){this.element=t,this.type=6,this._$AN=void 0,this._$AM=e,this.options=i}get _$AU(){return this._$AM._$AU}_$AI(t){K(this,t)}}const ot=x.litHtmlPolyfillSupport;ot?.(G,Y),(x.litHtmlVersions??=[]).push("3.3.0");const nt=globalThis;
+const $=globalThis,w=$.trustedTypes,S=w?w.createPolicy("lit-html",{createHTML:t=>t}):void 0,C="$lit$",k=`lit$${Math.random().toFixed(9).slice(2)}$`,T="?"+k,E=`<${T}>`,A=document,P=()=>A.createComment(""),I=t=>null===t||"object"!=typeof t&&"function"!=typeof t,M=Array.isArray,O="[ \t\n\f\r]",D=/<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g,U=/-->/g,L=/>/g,V=RegExp(`>|${O}(?:([^\\s"'>=/]+)(${O}*=${O}*(?:[^ \t\n\f\r"'\`<>=]|("|')|))|$)`,"g"),R=/'/g,B=/"/g,N=/^(?:script|style|textarea|title)$/i,j=(t=>(e,...i)=>({_$litType$:t,strings:e,values:i}))(1),z=Symbol.for("lit-noChange"),H=Symbol.for("lit-nothing"),W=new WeakMap,F=A.createTreeWalker(A,129);function q(t,e){if(!M(t)||!t.hasOwnProperty("raw"))throw Error("invalid template strings array");return void 0!==S?S.createHTML(e):e}const J=(t,e)=>{const i=t.length-1,o=[];let n,s=2===e?"<svg>":3===e?"<math>":"",r=D;for(let e=0;e<i;e++){const i=t[e];let a,l,c=-1,d=0;for(;d<i.length&&(r.lastIndex=d,l=r.exec(i),null!==l);)d=r.lastIndex,r===D?"!--"===l[1]?r=U:void 0!==l[1]?r=L:void 0!==l[2]?(N.test(l[2])&&(n=RegExp("</"+l[2],"g")),r=V):void 0!==l[3]&&(r=V):r===V?">"===l[0]?(r=n??D,c=-1):void 0===l[1]?c=-2:(c=r.lastIndex-l[2].length,a=l[1],r=void 0===l[3]?V:'"'===l[3]?B:R):r===B||r===R?r=V:r===U||r===L?r=D:(r=V,n=void 0);const h=r===V&&t[e+1].startsWith("/>")?" ":"";s+=r===D?i+E:c>=0?(o.push(a),i.slice(0,c)+C+i.slice(c)+k+h):i+k+(-2===c?e:h)}return[q(t,s+(t[i]||"<?>")+(2===e?"</svg>":3===e?"</math>":"")),o]};class K{constructor({strings:t,_$litType$:e},i){let o;this.parts=[];let n=0,s=0;const r=t.length-1,a=this.parts,[l,c]=J(t,e);if(this.el=K.createElement(l,i),F.currentNode=this.el.content,2===e||3===e){const t=this.el.content.firstChild;t.replaceWith(...t.childNodes)}for(;null!==(o=F.nextNode())&&a.length<r;){if(1===o.nodeType){if(o.hasAttributes())for(const t of o.getAttributeNames())if(t.endsWith(C)){const e=c[s++],i=o.getAttribute(t).split(k),r=/([.?@])?(.*)/.exec(e);a.push({type:1,index:n,name:r[2],strings:i,ctor:"."===r[1]?Q:"?"===r[1]?tt:"@"===r[1]?et:Z}),o.removeAttribute(t)}else t.startsWith(k)&&(a.push({type:6,index:n}),o.removeAttribute(t));if(N.test(o.tagName)){const t=o.textContent.split(k),e=t.length-1;if(e>0){o.textContent=w?w.emptyScript:"";for(let i=0;i<e;i++)o.append(t[i],P()),F.nextNode(),a.push({type:2,index:++n});o.append(t[e],P())}}}else if(8===o.nodeType)if(o.data===T)a.push({type:2,index:n});else{let t=-1;for(;-1!==(t=o.data.indexOf(k,t+1));)a.push({type:7,index:n}),t+=k.length-1}n++}}static createElement(t,e){const i=A.createElement("template");return i.innerHTML=t,i}}function G(t,e,i=t,o){if(e===z)return e;let n=void 0!==o?i._$Co?.[o]:i._$Cl;const s=I(e)?void 0:e._$litDirective$;return n?.constructor!==s&&(n?._$AO?.(!1),void 0===s?n=void 0:(n=new s(t),n._$AT(t,i,o)),void 0!==o?(i._$Co??=[])[o]=n:i._$Cl=n),void 0!==n&&(e=G(t,n._$AS(t,e.values),n,o)),e}class X{constructor(t,e){this._$AV=[],this._$AN=void 0,this._$AD=t,this._$AM=e}get parentNode(){return this._$AM.parentNode}get _$AU(){return this._$AM._$AU}u(t){const{el:{content:e},parts:i}=this._$AD,o=(t?.creationScope??A).importNode(e,!0);F.currentNode=o;let n=F.nextNode(),s=0,r=0,a=i[0];for(;void 0!==a;){if(s===a.index){let e;2===a.type?e=new Y(n,n.nextSibling,this,t):1===a.type?e=new a.ctor(n,a.name,a.strings,this,t):6===a.type&&(e=new it(n,this,t)),this._$AV.push(e),a=i[++r]}s!==a?.index&&(n=F.nextNode(),s++)}return F.currentNode=A,o}p(t){let e=0;for(const i of this._$AV)void 0!==i&&(void 0!==i.strings?(i._$AI(t,i,e),e+=i.strings.length-2):i._$AI(t[e])),e++}}class Y{get _$AU(){return this._$AM?._$AU??this._$Cv}constructor(t,e,i,o){this.type=2,this._$AH=H,this._$AN=void 0,this._$AA=t,this._$AB=e,this._$AM=i,this.options=o,this._$Cv=o?.isConnected??!0}get parentNode(){let t=this._$AA.parentNode;const e=this._$AM;return void 0!==e&&11===t?.nodeType&&(t=e.parentNode),t}get startNode(){return this._$AA}get endNode(){return this._$AB}_$AI(t,e=this){t=G(this,t,e),I(t)?t===H||null==t||""===t?(this._$AH!==H&&this._$AR(),this._$AH=H):t!==this._$AH&&t!==z&&this._(t):void 0!==t._$litType$?this.$(t):void 0!==t.nodeType?this.T(t):(t=>M(t)||"function"==typeof t?.[Symbol.iterator])(t)?this.k(t):this._(t)}O(t){return this._$AA.parentNode.insertBefore(t,this._$AB)}T(t){this._$AH!==t&&(this._$AR(),this._$AH=this.O(t))}_(t){this._$AH!==H&&I(this._$AH)?this._$AA.nextSibling.data=t:this.T(A.createTextNode(t)),this._$AH=t}$(t){const{values:e,_$litType$:i}=t,o="number"==typeof i?this._$AC(t):(void 0===i.el&&(i.el=K.createElement(q(i.h,i.h[0]),this.options)),i);if(this._$AH?._$AD===o)this._$AH.p(e);else{const t=new X(o,this),i=t.u(this.options);t.p(e),this.T(i),this._$AH=t}}_$AC(t){let e=W.get(t.strings);return void 0===e&&W.set(t.strings,e=new K(t)),e}k(t){M(this._$AH)||(this._$AH=[],this._$AR());const e=this._$AH;let i,o=0;for(const n of t)o===e.length?e.push(i=new Y(this.O(P()),this.O(P()),this,this.options)):i=e[o],i._$AI(n),o++;o<e.length&&(this._$AR(i&&i._$AB.nextSibling,o),e.length=o)}_$AR(t=this._$AA.nextSibling,e){for(this._$AP?.(!1,!0,e);t&&t!==this._$AB;){const e=t.nextSibling;t.remove(),t=e}}setConnected(t){void 0===this._$AM&&(this._$Cv=t,this._$AP?.(t))}}class Z{get tagName(){return this.element.tagName}get _$AU(){return this._$AM._$AU}constructor(t,e,i,o,n){this.type=1,this._$AH=H,this._$AN=void 0,this.element=t,this.name=e,this._$AM=o,this.options=n,i.length>2||""!==i[0]||""!==i[1]?(this._$AH=Array(i.length-1).fill(new String),this.strings=i):this._$AH=H}_$AI(t,e=this,i,o){const n=this.strings;let s=!1;if(void 0===n)t=G(this,t,e,0),s=!I(t)||t!==this._$AH&&t!==z,s&&(this._$AH=t);else{const o=t;let r,a;for(t=n[0],r=0;r<n.length-1;r++)a=G(this,o[i+r],e,r),a===z&&(a=this._$AH[r]),s||=!I(a)||a!==this._$AH[r],a===H?t=H:t!==H&&(t+=(a??"")+n[r+1]),this._$AH[r]=a}s&&!o&&this.j(t)}j(t){t===H?this.element.removeAttribute(this.name):this.element.setAttribute(this.name,t??"")}}class Q extends Z{constructor(){super(...arguments),this.type=3}j(t){this.element[this.name]=t===H?void 0:t}}class tt extends Z{constructor(){super(...arguments),this.type=4}j(t){this.element.toggleAttribute(this.name,!!t&&t!==H)}}class et extends Z{constructor(t,e,i,o,n){super(t,e,i,o,n),this.type=5}_$AI(t,e=this){if((t=G(this,t,e,0)??H)===z)return;const i=this._$AH,o=t===H&&i!==H||t.capture!==i.capture||t.once!==i.once||t.passive!==i.passive,n=t!==H&&(i===H||o);o&&this.element.removeEventListener(this.name,this,i),n&&this.element.addEventListener(this.name,this,t),this._$AH=t}handleEvent(t){"function"==typeof this._$AH?this._$AH.call(this.options?.host??this.element,t):this._$AH.handleEvent(t)}}class it{constructor(t,e,i){this.element=t,this.type=6,this._$AN=void 0,this._$AM=e,this.options=i}get _$AU(){return this._$AM._$AU}_$AI(t){G(this,t)}}const ot=$.litHtmlPolyfillSupport;ot?.(K,Y),($.litHtmlVersions??=[]).push("3.3.0");const nt=globalThis;
 /**
  * @license
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
- */class st extends ${constructor(){super(...arguments),this.renderOptions={host:this},this._$Do=void 0}createRenderRoot(){const t=super.createRenderRoot();return this.renderOptions.renderBefore??=t.firstChild,t}update(t){const e=this.render();this.hasUpdated||(this.renderOptions.isConnected=this.isConnected),super.update(t),this._$Do=((t,e,i)=>{const o=i?.renderBefore??e;let n=o._$litPart$;if(void 0===n){const t=i?.renderBefore??null;o._$litPart$=n=new Y(e.insertBefore(P(),t),t,void 0,i??{})}return n._$AI(t),n})(e,this.renderRoot,this.renderOptions)}connectedCallback(){super.connectedCallback(),this._$Do?.setConnected(!0)}disconnectedCallback(){super.disconnectedCallback(),this._$Do?.setConnected(!1)}render(){return R}}st._$litElement$=!0,st.finalized=!0,nt.litElementHydrateSupport?.({LitElement:st});const rt=nt.litElementPolyfillSupport;rt?.({LitElement:st}),(nt.litElementVersions??=[]).push("4.2.0");const at=s`
+ */class st extends x{constructor(){super(...arguments),this.renderOptions={host:this},this._$Do=void 0}createRenderRoot(){const t=super.createRenderRoot();return this.renderOptions.renderBefore??=t.firstChild,t}update(t){const e=this.render();this.hasUpdated||(this.renderOptions.isConnected=this.isConnected),super.update(t),this._$Do=((t,e,i)=>{const o=i?.renderBefore??e;let n=o._$litPart$;if(void 0===n){const t=i?.renderBefore??null;o._$litPart$=n=new Y(e.insertBefore(P(),t),t,void 0,i??{})}return n._$AI(t),n})(e,this.renderRoot,this.renderOptions)}connectedCallback(){super.connectedCallback(),this._$Do?.setConnected(!0)}disconnectedCallback(){super.disconnectedCallback(),this._$Do?.setConnected(!1)}render(){return z}}st._$litElement$=!0,st.finalized=!0,nt.litElementHydrateSupport?.({LitElement:st});const rt=nt.litElementPolyfillSupport;rt?.({LitElement:st}),(nt.litElementVersions??=[]).push("4.2.0");const at=s`
   :host {
     display: block;
   }
@@ -480,8 +480,151 @@ const x=globalThis,w=x.trustedTypes,S=w?w.createPolicy("lit-html",{createHTML:t=
       50% { box-shadow: 0 0 25px rgba(242, 186, 90, 0.9); }
   }
 
+  /* ---- Schedule panel ---- */
+  .schedule-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin: 14px 16px 4px;
+    padding-top: 12px;
+    border-top: 1px solid var(--divider-color, rgba(255,255,255,0.12));
+    font-size: 13px;
+    color: var(--secondary-text-color);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .schedule-toggle span { flex: 0 1 auto; overflow: visible; }
+  .schedule-toggle ha-icon:first-child { color: var(--primary-color); --mdc-icon-size: 18px; }
+  .schedule-toggle .sched-chevron { --mdc-icon-size: 18px; }
 
-  `,lt="simple_timer",dt=[15,30,60,90,120,150];console.info("%c SIMPLE-TIMER-CARD %c v1.4.5 ","color: orange; font-weight: bold; background: black","color: white; font-weight: bold; background: dimgray");customElements.define("timer-card",class extends st{constructor(){super(...arguments),this._countdownInterval=null,this._liveRuntimeSeconds=0,this._timeRemaining=null,this._sliderValue=0,this.buttons=[],this._validationMessages=[],this._notificationSentForCurrentCycle=!1,this._entitiesLoaded=!1,this._serverTimeOffset=0,this._lastSyncedUpdate=null,this._effectiveSwitchEntity=null,this._effectiveSensorEntity=null,this._longPressTimer=null,this._isLongPress=!1,this._touchStartPosition=null,this._isCancelling=!1}static get properties(){return{hass:{type:Object},_config:{type:Object},_timeRemaining:{state:!0},_sliderValue:{state:!0},_entitiesLoaded:{state:!0},_effectiveSwitchEntity:{state:!0},_effectiveSensorEntity:{state:!0},_validationMessages:{state:!0}}}static async getConfigElement(){return await Promise.resolve().then(function(){return pt}),document.createElement("timer-card-editor")}static getStubConfig(t){return console.log("TimerCard: Generating stub config - NO auto-selection will be performed"),{type:"custom:timer-card",timer_instance_id:null,timer_buttons:[...dt],card_title:"Simple Timer",power_button_icon:"mdi:power",hide_slider:!1,slider_thumb_color:null,slider_background_color:null,power_button_background_color:null,power_button_icon_color:null}}setConfig(t){const e=t.slider_max&&t.slider_max>0&&t.slider_max<=9999?t.slider_max:120,i=t.timer_instance_id||"default";this.buttons=this._getValidatedTimerButtons(t.timer_buttons),this._config=Object.assign(Object.assign({},t),{type:t.type||"custom:timer-card",timer_buttons:t.timer_buttons||[...dt],card_title:t.card_title||null,entity_state_icon:t.entity_state_icon||null,power_button_icon:t.power_button_icon||null,slider_max:e,slider_unit:t.slider_unit||"min",reverse_mode:t.reverse_mode||!1,hide_slider:t.hide_slider||!1,show_daily_usage:!1!==t.show_daily_usage,timer_instance_id:i,entity:t.entity,sensor_entity:t.sensor_entity,slider_thumb_color:t.slider_thumb_color||null,slider_background_color:t.slider_background_color||null,timer_button_font_color:t.timer_button_font_color||null,timer_button_background_color:t.timer_button_background_color||null,power_button_background_color:t.power_button_background_color||null,power_button_icon_color:t.power_button_icon_color||null,entity_state_button_background_color:t.entity_state_button_background_color||null,entity_state_button_icon_color:t.entity_state_button_icon_color||null,entity_state_button_background_color_on:t.entity_state_button_background_color_on||null,entity_state_button_icon_color_on:t.entity_state_button_icon_color_on||null,turn_off_on_cancel:!1!==t.turn_off_on_cancel}),t.timer_instance_id&&(this._config.timer_instance_id=t.timer_instance_id),t.entity&&(this._config.entity=t.entity),t.sensor_entity&&(this._config.sensor_entity=t.sensor_entity);const o=localStorage.getItem(`simple-timer-slider-${i}`);let n=o?parseInt(o):NaN;(isNaN(n)||n<0)&&(n=e),n>e&&(n=e),this._sliderValue=n,localStorage.setItem(`simple-timer-slider-${i}`,this._sliderValue.toString()),this.requestUpdate(),this._liveRuntimeSeconds=0,this._notificationSentForCurrentCycle=!1,this._effectiveSwitchEntity=null,this._effectiveSensorEntity=null,this._entitiesLoaded=!1}_getValidatedTimerButtons(t){let e=[];if(this._validationMessages=[],Array.isArray(t)){const i=[],o=new Set,n=[];t.forEach(t=>{let s,r,a="min",l="Min";const d=String(t).trim().toLowerCase().match(/^(\d+(?:\.\d+)?)\s*(s|sec|seconds|m|min|minutes|h|hr|hours|d|day|days)?(\*)?$/);if(d){const c=parseFloat(d[1]),h=d[1].includes("."),u=d[2]||"min",_=!!d[3],p=u.startsWith("h"),g=u.startsWith("d");if(c>9999)return void i.push(t);if(h&&!p&&!g)return void i.push(t);if(h&&(p||g)){const e=d[1].split(".")[1];if(e&&e.length>1)return void i.push(t)}if(s=c,u.startsWith("s")?(a="s",l="sec",r=s/60):u.startsWith("h")?(a="h",l="hr",r=60*s):u.startsWith("d")?(a="d",l="day",r=1440*s):(a="min",l="min",r=s),s>0){const i=`${r}`;_?e.push({displayValue:s,unit:a,labelUnit:l,minutesEquivalent:r,isDefault:_}):o.has(i)?n.push(t):(o.add(i),e.push({displayValue:s,unit:a,labelUnit:l,minutesEquivalent:r,isDefault:_}))}else i.push(t)}else i.push(t)});const s=[];return i.length>0&&s.push(`Invalid timer values ignored: ${i.join(", ")}. Format example: 30, "30s", "1h", "2d". Limit 9999.`),n.length>0&&s.push("Duplicate timer values were removed."),this._validationMessages=s,e.sort((t,e)=>t.minutesEquivalent-e.minutesEquivalent),e}return null==t||(console.warn(`TimerCard: Invalid timer_buttons type (${typeof t}):`,t,"- using empty array"),this._validationMessages=[`Invalid timer_buttons configuration. Expected array, got ${typeof t}.`]),[]}_determineEffectiveEntities(){var t,e;let i=null,o=null,n=!1;if(this.hass&&this.hass.states){if(null===(t=this._config)||void 0===t?void 0:t.timer_instance_id){const t=this._config.timer_instance_id,e=Object.keys(this.hass.states).filter(t=>t.startsWith("sensor.")).find(e=>{const i=this.hass.states[e];return i.attributes.entry_id===t&&"string"==typeof i.attributes.switch_entity_id});if(e){o=e,i=this.hass.states[e].attributes.switch_entity_id,i&&this.hass.states[i]?n=!0:console.warn(`TimerCard: Configured instance '${t}' sensor '${o}' links to missing or invalid switch '${i}'.`)}else console.warn(`TimerCard: Configured timer_instance_id '${t}' does not have a corresponding simple_timer sensor found.`)}if(!n&&(null===(e=this._config)||void 0===e?void 0:e.sensor_entity)){const t=this.hass.states[this._config.sensor_entity];t&&"string"==typeof t.attributes.entry_id&&"string"==typeof t.attributes.switch_entity_id?(o=this._config.sensor_entity,i=t.attributes.switch_entity_id,i&&this.hass.states[i]?(n=!0,console.info(`TimerCard: Using manually configured sensor_entity: Sensor '${o}', Switch '${i}'.`)):console.warn(`TimerCard: Manually configured sensor '${o}' links to missing or invalid switch '${i}'.`)):console.warn(`TimerCard: Manually configured sensor_entity '${this._config.sensor_entity}' not found or missing required attributes.`)}this._effectiveSwitchEntity===i&&this._effectiveSensorEntity===o||(this._effectiveSwitchEntity=i,this._effectiveSensorEntity=o,this.requestUpdate()),this._entitiesLoaded=n}else this._entitiesLoaded=!1}_getEntryId(){if(!this._effectiveSensorEntity||!this.hass||!this.hass.states)return console.error("Timer-card: _getEntryId called without a valid effective sensor entity."),null;const t=this.hass.states[this._effectiveSensorEntity];return t&&t.attributes.entry_id?t.attributes.entry_id:(console.error("Could not determine entry_id from effective sensor_entity attributes:",this._effectiveSensorEntity),null)}_startTimer(t,e="min",i="button"){var o;if(this._validationMessages=[],!this._entitiesLoaded||!this.hass||!this.hass.callService)return void console.error("Timer-card: Cannot start timer. Entities not loaded or callService unavailable.");const n=this._getEntryId();if(!n)return void console.error("Timer-card: Entry ID not found for starting timer.");this._effectiveSwitchEntity;let s=(null===(o=this._config)||void 0===o?void 0:o.reverse_mode)||!1;if(this._effectiveSensorEntity&&this.hass){const t=this.hass.states[this._effectiveSensorEntity];t&&t.attributes.default_timer_enabled&&(s=!1)}s?this.hass.callService(lt,"start_timer",{entry_id:n,duration:t,unit:e,reverse_mode:!0,start_method:i}):this.hass.callService(lt,"start_timer",{entry_id:n,duration:t,unit:e,start_method:i}),this._notificationSentForCurrentCycle=!1}_addTimer(t,e="min"){if(this._validationMessages=[],!this._entitiesLoaded||!this.hass||!this.hass.callService)return void console.error("Timer-card: Cannot add to timer. Entities not loaded or callService unavailable.");const i=this._getEntryId();i?this.hass.callService(lt,"add_timer",{entry_id:i,duration:t,unit:e}).then(()=>{console.log(`Timer-card: Added ${t} ${e} to active timer.`)}).catch(t=>{console.error("Timer-card: Error adding to timer:",t)}):console.error("Timer-card: Entry ID not found for adding to timer.")}_cancelTimer(){var t;if(this._validationMessages=[],!this._entitiesLoaded||!this.hass||!this.hass.callService)return void console.error("Timer-card: Cannot cancel timer. Entities not loaded or callService unavailable.");this._isCancelling=!0;const e=this._getEntryId();if(!e)return console.error("Timer-card: Entry ID not found for cancelling timer."),void(this._isCancelling=!1);const i=!1!==(null===(t=this._config)||void 0===t?void 0:t.turn_off_on_cancel);this.hass.callService(lt,"cancel_timer",{entry_id:e,turn_off_entity:i}).then(()=>{setTimeout(()=>{this._isCancelling=!1},1e3)}).catch(t=>{console.error("Timer-card: Error cancelling timer:",t),this._isCancelling=!1}),this._notificationSentForCurrentCycle=!1}_handleTimerControl(){var t;if(this._validationMessages=[],!this._entitiesLoaded||!this.hass||!this.hass.states)return void console.error("Timer-card: Cannot control timer. Entities not loaded.");const e=this._effectiveSensorEntity,i=this.hass.states[e];if(!i)return void console.error("Timer-card: Sensor entity not found.");if("active"===i.attributes.timer_state)return this._cancelTimer(),void console.log("Timer-card: Stopping active timer.");if(this._sliderValue>0){const e=(null===(t=this._config)||void 0===t?void 0:t.slider_unit)||"min";this._startTimer(this._sliderValue,e,"slider"),console.log(`Timer-card: Starting timer for ${this._sliderValue} ${e}`)}else console.warn("Timer-card: Slider value is 0, cannot start timer.")}_handleIndependentPower(t){if(t.preventDefault(),t.stopPropagation(),!this._entitiesLoaded||!this.hass||!this._effectiveSwitchEntity)return void console.error("Timer-card: Cannot toggle power. Entities not loaded.");const e=this._effectiveSwitchEntity;console.log(`Timer-card: Toggling independent power for ${e}`),this.hass.callService("homeassistant","toggle",{entity_id:e}).catch(t=>console.error("Timer-card: Error toggling power:",t))}_showMoreInfo(){if(!this._entitiesLoaded||!this.hass)return void console.error("Timer-card: Cannot show more info. Entities not loaded.");const t=this._effectiveSensorEntity,e=new CustomEvent("hass-more-info",{bubbles:!0,composed:!0,detail:{entityId:t}});this.dispatchEvent(e)}connectedCallback(){var t,e;super.connectedCallback();const i=(null===(t=this._config)||void 0===t?void 0:t.timer_instance_id)||"default";if(localStorage.getItem(`simple-timer-slider-${i}`));else if(this._determineEffectiveEntities(),this._entitiesLoaded&&this.hass&&this._effectiveSensorEntity){const t=this.hass.states[this._effectiveSensorEntity],i=(null===(e=null==t?void 0:t.attributes)||void 0===e?void 0:e.timer_duration)||0;i>0&&i<=120&&(this._sliderValue=i)}this._determineEffectiveEntities(),this._updateLiveRuntime(),this._syncServerTime(),this._updateCountdown()}disconnectedCallback(){super.disconnectedCallback(),this._stopCountdown(),this._stopLiveRuntime(),this._longPressTimer&&window.clearTimeout(this._longPressTimer)}updated(t){(t.has("hass")||t.has("_config"))&&(this._determineEffectiveEntities(),this._updateLiveRuntime(),this._syncServerTime(),this._updateCountdown())}_updateLiveRuntime(){this._liveRuntimeSeconds=0}_stopLiveRuntime(){this._liveRuntimeSeconds=0}_updateCountdown(){if(!this._entitiesLoaded||!this.hass||!this.hass.states)return void this._stopCountdown();const t=this.hass.states[this._effectiveSensorEntity];if(!t||"active"!==t.attributes.timer_state)return this._stopCountdown(),void(this._notificationSentForCurrentCycle=!1);const e=t.attributes.timer_finishes_at;if(void 0===e)return console.warn("Timer-card: timer_finishes_at is undefined for active timer. Stopping countdown."),void this._stopCountdown();const i=new Date(e).getTime();if(this._countdownInterval&&this._currentFinishesAt!==i&&this._stopCountdown(),this._currentFinishesAt=i,!this._countdownInterval){const t=()=>{const t=(new Date).getTime()+this._serverTimeOffset,e=Math.max(0,Math.round((i-t)/1e3));if(this._getShowSeconds()){const t=Math.floor(e/3600),i=Math.floor(e%3600/60),o=e%60;this._timeRemaining=`${t.toString().padStart(2,"0")}:${i.toString().padStart(2,"0")}:${o.toString().padStart(2,"0")}`}else{const t=Math.floor(e/3600),i=Math.floor(e%3600/60);this._timeRemaining=`${t.toString().padStart(2,"0")}:${i.toString().padStart(2,"0")}`}0===e&&(this._stopCountdown(),this._notificationSentForCurrentCycle||(this._notificationSentForCurrentCycle=!0))};this._countdownInterval=window.setInterval(t,500),t()}}_stopCountdown(){this._countdownInterval&&(window.clearInterval(this._countdownInterval),this._countdownInterval=null),this._timeRemaining=null}_getShowSeconds(){var t;if(!this._entitiesLoaded||!this.hass||!this._effectiveSensorEntity)return!1;const e=this.hass.states[this._effectiveSensorEntity];return(null===(t=null==e?void 0:e.attributes)||void 0===t?void 0:t.show_seconds)||!1}_handleUsageClick(t){t.preventDefault(),this._isLongPress||this._showMoreInfo(),this._isLongPress=!1}_startLongPress(t){t.preventDefault(),this._isLongPress=!1,this._longPressTimer=window.setTimeout(()=>{this._isLongPress=!0,this._resetUsage(),"vibrate"in navigator&&navigator.vibrate(50)},800)}_endLongPress(t){t&&t.preventDefault(),this._longPressTimer&&(window.clearTimeout(this._longPressTimer),this._longPressTimer=null)}_handlePowerClick(t){"click"!==t.type||this._isLongPress||(t.preventDefault(),t.stopPropagation(),this._handleTimerControl()),this._isLongPress=!1}_handleTouchEnd(t){t.preventDefault(),t.stopPropagation(),this._longPressTimer&&(window.clearTimeout(this._longPressTimer),this._longPressTimer=null);let e=!1;if(this._touchStartPosition&&t.changedTouches[0]){const i=t.changedTouches[0],o=Math.abs(i.clientX-this._touchStartPosition.x),n=Math.abs(i.clientY-this._touchStartPosition.y),s=10;e=o>s||n>s}this._isLongPress||e||this._showMoreInfo(),this._isLongPress=!1,this._touchStartPosition=null}_handleTouchStart(t){t.preventDefault(),t.stopPropagation(),this._isLongPress=!1;const e=t.touches[0];this._touchStartPosition={x:e.clientX,y:e.clientY},this._longPressTimer=window.setTimeout(()=>{this._isLongPress=!0,this._resetUsage(),"vibrate"in navigator&&navigator.vibrate(50)},800)}_resetUsage(){if(this._validationMessages=[],!this._entitiesLoaded||!this.hass||!this.hass.callService)return void console.error("Timer-card: Cannot reset usage. Entities not loaded or callService unavailable.");const t=this._getEntryId();t?confirm("Reset daily usage to 00:00?\n\nThis action cannot be undone.")&&this.hass.callService(lt,"reset_daily_usage",{entry_id:t}).then(()=>{console.log("Timer-card: Daily usage reset successfully")}).catch(t=>{console.error("Timer-card: Error resetting daily usage:",t)}):console.error("Timer-card: Entry ID not found for resetting usage.")}_handleSliderChange(t){var e;const i=t.target;this._sliderValue=parseInt(i.value);const o=(null===(e=this._config)||void 0===e?void 0:e.timer_instance_id)||"default";localStorage.setItem(`simple-timer-slider-${o}`,this._sliderValue.toString())}_getCurrentTimerMode(){var t;if(!this._entitiesLoaded||!this.hass||!this._effectiveSensorEntity)return"normal";const e=this.hass.states[this._effectiveSensorEntity];return(null===(t=null==e?void 0:e.attributes)||void 0===t?void 0:t.reverse_mode)?"reverse":"normal"}_getSliderStyle(){var t,e,i;const o=(null===(t=this._config)||void 0===t?void 0:t.slider_thumb_color)||"#2ab69c",n=(null===(e=this._config)||void 0===e?void 0:e.slider_background_color)||"var(--secondary-background-color)",s=(null===(i=this._config)||void 0===i?void 0:i.slider_thumb_color)?this._adjustColorBrightness(o,20):"#4bd9bf",r=t=>{const e=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(t);return e?{r:parseInt(e[1],16),g:parseInt(e[2],16),b:parseInt(e[3],16)}:{r:42,g:182,b:156}},a=r(o),l=r(s);return`\n      .timer-slider {\n        background: ${n} !important;\n      }\n      .timer-slider::-webkit-slider-thumb {\n        background: ${o} !important;\n        border: 2px solid ${s} !important;\n        box-shadow: \n          0 0 0 2px rgba(${l.r}, ${l.g}, ${l.b}, 0.3),\n          0 0 8px rgba(${a.r}, ${a.g}, ${a.b}, 0.4),\n          0 2px 4px rgba(0, 0, 0, 0.2) !important;\n      }\n      .timer-slider::-webkit-slider-thumb:hover {\n        background: ${this._adjustColorBrightness(o,-10)} !important;\n        border: 2px solid ${s} !important;\n        box-shadow: \n          0 0 0 3px rgba(${l.r}, ${l.g}, ${l.b}, 0.4),\n          0 0 12px rgba(${a.r}, ${a.g}, ${a.b}, 0.6),\n          0 2px 6px rgba(0, 0, 0, 0.3) !important;\n      }\n      .timer-slider::-webkit-slider-thumb:active {\n        background: ${this._adjustColorBrightness(o,-20)} !important;\n        border: 2px solid ${s} !important;\n        box-shadow: \n          0 0 0 4px rgba(${l.r}, ${l.g}, ${l.b}, 0.5),\n          0 0 16px rgba(${a.r}, ${a.g}, ${a.b}, 0.7),\n          0 2px 8px rgba(0, 0, 0, 0.4) !important;\n      }\n      .timer-slider::-moz-range-thumb {\n        background: ${o} !important;\n        border: 2px solid ${s} !important;\n        box-shadow: \n          0 0 0 2px rgba(${l.r}, ${l.g}, ${l.b}, 0.3),\n          0 0 8px rgba(${a.r}, ${a.g}, ${a.b}, 0.4),\n          0 2px 4px rgba(0, 0, 0, 0.2) !important;\n      }\n      .timer-slider::-moz-range-thumb:hover {\n        background: ${this._adjustColorBrightness(o,-10)} !important;\n        border: 2px solid ${s} !important;\n        box-shadow: \n          0 0 0 3px rgba(${l.r}, ${l.g}, ${l.b}, 0.4),\n          0 0 12px rgba(${a.r}, ${a.g}, ${a.b}, 0.6),\n          0 2px 6px rgba(0, 0, 0, 0.3) !important;\n      }\n      .timer-slider::-moz-range-thumb:active {\n        background: ${this._adjustColorBrightness(o,-20)} !important;\n        border: 2px solid ${s} !important;\n        box-shadow: \n          0 0 0 4px rgba(${l.r}, ${l.g}, ${l.b}, 0.5),\n          0 0 16px rgba(${a.r}, ${a.g}, ${a.b}, 0.7),\n          0 2px 8px rgba(0, 0, 0, 0.4) !important;\n      }\n    `}_getTimerButtonStyle(){var t,e;const i=null===(t=this._config)||void 0===t?void 0:t.timer_button_font_color,o=null===(e=this._config)||void 0===e?void 0:e.timer_button_background_color;if(!i&&!o)return"";let n="";return(i||o)&&(n+=`\n        .timer-button {\n          ${i?`color: ${i} !important;`:""}\n          ${o?`background-color: ${o} !important;`:""}\n        }\n      `),n}_getPowerButtonStyle(){var t,e,i,o,n,s;const r=null===(t=this._config)||void 0===t?void 0:t.power_button_background_color,a=null===(e=this._config)||void 0===e?void 0:e.power_button_icon_color,l=null===(i=this._config)||void 0===i?void 0:i.entity_state_button_background_color,d=null===(o=this._config)||void 0===o?void 0:o.entity_state_button_icon_color,c=null===(n=this._config)||void 0===n?void 0:n.entity_state_button_background_color_on,h=null===(s=this._config)||void 0===s?void 0:s.entity_state_button_icon_color_on;if(!(r||a||l||d||c||h))return"";let u="";return(r||a)&&(u+=`\n        .timer-control-button {\n          ${r?`background-color: ${r} !important;`:""}\n        }\n        .timer-control-button ha-icon[icon] {\n          ${a?`color: ${a} !important;`:""}\n        }\n        .timer-control-button.reverse ha-icon[icon] {\n          ${a?`color: ${a} !important;`:""}\n        }\n      `),(l||d)&&(u+=`\n        .entity-state-button {\n          ${l?`background-color: ${l} !important;`:""}\n        }\n        .entity-state-button ha-icon[icon] {\n          ${d?`color: ${d} !important;`:""}\n        }\n        .entity-state-button.reverse ha-icon[icon] {\n          ${d?`color: ${d} !important;`:""}\n        }\n      `),(c||h)&&(u+=`\n        .entity-state-button.on {\n          ${c?`background-color: ${c} !important;`:""}\n        }\n        .entity-state-button.on ha-icon[icon] {\n          ${h?`color: ${h} !important;`:""}\n        }\n        /* Ensure specific override if needed */\n        .entity-state-button.on.reverse ha-icon[icon] {\n          ${h?`color: ${h} !important;`:""}\n        }\n      `),u}_adjustColorBrightness(t,e){const i=parseInt(t.replace("#",""),16),o=Math.round(2.55*e);return"#"+(16777216+65536*Math.max(0,Math.min(255,(i>>16)+o))+256*Math.max(0,Math.min(255,(i>>8&255)+o))+Math.max(0,Math.min(255,(255&i)+o))).toString(16).slice(1)}async _fetchLovelaceConfig(){if(!this.hass)return null;try{const t=this._getDashboardUrlPath();return await this.hass.callWS({type:"lovelace/config",url_path:t})}catch(t){return console.warn("TimerCard: Failed to fetch lovelace config",t),null}}_getDashboardUrlPath(){const t=window.location.pathname.split("/");return t.length>1&&"lovelace"!==t[1]?t[1]:null}render(){var t,e,i,o,n,s,r,a,l,d,c,h;let u=null,_=!1;if(this.hass){if(!this._entitiesLoaded)if(null===(t=this._config)||void 0===t?void 0:t.timer_instance_id){const t=Object.values(this.hass.states).find(t=>t.attributes.entry_id===this._config.timer_instance_id&&t.entity_id.startsWith("sensor."));t?"string"==typeof t.attributes.switch_entity_id&&t.attributes.switch_entity_id&&this.hass.states[t.attributes.switch_entity_id]?(u="Loading Timer Control Card. Please wait...",_=!1):(u=`Timer Control Instance '${this._config.timer_instance_id}' linked to missing or invalid switch '${t.attributes.switch_entity_id}'. Please check instance configuration.`,_=!0):(u="Please select a valid instance in the card editor.",_=!0)}else if(null===(e=this._config)||void 0===e?void 0:e.sensor_entity){const t=this.hass.states[this._config.sensor_entity];t?"string"==typeof t.attributes.switch_entity_id&&t.attributes.switch_entity_id&&this.hass.states[t.attributes.switch_entity_id]?(u="Loading Timer Control Card. Please wait...",_=!1):(u=`Configured Timer Control Sensor '${this._config.sensor_entity}' is invalid or its linked switch '${t.attributes.switch_entity_id}' is missing. Please select a valid instance.`,_=!0):(u=`Configured Timer Control Sensor '${this._config.sensor_entity}' not found. Please select a valid instance in the card editor.`,_=!0)}else u="Select a Timer Control Instance from the dropdown in the card editor to link this card.",_=!1}else u="Home Assistant object (hass) not available. Card cannot load.",_=!0;if(u)return H`<ha-card><div class="${_?"warning":"placeholder"}">${u}</div></ha-card>`;const p=this.hass.states[this._effectiveSwitchEntity],g=this.hass.states[this._effectiveSensorEntity],m="on"===p.state,f="active"===g.attributes.timer_state,v=g.attributes.timer_duration||0,b=g.attributes.reverse_mode,y=parseFloat(g.state)||0;let $,x;if(this._getShowSeconds()){const t=Math.floor(y),e=Math.floor(t/3600),i=Math.floor(t%3600/60),o=t%60;$=`Daily usage: ${e.toString().padStart(2,"0")}:${i.toString().padStart(2,"0")}:${o.toString().padStart(2,"0")}`,x=this._timeRemaining||"00:00:00"}else{const t=Math.floor(y/60),e=t%60;$=`Daily usage: ${Math.floor(t/60).toString().padStart(2,"0")}:${e.toString().padStart(2,"0")}`,x=this._timeRemaining||"00:00"}const w=g.attributes.watchdog_message;return H`
+  .schedule-panel {
+    margin: 14px 16px 8px;
+    padding-top: 4px;
+  }
+  .schedule-panel .schedule-toggle {
+    margin: 0 0 12px;
+    padding-top: 12px;
+  }
+
+  .sched-field { margin-bottom: 14px; }
+  .sched-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--secondary-text-color);
+    margin-bottom: 6px;
+  }
+  .sched-time, .sched-num, .sched-unit {
+    background: var(--secondary-background-color, rgba(255,255,255,0.05));
+    color: var(--primary-text-color);
+    border: 1px solid var(--divider-color, rgba(255,255,255,0.12));
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 15px;
+    font-family: inherit;
+  }
+  .sched-time { width: 120px; }
+  .sched-dur-row { display: flex; gap: 8px; }
+  .sched-num { width: 90px; }
+  .sched-unit { cursor: pointer; }
+
+  .sched-shortcut-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--secondary-text-color);
+    opacity: 0.7;
+    margin: 10px 0 6px;
+  }
+  .sched-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+  }
+  .sched-pill {
+    width: 72px;
+    box-sizing: border-box;
+    text-align: center;
+    font-size: 12px;
+    padding: 8px 6px;
+    border-radius: 8px;
+    background: var(--secondary-background-color, rgba(255,255,255,0.05));
+    border: 1px solid var(--divider-color, rgba(255,255,255,0.12));
+    color: var(--primary-text-color);
+    cursor: pointer;
+  }
+  .sched-pill.selected {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    background: rgba(var(--rgb-primary-color), 0.14);
+  }
+
+  .sched-repeat-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 4px 0 12px;
+    font-size: 14px;
+    color: var(--primary-text-color);
+  }
+
+  .sched-days { display: flex; gap: 6px; margin-bottom: 14px; }
+  .sched-day {
+    flex: 1;
+    text-align: center;
+    font-size: 11px;
+    padding: 7px 0;
+    border-radius: 7px;
+    background: var(--secondary-background-color, rgba(255,255,255,0.05));
+    border: 1px solid var(--divider-color, rgba(255,255,255,0.12));
+    color: var(--secondary-text-color);
+    cursor: pointer;
+  }
+  .sched-day.on {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    background: rgba(var(--rgb-primary-color), 0.14);
+  }
+
+  .sched-actions { display: flex; gap: 10px; }
+  .sched-btn {
+    flex: 1;
+    text-align: center;
+    font-size: 13px;
+    padding: 10px 0;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .sched-btn.primary {
+    background: var(--primary-color);
+    color: var(--text-primary-color, #fff);
+    font-weight: 600;
+  }
+  .sched-btn.ghost {
+    background: transparent;
+    border: 1px solid var(--divider-color, rgba(255,255,255,0.12));
+    color: var(--secondary-text-color);
+  }
+
+  .schedule-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 14px 16px 8px;
+    padding: 11px 13px;
+    border-radius: 10px;
+    background: rgba(var(--rgb-primary-color), 0.10);
+    border: 1px solid rgba(var(--rgb-primary-color), 0.4);
+  }
+  .schedule-banner .sched-ico { color: var(--primary-color); --mdc-icon-size: 20px; }
+  .sched-banner-text { flex: 1; line-height: 1.4; }
+  .sched-banner-main { font-size: 13.5px; color: var(--primary-text-color); }
+  .sched-banner-sub { font-size: 12px; color: var(--secondary-text-color); }
+  .sched-banner-x { cursor: pointer; color: var(--secondary-text-color); --mdc-icon-size: 18px; padding: 2px; }
+
+  `,lt="simple_timer",ct=[15,30,60,90,120,150];console.info("%c SIMPLE-TIMER-CARD %c v1.5.0 ","color: orange; font-weight: bold; background: black","color: white; font-weight: bold; background: dimgray");customElements.define("timer-card",class extends st{constructor(){super(...arguments),this._countdownInterval=null,this._liveRuntimeSeconds=0,this._timeRemaining=null,this._sliderValue=0,this.buttons=[],this._validationMessages=[],this._notificationSentForCurrentCycle=!1,this._entitiesLoaded=!1,this._serverTimeOffset=0,this._lastSyncedUpdate=null,this._effectiveSwitchEntity=null,this._effectiveSensorEntity=null,this._longPressTimer=null,this._isLongPress=!1,this._touchStartPosition=null,this._isCancelling=!1,this._scheduleExpanded=!1,this._scheduleTime="21:30",this._scheduleDuration=30,this._scheduleUnit="min",this._scheduleRepeat=!1,this._scheduleDays=[]}static get properties(){return{hass:{type:Object},_config:{type:Object},_timeRemaining:{state:!0},_sliderValue:{state:!0},_entitiesLoaded:{state:!0},_effectiveSwitchEntity:{state:!0},_effectiveSensorEntity:{state:!0},_validationMessages:{state:!0},_scheduleExpanded:{state:!0},_scheduleTime:{state:!0},_scheduleDuration:{state:!0},_scheduleUnit:{state:!0},_scheduleRepeat:{state:!0},_scheduleDays:{state:!0}}}static async getConfigElement(){return await Promise.resolve().then(function(){return gt}),document.createElement("timer-card-editor")}static getStubConfig(t){return console.log("TimerCard: Generating stub config - NO auto-selection will be performed"),{type:"custom:timer-card",timer_instance_id:null,timer_buttons:[...ct],card_title:"Simple Timer",power_button_icon:"mdi:power",hide_slider:!1,slider_thumb_color:null,slider_background_color:null,power_button_background_color:null,power_button_icon_color:null}}setConfig(t){const e=t.slider_max&&t.slider_max>0&&t.slider_max<=9999?t.slider_max:120,i=t.timer_instance_id||"default";this.buttons=this._getValidatedTimerButtons(t.timer_buttons),this._config=Object.assign(Object.assign({},t),{type:t.type||"custom:timer-card",timer_buttons:t.timer_buttons||[...ct],card_title:t.card_title||null,entity_state_icon:t.entity_state_icon||null,power_button_icon:t.power_button_icon||null,slider_max:e,slider_unit:t.slider_unit||"min",reverse_mode:t.reverse_mode||!1,hide_slider:t.hide_slider||!1,show_daily_usage:!1!==t.show_daily_usage,timer_instance_id:i,entity:t.entity,sensor_entity:t.sensor_entity,slider_thumb_color:t.slider_thumb_color||null,slider_background_color:t.slider_background_color||null,timer_button_font_color:t.timer_button_font_color||null,timer_button_background_color:t.timer_button_background_color||null,power_button_background_color:t.power_button_background_color||null,power_button_icon_color:t.power_button_icon_color||null,entity_state_button_background_color:t.entity_state_button_background_color||null,entity_state_button_icon_color:t.entity_state_button_icon_color||null,entity_state_button_background_color_on:t.entity_state_button_background_color_on||null,entity_state_button_icon_color_on:t.entity_state_button_icon_color_on||null,turn_off_on_cancel:!1!==t.turn_off_on_cancel,show_schedule:t.show_schedule||!1}),t.timer_instance_id&&(this._config.timer_instance_id=t.timer_instance_id),t.entity&&(this._config.entity=t.entity),t.sensor_entity&&(this._config.sensor_entity=t.sensor_entity);const o=localStorage.getItem(`simple-timer-slider-${i}`);let n=o?parseInt(o):NaN;(isNaN(n)||n<0)&&(n=e),n>e&&(n=e),this._sliderValue=n,localStorage.setItem(`simple-timer-slider-${i}`,this._sliderValue.toString()),this._restoreSchedule(),this.requestUpdate(),this._liveRuntimeSeconds=0,this._notificationSentForCurrentCycle=!1,this._effectiveSwitchEntity=null,this._effectiveSensorEntity=null,this._entitiesLoaded=!1}_getValidatedTimerButtons(t){let e=[];if(this._validationMessages=[],Array.isArray(t)){const i=[],o=new Set,n=[];t.forEach(t=>{let s,r,a="min",l="Min";const c=String(t).trim().toLowerCase().match(/^(\d+(?:\.\d+)?)\s*(s|sec|seconds|m|min|minutes|h|hr|hours|d|day|days)?(\*)?$/);if(c){const d=parseFloat(c[1]),h=c[1].includes("."),u=c[2]||"min",p=!!c[3],_=u.startsWith("h"),g=u.startsWith("d");if(d>9999)return void i.push(t);if(h&&!_&&!g)return void i.push(t);if(h&&(_||g)){const e=c[1].split(".")[1];if(e&&e.length>1)return void i.push(t)}if(s=d,u.startsWith("s")?(a="s",l="sec",r=s/60):u.startsWith("h")?(a="h",l="hr",r=60*s):u.startsWith("d")?(a="d",l="day",r=1440*s):(a="min",l="min",r=s),s>0){const i=`${r}`;p?e.push({displayValue:s,unit:a,labelUnit:l,minutesEquivalent:r,isDefault:p}):o.has(i)?n.push(t):(o.add(i),e.push({displayValue:s,unit:a,labelUnit:l,minutesEquivalent:r,isDefault:p}))}else i.push(t)}else i.push(t)});const s=[];return i.length>0&&s.push(`Invalid timer values ignored: ${i.join(", ")}. Format example: 30, "30s", "1h", "2d". Limit 9999.`),n.length>0&&s.push("Duplicate timer values were removed."),this._validationMessages=s,e.sort((t,e)=>t.minutesEquivalent-e.minutesEquivalent),e}return null==t||(console.warn(`TimerCard: Invalid timer_buttons type (${typeof t}):`,t,"- using empty array"),this._validationMessages=[`Invalid timer_buttons configuration. Expected array, got ${typeof t}.`]),[]}_determineEffectiveEntities(){var t,e;let i=null,o=null,n=!1;if(this.hass&&this.hass.states){if(null===(t=this._config)||void 0===t?void 0:t.timer_instance_id){const t=this._config.timer_instance_id,e=Object.keys(this.hass.states).filter(t=>t.startsWith("sensor.")).find(e=>{const i=this.hass.states[e];return i.attributes.entry_id===t&&"string"==typeof i.attributes.switch_entity_id});if(e){o=e,i=this.hass.states[e].attributes.switch_entity_id,i&&this.hass.states[i]?n=!0:console.warn(`TimerCard: Configured instance '${t}' sensor '${o}' links to missing or invalid switch '${i}'.`)}else console.warn(`TimerCard: Configured timer_instance_id '${t}' does not have a corresponding simple_timer sensor found.`)}if(!n&&(null===(e=this._config)||void 0===e?void 0:e.sensor_entity)){const t=this.hass.states[this._config.sensor_entity];t&&"string"==typeof t.attributes.entry_id&&"string"==typeof t.attributes.switch_entity_id?(o=this._config.sensor_entity,i=t.attributes.switch_entity_id,i&&this.hass.states[i]?(n=!0,console.info(`TimerCard: Using manually configured sensor_entity: Sensor '${o}', Switch '${i}'.`)):console.warn(`TimerCard: Manually configured sensor '${o}' links to missing or invalid switch '${i}'.`)):console.warn(`TimerCard: Manually configured sensor_entity '${this._config.sensor_entity}' not found or missing required attributes.`)}this._effectiveSwitchEntity===i&&this._effectiveSensorEntity===o||(this._effectiveSwitchEntity=i,this._effectiveSensorEntity=o,this.requestUpdate()),this._entitiesLoaded=n}else this._entitiesLoaded=!1}_getEntryId(){if(!this._effectiveSensorEntity||!this.hass||!this.hass.states)return console.error("Timer-card: _getEntryId called without a valid effective sensor entity."),null;const t=this.hass.states[this._effectiveSensorEntity];return t&&t.attributes.entry_id?t.attributes.entry_id:(console.error("Could not determine entry_id from effective sensor_entity attributes:",this._effectiveSensorEntity),null)}_startTimer(t,e="min",i="button"){var o;if(this._validationMessages=[],!this._entitiesLoaded||!this.hass||!this.hass.callService)return void console.error("Timer-card: Cannot start timer. Entities not loaded or callService unavailable.");const n=this._getEntryId();if(!n)return void console.error("Timer-card: Entry ID not found for starting timer.");this._effectiveSwitchEntity;let s=(null===(o=this._config)||void 0===o?void 0:o.reverse_mode)||!1;if(this._effectiveSensorEntity&&this.hass){const t=this.hass.states[this._effectiveSensorEntity];t&&t.attributes.default_timer_enabled&&(s=!1)}s?this.hass.callService(lt,"start_timer",{entry_id:n,duration:t,unit:e,reverse_mode:!0,start_method:i}):this.hass.callService(lt,"start_timer",{entry_id:n,duration:t,unit:e,start_method:i}),this._notificationSentForCurrentCycle=!1}_addTimer(t,e="min"){if(this._validationMessages=[],!this._entitiesLoaded||!this.hass||!this.hass.callService)return void console.error("Timer-card: Cannot add to timer. Entities not loaded or callService unavailable.");const i=this._getEntryId();i?this.hass.callService(lt,"add_timer",{entry_id:i,duration:t,unit:e}).then(()=>{console.log(`Timer-card: Added ${t} ${e} to active timer.`)}).catch(t=>{console.error("Timer-card: Error adding to timer:",t)}):console.error("Timer-card: Entry ID not found for adding to timer.")}_setSchedule(){if(this._validationMessages=[],!this._entitiesLoaded||!this.hass||!this.hass.callService)return void console.error("Timer-card: Cannot set schedule. Entities not loaded or callService unavailable.");const t=this._getEntryId();if(!t)return void console.error("Timer-card: Entry ID not found for scheduling.");const e=Number(this._scheduleDuration);this._scheduleTime&&e>0?(this._persistSchedule(),this.hass.callService(lt,"schedule_timer",{entry_id:t,start_time:5===this._scheduleTime.length?`${this._scheduleTime}:00`:this._scheduleTime,duration:e,unit:this._scheduleUnit,repeat:this._scheduleRepeat,days:this._scheduleRepeat?this._scheduleDays:[]}).then(()=>{this._scheduleExpanded=!1}).catch(t=>{console.error("Timer-card: Error setting schedule:",t)})):this._validationMessages=["Set a start time and a run-for duration above 0."]}_cancelSchedule(){if(!this.hass||!this.hass.callService)return;const t=this._getEntryId();t?this.hass.callService(lt,"cancel_schedule",{entry_id:t}).catch(t=>console.error("Timer-card: Error cancelling schedule:",t)):console.error("Timer-card: Entry ID not found for cancelling schedule.")}_toggleScheduleDay(t){this._scheduleDays=this._scheduleDays.includes(t)?this._scheduleDays.filter(e=>e!==t):[...this._scheduleDays,t],this._persistSchedule()}_scheduleStorageKey(){var t;return`simple-timer-schedule-${(null===(t=this._config)||void 0===t?void 0:t.timer_instance_id)||"default"}`}_persistSchedule(){try{localStorage.setItem(this._scheduleStorageKey(),JSON.stringify({time:this._scheduleTime,duration:this._scheduleDuration,unit:this._scheduleUnit,repeat:this._scheduleRepeat,days:this._scheduleDays}))}catch(t){console.warn("Timer-card: could not persist schedule form",t)}}_restoreSchedule(){try{const t=localStorage.getItem(this._scheduleStorageKey());if(!t)return;const e=JSON.parse(t);"string"==typeof e.time&&(this._scheduleTime=e.time),"number"==typeof e.duration&&(this._scheduleDuration=e.duration),"string"==typeof e.unit&&(this._scheduleUnit=e.unit),"boolean"==typeof e.repeat&&(this._scheduleRepeat=e.repeat),Array.isArray(e.days)&&(this._scheduleDays=e.days)}catch(t){console.warn("Timer-card: could not restore schedule form",t)}}_cancelTimer(){var t;if(this._validationMessages=[],!this._entitiesLoaded||!this.hass||!this.hass.callService)return void console.error("Timer-card: Cannot cancel timer. Entities not loaded or callService unavailable.");this._isCancelling=!0;const e=this._getEntryId();if(!e)return console.error("Timer-card: Entry ID not found for cancelling timer."),void(this._isCancelling=!1);const i=!1!==(null===(t=this._config)||void 0===t?void 0:t.turn_off_on_cancel);this.hass.callService(lt,"cancel_timer",{entry_id:e,turn_off_entity:i}).then(()=>{setTimeout(()=>{this._isCancelling=!1},1e3)}).catch(t=>{console.error("Timer-card: Error cancelling timer:",t),this._isCancelling=!1}),this._notificationSentForCurrentCycle=!1}_handleTimerControl(){var t;if(this._validationMessages=[],!this._entitiesLoaded||!this.hass||!this.hass.states)return void console.error("Timer-card: Cannot control timer. Entities not loaded.");const e=this._effectiveSensorEntity,i=this.hass.states[e];if(!i)return void console.error("Timer-card: Sensor entity not found.");if("active"===i.attributes.timer_state)return this._cancelTimer(),void console.log("Timer-card: Stopping active timer.");if(this._sliderValue>0){const e=(null===(t=this._config)||void 0===t?void 0:t.slider_unit)||"min";this._startTimer(this._sliderValue,e,"slider"),console.log(`Timer-card: Starting timer for ${this._sliderValue} ${e}`)}else console.warn("Timer-card: Slider value is 0, cannot start timer.")}_handleIndependentPower(t){if(t.preventDefault(),t.stopPropagation(),!this._entitiesLoaded||!this.hass||!this._effectiveSwitchEntity)return void console.error("Timer-card: Cannot toggle power. Entities not loaded.");const e=this._effectiveSwitchEntity;console.log(`Timer-card: Toggling independent power for ${e}`),this.hass.callService("homeassistant","toggle",{entity_id:e}).catch(t=>console.error("Timer-card: Error toggling power:",t))}_showMoreInfo(){if(!this._entitiesLoaded||!this.hass)return void console.error("Timer-card: Cannot show more info. Entities not loaded.");const t=this._effectiveSensorEntity,e=new CustomEvent("hass-more-info",{bubbles:!0,composed:!0,detail:{entityId:t}});this.dispatchEvent(e)}connectedCallback(){var t,e;super.connectedCallback();const i=(null===(t=this._config)||void 0===t?void 0:t.timer_instance_id)||"default";if(localStorage.getItem(`simple-timer-slider-${i}`));else if(this._determineEffectiveEntities(),this._entitiesLoaded&&this.hass&&this._effectiveSensorEntity){const t=this.hass.states[this._effectiveSensorEntity],i=(null===(e=null==t?void 0:t.attributes)||void 0===e?void 0:e.timer_duration)||0;i>0&&i<=120&&(this._sliderValue=i)}this._determineEffectiveEntities(),this._updateLiveRuntime(),this._syncServerTime(),this._updateCountdown()}disconnectedCallback(){super.disconnectedCallback(),this._stopCountdown(),this._stopLiveRuntime(),this._longPressTimer&&window.clearTimeout(this._longPressTimer)}updated(t){(t.has("hass")||t.has("_config"))&&(this._determineEffectiveEntities(),this._updateLiveRuntime(),this._syncServerTime(),this._updateCountdown())}_updateLiveRuntime(){this._liveRuntimeSeconds=0}_stopLiveRuntime(){this._liveRuntimeSeconds=0}_updateCountdown(){if(!this._entitiesLoaded||!this.hass||!this.hass.states)return void this._stopCountdown();const t=this.hass.states[this._effectiveSensorEntity];if(!t||"active"!==t.attributes.timer_state)return this._stopCountdown(),void(this._notificationSentForCurrentCycle=!1);const e=t.attributes.timer_finishes_at;if(void 0===e)return console.warn("Timer-card: timer_finishes_at is undefined for active timer. Stopping countdown."),void this._stopCountdown();const i=new Date(e).getTime();if(this._countdownInterval&&this._currentFinishesAt!==i&&this._stopCountdown(),this._currentFinishesAt=i,!this._countdownInterval){const t=()=>{const t=(new Date).getTime()+this._serverTimeOffset,e=Math.max(0,Math.round((i-t)/1e3));if(this._getShowSeconds()){const t=Math.floor(e/3600),i=Math.floor(e%3600/60),o=e%60;this._timeRemaining=`${t.toString().padStart(2,"0")}:${i.toString().padStart(2,"0")}:${o.toString().padStart(2,"0")}`}else{const t=Math.floor(e/3600),i=Math.floor(e%3600/60);this._timeRemaining=`${t.toString().padStart(2,"0")}:${i.toString().padStart(2,"0")}`}0===e&&(this._stopCountdown(),this._notificationSentForCurrentCycle||(this._notificationSentForCurrentCycle=!0))};this._countdownInterval=window.setInterval(t,500),t()}}_stopCountdown(){this._countdownInterval&&(window.clearInterval(this._countdownInterval),this._countdownInterval=null),this._timeRemaining=null}_getShowSeconds(){var t;if(!this._entitiesLoaded||!this.hass||!this._effectiveSensorEntity)return!1;const e=this.hass.states[this._effectiveSensorEntity];return(null===(t=null==e?void 0:e.attributes)||void 0===t?void 0:t.show_seconds)||!1}_handleUsageClick(t){t.preventDefault(),this._isLongPress||this._showMoreInfo(),this._isLongPress=!1}_startLongPress(t){t.preventDefault(),this._isLongPress=!1,this._longPressTimer=window.setTimeout(()=>{this._isLongPress=!0,this._resetUsage(),"vibrate"in navigator&&navigator.vibrate(50)},800)}_endLongPress(t){t&&t.preventDefault(),this._longPressTimer&&(window.clearTimeout(this._longPressTimer),this._longPressTimer=null)}_handlePowerClick(t){"click"!==t.type||this._isLongPress||(t.preventDefault(),t.stopPropagation(),this._handleTimerControl()),this._isLongPress=!1}_handleTouchEnd(t){t.preventDefault(),t.stopPropagation(),this._longPressTimer&&(window.clearTimeout(this._longPressTimer),this._longPressTimer=null);let e=!1;if(this._touchStartPosition&&t.changedTouches[0]){const i=t.changedTouches[0],o=Math.abs(i.clientX-this._touchStartPosition.x),n=Math.abs(i.clientY-this._touchStartPosition.y),s=10;e=o>s||n>s}this._isLongPress||e||this._showMoreInfo(),this._isLongPress=!1,this._touchStartPosition=null}_handleTouchStart(t){t.preventDefault(),t.stopPropagation(),this._isLongPress=!1;const e=t.touches[0];this._touchStartPosition={x:e.clientX,y:e.clientY},this._longPressTimer=window.setTimeout(()=>{this._isLongPress=!0,this._resetUsage(),"vibrate"in navigator&&navigator.vibrate(50)},800)}_resetUsage(){if(this._validationMessages=[],!this._entitiesLoaded||!this.hass||!this.hass.callService)return void console.error("Timer-card: Cannot reset usage. Entities not loaded or callService unavailable.");const t=this._getEntryId();t?confirm("Reset daily usage to 00:00?\n\nThis action cannot be undone.")&&this.hass.callService(lt,"reset_daily_usage",{entry_id:t}).then(()=>{console.log("Timer-card: Daily usage reset successfully")}).catch(t=>{console.error("Timer-card: Error resetting daily usage:",t)}):console.error("Timer-card: Entry ID not found for resetting usage.")}_handleSliderChange(t){var e;const i=t.target;this._sliderValue=parseInt(i.value);const o=(null===(e=this._config)||void 0===e?void 0:e.timer_instance_id)||"default";localStorage.setItem(`simple-timer-slider-${o}`,this._sliderValue.toString())}_getCurrentTimerMode(){var t;if(!this._entitiesLoaded||!this.hass||!this._effectiveSensorEntity)return"normal";const e=this.hass.states[this._effectiveSensorEntity];return(null===(t=null==e?void 0:e.attributes)||void 0===t?void 0:t.reverse_mode)?"reverse":"normal"}_getSliderStyle(){var t,e,i;const o=(null===(t=this._config)||void 0===t?void 0:t.slider_thumb_color)||"#2ab69c",n=(null===(e=this._config)||void 0===e?void 0:e.slider_background_color)||"var(--secondary-background-color)",s=(null===(i=this._config)||void 0===i?void 0:i.slider_thumb_color)?this._adjustColorBrightness(o,20):"#4bd9bf",r=t=>{const e=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(t);return e?{r:parseInt(e[1],16),g:parseInt(e[2],16),b:parseInt(e[3],16)}:{r:42,g:182,b:156}},a=r(o),l=r(s);return`\n      .timer-slider {\n        background: ${n} !important;\n      }\n      .timer-slider::-webkit-slider-thumb {\n        background: ${o} !important;\n        border: 2px solid ${s} !important;\n        box-shadow: \n          0 0 0 2px rgba(${l.r}, ${l.g}, ${l.b}, 0.3),\n          0 0 8px rgba(${a.r}, ${a.g}, ${a.b}, 0.4),\n          0 2px 4px rgba(0, 0, 0, 0.2) !important;\n      }\n      .timer-slider::-webkit-slider-thumb:hover {\n        background: ${this._adjustColorBrightness(o,-10)} !important;\n        border: 2px solid ${s} !important;\n        box-shadow: \n          0 0 0 3px rgba(${l.r}, ${l.g}, ${l.b}, 0.4),\n          0 0 12px rgba(${a.r}, ${a.g}, ${a.b}, 0.6),\n          0 2px 6px rgba(0, 0, 0, 0.3) !important;\n      }\n      .timer-slider::-webkit-slider-thumb:active {\n        background: ${this._adjustColorBrightness(o,-20)} !important;\n        border: 2px solid ${s} !important;\n        box-shadow: \n          0 0 0 4px rgba(${l.r}, ${l.g}, ${l.b}, 0.5),\n          0 0 16px rgba(${a.r}, ${a.g}, ${a.b}, 0.7),\n          0 2px 8px rgba(0, 0, 0, 0.4) !important;\n      }\n      .timer-slider::-moz-range-thumb {\n        background: ${o} !important;\n        border: 2px solid ${s} !important;\n        box-shadow: \n          0 0 0 2px rgba(${l.r}, ${l.g}, ${l.b}, 0.3),\n          0 0 8px rgba(${a.r}, ${a.g}, ${a.b}, 0.4),\n          0 2px 4px rgba(0, 0, 0, 0.2) !important;\n      }\n      .timer-slider::-moz-range-thumb:hover {\n        background: ${this._adjustColorBrightness(o,-10)} !important;\n        border: 2px solid ${s} !important;\n        box-shadow: \n          0 0 0 3px rgba(${l.r}, ${l.g}, ${l.b}, 0.4),\n          0 0 12px rgba(${a.r}, ${a.g}, ${a.b}, 0.6),\n          0 2px 6px rgba(0, 0, 0, 0.3) !important;\n      }\n      .timer-slider::-moz-range-thumb:active {\n        background: ${this._adjustColorBrightness(o,-20)} !important;\n        border: 2px solid ${s} !important;\n        box-shadow: \n          0 0 0 4px rgba(${l.r}, ${l.g}, ${l.b}, 0.5),\n          0 0 16px rgba(${a.r}, ${a.g}, ${a.b}, 0.7),\n          0 2px 8px rgba(0, 0, 0, 0.4) !important;\n      }\n    `}_getTimerButtonStyle(){var t,e;const i=null===(t=this._config)||void 0===t?void 0:t.timer_button_font_color,o=null===(e=this._config)||void 0===e?void 0:e.timer_button_background_color;if(!i&&!o)return"";let n="";return(i||o)&&(n+=`\n        .timer-button {\n          ${i?`color: ${i} !important;`:""}\n          ${o?`background-color: ${o} !important;`:""}\n        }\n      `),n}_getPowerButtonStyle(){var t,e,i,o,n,s;const r=null===(t=this._config)||void 0===t?void 0:t.power_button_background_color,a=null===(e=this._config)||void 0===e?void 0:e.power_button_icon_color,l=null===(i=this._config)||void 0===i?void 0:i.entity_state_button_background_color,c=null===(o=this._config)||void 0===o?void 0:o.entity_state_button_icon_color,d=null===(n=this._config)||void 0===n?void 0:n.entity_state_button_background_color_on,h=null===(s=this._config)||void 0===s?void 0:s.entity_state_button_icon_color_on;if(!(r||a||l||c||d||h))return"";let u="";return(r||a)&&(u+=`\n        .timer-control-button {\n          ${r?`background-color: ${r} !important;`:""}\n        }\n        .timer-control-button ha-icon[icon] {\n          ${a?`color: ${a} !important;`:""}\n        }\n        .timer-control-button.reverse ha-icon[icon] {\n          ${a?`color: ${a} !important;`:""}\n        }\n      `),(l||c)&&(u+=`\n        .entity-state-button {\n          ${l?`background-color: ${l} !important;`:""}\n        }\n        .entity-state-button ha-icon[icon] {\n          ${c?`color: ${c} !important;`:""}\n        }\n        .entity-state-button.reverse ha-icon[icon] {\n          ${c?`color: ${c} !important;`:""}\n        }\n      `),(d||h)&&(u+=`\n        .entity-state-button.on {\n          ${d?`background-color: ${d} !important;`:""}\n        }\n        .entity-state-button.on ha-icon[icon] {\n          ${h?`color: ${h} !important;`:""}\n        }\n        /* Ensure specific override if needed */\n        .entity-state-button.on.reverse ha-icon[icon] {\n          ${h?`color: ${h} !important;`:""}\n        }\n      `),u}_adjustColorBrightness(t,e){const i=parseInt(t.replace("#",""),16),o=Math.round(2.55*e);return"#"+(16777216+65536*Math.max(0,Math.min(255,(i>>16)+o))+256*Math.max(0,Math.min(255,(i>>8&255)+o))+Math.max(0,Math.min(255,(255&i)+o))).toString(16).slice(1)}async _fetchLovelaceConfig(){if(!this.hass)return null;try{const t=this._getDashboardUrlPath();return await this.hass.callWS({type:"lovelace/config",url_path:t})}catch(t){return console.warn("TimerCard: Failed to fetch lovelace config",t),null}}_getDashboardUrlPath(){const t=window.location.pathname.split("/");return t.length>1&&"lovelace"!==t[1]?t[1]:null}render(){var t,e,i,o,n,s,r,a,l,c,d,h,u;let p=null,_=!1;if(this.hass){if(!this._entitiesLoaded)if(null===(t=this._config)||void 0===t?void 0:t.timer_instance_id){const t=Object.values(this.hass.states).find(t=>t.attributes.entry_id===this._config.timer_instance_id&&t.entity_id.startsWith("sensor."));t?"string"==typeof t.attributes.switch_entity_id&&t.attributes.switch_entity_id&&this.hass.states[t.attributes.switch_entity_id]?(p="Loading Timer Control Card. Please wait...",_=!1):(p=`Timer Control Instance '${this._config.timer_instance_id}' linked to missing or invalid switch '${t.attributes.switch_entity_id}'. Please check instance configuration.`,_=!0):(p="Please select a valid instance in the card editor.",_=!0)}else if(null===(e=this._config)||void 0===e?void 0:e.sensor_entity){const t=this.hass.states[this._config.sensor_entity];t?"string"==typeof t.attributes.switch_entity_id&&t.attributes.switch_entity_id&&this.hass.states[t.attributes.switch_entity_id]?(p="Loading Timer Control Card. Please wait...",_=!1):(p=`Configured Timer Control Sensor '${this._config.sensor_entity}' is invalid or its linked switch '${t.attributes.switch_entity_id}' is missing. Please select a valid instance.`,_=!0):(p=`Configured Timer Control Sensor '${this._config.sensor_entity}' not found. Please select a valid instance in the card editor.`,_=!0)}else p="Select a Timer Control Instance from the dropdown in the card editor to link this card.",_=!1}else p="Home Assistant object (hass) not available. Card cannot load.",_=!0;if(p)return j`<ha-card><div class="${_?"warning":"placeholder"}">${p}</div></ha-card>`;const g=this.hass.states[this._effectiveSwitchEntity],m=this.hass.states[this._effectiveSensorEntity],f="on"===g.state,b="active"===m.attributes.timer_state,v=m.attributes.timer_duration||0,y=m.attributes.reverse_mode,x=parseFloat(m.state)||0;let $,w;if(this._getShowSeconds()){const t=Math.floor(x),e=Math.floor(t/3600),i=Math.floor(t%3600/60),o=t%60;$=`Daily usage: ${e.toString().padStart(2,"0")}:${i.toString().padStart(2,"0")}:${o.toString().padStart(2,"0")}`,w=this._timeRemaining||"00:00:00"}else{const t=Math.floor(x/60),e=t%60;$=`Daily usage: ${Math.floor(t/60).toString().padStart(2,"0")}:${e.toString().padStart(2,"0")}`,w=this._timeRemaining||"00:00"}const S=m.attributes.watchdog_message;return j`
       <style>
         ${this._getSliderStyle()}
         ${this._getTimerButtonStyle()}
@@ -492,10 +635,10 @@ const x=globalThis,w=x.trustedTypes,S=w?w.createPolicy("lit-html",{createHTML:t=
 						<div class="card-title">${(null===(o=this._config)||void 0===o?void 0:o.card_title)||""}</div>
 				</div>
 
-        ${w?H`
+        ${S?j`
           <div class="status-message warning watchdog-banner">
             <ha-icon icon="mdi:alert-outline" class="status-icon"></ha-icon>
-            <span class="status-text">${w}</span>
+            <span class="status-text">${S}</span>
           </div>
         `:""}
 
@@ -504,7 +647,7 @@ const x=globalThis,w=x.trustedTypes,S=w?w.createPolicy("lit-html",{createHTML:t=
 
           
           <!-- Independent Power Toggle (Always Visible now) -->
-          <div class="entity-state-button ${m?"on":""}"
+          <div class="entity-state-button ${f?"on":""}"
                 @click=${this._handleIndependentPower}
                 title="Toggle Power (Independent)">
             <ha-icon icon="${(null===(n=this._config)||void 0===n?void 0:n.entity_state_icon)||(null===(s=this._config)||void 0===s?void 0:s.power_button_icon)||"mdi:power"}"></ha-icon>
@@ -514,10 +657,10 @@ const x=globalThis,w=x.trustedTypes,S=w?w.createPolicy("lit-html",{createHTML:t=
 
           <!-- Countdown Display Section -->
           <div class="countdown-section">
-            <div class="countdown-display ${f?"active":""} ${b?"reverse":""}">
-              ${x}
+            <div class="countdown-display ${b?"active":""} ${y?"reverse":""}">
+              ${w}
             </div>
-						${!1!==(null===(r=this._config)||void 0===r?void 0:r.show_daily_usage)?H`
+						${!1!==(null===(r=this._config)||void 0===r?void 0:r.show_daily_usage)?j`
 							<div class="daily-usage-display"
 									 @click=${this._handleUsageClick}
 									 @mousedown=${this._startLongPress}
@@ -533,7 +676,7 @@ const x=globalThis,w=x.trustedTypes,S=w?w.createPolicy("lit-html",{createHTML:t=
           </div>
 
           <!-- Slider Row -->
-          ${(null===(a=this._config)||void 0===a?void 0:a.hide_slider)?"":H`
+          ${(null===(a=this._config)||void 0===a?void 0:a.hide_slider)?"":j`
           <div class="slider-row">
             <input
               type="range"
@@ -546,12 +689,12 @@ const x=globalThis,w=x.trustedTypes,S=w?w.createPolicy("lit-html",{createHTML:t=
             />
             
             <div class="slider-right-group">
-                <span class="slider-label">${this._sliderValue} ${(null===(d=this._config)||void 0===d?void 0:d.slider_unit)||"min"}</span>
+                <span class="slider-label">${this._sliderValue} ${(null===(c=this._config)||void 0===c?void 0:c.slider_unit)||"min"}</span>
                 
-                <div class="timer-control-button ${f?"active":""} ${f||0!==this._sliderValue?"":"disabled"}" 
-                     @click=${f||0!==this._sliderValue?this._handleTimerControl:null}
-                     title="${f?"Stop Timer":0===this._sliderValue?"Set time to start":"Start Timer"}">
-                  <ha-icon icon="${f||0===this._sliderValue?"mdi:stop":"mdi:play"}"></ha-icon>
+                <div class="timer-control-button ${b?"active":""} ${b||0!==this._sliderValue?"":"disabled"}" 
+                     @click=${b||0!==this._sliderValue?this._handleTimerControl:null}
+                     title="${b?"Stop Timer":0===this._sliderValue?"Set time to start":"Start Timer"}">
+                  <ha-icon icon="${b||0===this._sliderValue?"mdi:stop":"mdi:play"}"></ha-icon>
                 </div>
             </div>
           </div>
@@ -560,21 +703,21 @@ const x=globalThis,w=x.trustedTypes,S=w?w.createPolicy("lit-html",{createHTML:t=
           </div>
           
            <!-- Timer Buttons Grid -->
-           ${this.buttons.length>0||(null===(c=this._config)||void 0===c?void 0:c.hide_slider)&&f?H`
+           ${this.buttons.length>0||(null===(d=this._config)||void 0===d?void 0:d.hide_slider)&&b?j`
           <div class="button-grid">
-            ${this.buttons.map(t=>{if(t.isDefault)return"";const e=f&&Math.abs(v-t.minutesEquivalent)<.001&&"button"===g.attributes.timer_start_method;return H`
+            ${this.buttons.map(t=>{if(t.isDefault)return"";const e=b&&Math.abs(v-t.minutesEquivalent)<.001&&"button"===m.attributes.timer_start_method;return j`
                 <div class="timer-button ${e?"active":""}" 
-                     @click=${()=>{f?this._addTimer(t.displayValue,t.unit):this._startTimer(t.displayValue,t.unit,"button")}}>
-                  <div class="timer-button-value">${f?"+":""}${t.displayValue}</div>
+                     @click=${()=>{b?this._addTimer(t.displayValue,t.unit):this._startTimer(t.displayValue,t.unit,"button")}}>
+                  <div class="timer-button-value">${b?"+":""}${t.displayValue}</div>
                   <div class="timer-button-unit">${t.labelUnit}</div>
                 </div>
               `})}
             
-            ${(null===(h=this._config)||void 0===h?void 0:h.hide_slider)?H`
+            ${(null===(h=this._config)||void 0===h?void 0:h.hide_slider)?j`
                 <!-- Stop Button appended to grid when slider is hidden -->
-                <div class="timer-button stop-button ${f?"active":"disabled"}" 
+                <div class="timer-button stop-button ${b?"active":"disabled"}" 
                      style="color: var(--primary-color);"
-                     @click=${f?this._handleTimerControl:null}>
+                     @click=${b?this._handleTimerControl:null}>
                   <div class="timer-button-value">
                     <ha-icon icon="mdi:stop"></ha-icon>
                   </div>
@@ -583,18 +726,100 @@ const x=globalThis,w=x.trustedTypes,S=w?w.createPolicy("lit-html",{createHTML:t=
             `:""}
           </div>
           `:""}
+
+          ${(null===(u=this._config)||void 0===u?void 0:u.show_schedule)?this._renderSchedulePanel(m):""}
         </div>
 
-        ${this._validationMessages.length>0?H`
+        ${this._validationMessages.length>0?j`
           <div class="status-message warning">
             <ha-icon icon="mdi:alert-outline" class="status-icon"></ha-icon>
             <div class="status-text">
-                ${this._validationMessages.map(t=>H`<div>${t}</div>`)}
+                ${this._validationMessages.map(t=>j`<div>${t}</div>`)}
             </div>
           </div>
         `:""}
       </ha-card>
-    `}static get styles(){return at}_syncServerTime(){if(!this.hass||!this._effectiveSensorEntity)return;const t=this.hass.states[this._effectiveSensorEntity];if(!(null==t?void 0:t.last_updated))return;const e=t.last_updated;if(e===this._lastSyncedUpdate)return;this._lastSyncedUpdate=e;const i=new Date(e).getTime()-(new Date).getTime();Math.abs(i)>2e3?this._serverTimeOffset=i:this._serverTimeOffset=0}}),window.customCards=window.customCards||[],window.customCards.push({type:"timer-card",name:"Simple Timer Card",description:"A card for the Simple Timer integration."});const ct=s`
+    `}_formatScheduleClock(t){var e;try{const i=new Date(t),o=null===(e=this.hass)||void 0===e?void 0:e.locale,n=(null==o?void 0:o.language)||[];let s;return"12"===(null==o?void 0:o.time_format)?s=!0:"24"===(null==o?void 0:o.time_format)&&(s=!1),i.toLocaleString(n,Object.assign({month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"},void 0===s?{}:{hour12:s}))}catch(e){return t}}_orderDaysByLocale(){var t,e,i,o;const n={mon:{key:"mon",label:"M"},tue:{key:"tue",label:"T"},wed:{key:"wed",label:"W"},thu:{key:"thu",label:"T"},fri:{key:"fri",label:"F"},sat:{key:"sat",label:"S"},sun:{key:"sun",label:"S"}},s=["mon","tue","wed","thu","fri","sat","sun"];let r="mon";const a=null===(e=null===(t=this.hass)||void 0===t?void 0:t.locale)||void 0===e?void 0:e.first_weekday,l={monday:"mon",tuesday:"tue",wednesday:"wed",thursday:"thu",friday:"fri",saturday:"sat",sunday:"sun"};if(a&&l[a])r=l[a];else try{const t=null===(o=null===(i=this.hass)||void 0===i?void 0:i.locale)||void 0===o?void 0:o.language,e=new Intl.Locale(t),n=e.weekInfo||e.getWeekInfo&&e.getWeekInfo(),a=null==n?void 0:n.firstDay;a&&(r=s[(a-1)%7])}catch(t){}const c=s.indexOf(r);return[...s.slice(c),...s.slice(0,c)].map(t=>n[t])}_renderSchedulePanel(t){var e;const i=this._orderDaysByLocale();if("armed"===(null===(e=null==t?void 0:t.attributes)||void 0===e?void 0:e.schedule_state)&&t.attributes.scheduled_start){const e=this._formatScheduleClock(t.attributes.scheduled_start),o=t.attributes.scheduled_duration,n=t.attributes.scheduled_unit||"min",s=t.attributes.schedule_repeat,r=t.attributes.schedule_days||[],a={mon:0,tue:1,wed:2,thu:3,fri:4,sat:5,sun:6},l={0:"Mon",1:"Tue",2:"Wed",3:"Thu",4:"Fri",5:"Sat",6:"Sun"};let c="";if(s)if(0===r.length||7===r.length)c="Repeats daily";else{const t=i.map(t=>a[t.key]).filter(t=>r.includes(t)).map(t=>l[t]);c=`Repeats ${t.join(", ")}`}else c="One-shot";return j`
+        <div class="schedule-banner">
+          <ha-icon class="sched-ico" icon="mdi:clock-outline"></ha-icon>
+          <div class="sched-banner-text">
+            <div class="sched-banner-main">Starts ${e} · runs ${o} ${n}</div>
+            <div class="sched-banner-sub">${c}</div>
+          </div>
+          <div class="sched-banner-x" @click=${this._cancelSchedule} title="Cancel schedule">
+            <ha-icon icon="mdi:close"></ha-icon>
+          </div>
+        </div>
+      `}return this._scheduleExpanded?j`
+      <div class="schedule-panel">
+        <div class="schedule-toggle open" @click=${()=>{this._scheduleExpanded=!1}}>
+          <ha-icon icon="mdi:clock-outline"></ha-icon>
+          <span>Schedule Timer</span>
+          <ha-icon class="sched-chevron" icon="mdi:chevron-up"></ha-icon>
+        </div>
+
+        <div class="sched-field">
+          <div class="sched-label">Start at</div>
+          <input class="sched-time" type="time"
+            .value=${this._scheduleTime}
+            @input=${t=>{this._scheduleTime=t.target.value,this._persistSchedule()}} />
+        </div>
+
+        <div class="sched-field">
+          <div class="sched-label">Run for</div>
+          <div class="sched-dur-row">
+            <input class="sched-num" type="number" min="1" step="1"
+              .value=${String(this._scheduleDuration)}
+              @input=${t=>{this._scheduleDuration=Number(t.target.value),this._persistSchedule()}} />
+            <select class="sched-unit"
+              .value=${this._scheduleUnit}
+              @change=${t=>{this._scheduleUnit=t.target.value,this._persistSchedule()}}>
+              <option value="s">sec</option>
+              <option value="min">min</option>
+              <option value="h">hr</option>
+            </select>
+          </div>
+          ${this.buttons.filter(t=>!t.isDefault).length>0?j`
+            <div class="sched-shortcut-label">Quick fill</div>
+            <div class="sched-pills">
+              ${this.buttons.filter(t=>!t.isDefault).map(t=>j`
+                <div class="sched-pill ${this._scheduleDuration===t.displayValue&&this._scheduleUnit===t.unit?"selected":""}"
+                  @click=${()=>{this._scheduleDuration=t.displayValue,this._scheduleUnit=t.unit,this._persistSchedule()}}>
+                  ${t.displayValue} ${t.labelUnit}
+                </div>
+              `)}
+            </div>
+          `:""}
+        </div>
+
+        <div class="sched-repeat-row">
+          <span>Repeat daily</span>
+          <ha-switch
+            .checked=${this._scheduleRepeat}
+            @change=${t=>{this._scheduleRepeat=t.target.checked,this._persistSchedule()}}></ha-switch>
+        </div>
+
+        ${this._scheduleRepeat?j`
+          <div class="sched-days">
+            ${i.map(t=>j`
+              <div class="sched-day ${this._scheduleDays.includes(t.key)?"on":""}"
+                @click=${()=>this._toggleScheduleDay(t.key)}>${t.label}</div>
+            `)}
+          </div>
+        `:""}
+
+        <div class="sched-actions">
+          <div class="sched-btn ghost" @click=${()=>{this._scheduleExpanded=!1}}>Cancel</div>
+          <div class="sched-btn primary" @click=${this._setSchedule}>Set schedule</div>
+        </div>
+      </div>
+    `:j`
+        <div class="schedule-toggle" @click=${()=>{this._scheduleExpanded=!0}}>
+          <ha-icon icon="mdi:clock-outline"></ha-icon>
+          <span>Schedule Timer</span>
+          <ha-icon class="sched-chevron" icon="mdi:chevron-down"></ha-icon>
+        </div>
+      `}static get styles(){return at}_syncServerTime(){if(!this.hass||!this._effectiveSensorEntity)return;const t=this.hass.states[this._effectiveSensorEntity];if(!(null==t?void 0:t.last_updated))return;const e=t.last_updated;if(e===this._lastSyncedUpdate)return;this._lastSyncedUpdate=e;const i=new Date(e).getTime()-(new Date).getTime();Math.abs(i)>2e3?this._serverTimeOffset=i:this._serverTimeOffset=0}}),window.customCards=window.customCards||[],window.customCards.push({type:"timer-card",name:"Simple Timer Card",description:"A card for the Simple Timer integration."});const dt=s`
       .card-config-group {
         padding: 16px;
         background-color: var(--card-background-color);
@@ -720,6 +945,55 @@ const x=globalThis,w=x.trustedTypes,S=w?w.createPolicy("lit-html",{createHTML:t=
         margin-top: 8px;
       }
 
+      /* Native input styled like HA's filled ha-textfield (Add Timer field) */
+      .ht-field {
+        height: 56px;
+        box-sizing: border-box;
+        padding: 0 12px;
+        border: none;
+        border-bottom: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4));
+        border-radius: 4px 4px 0 0;
+        background: var(--secondary-background-color, rgba(127, 127, 127, 0.1));
+        color: var(--primary-text-color);
+        font-size: 1em;
+        font-family: inherit;
+        outline: none;
+      }
+      .ht-field:focus {
+        border-bottom: 2px solid var(--primary-color);
+      }
+      .ht-field::placeholder {
+        color: var(--secondary-text-color);
+      }
+
+      /* Compact native input for the color hex fields */
+      .ht-color-label {
+        font-size: 0.72em;
+        color: var(--secondary-text-color);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .ht-input {
+        height: 34px;
+        width: 100%;
+        box-sizing: border-box;
+        padding: 0 8px;
+        border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4));
+        border-radius: 4px;
+        background: var(--secondary-background-color, rgba(127, 127, 127, 0.1));
+        color: var(--primary-text-color);
+        font-size: 0.85em;
+        font-family: inherit;
+        outline: none;
+      }
+      .ht-input:focus {
+        border-color: var(--primary-color);
+      }
+      .ht-input::placeholder {
+        color: var(--secondary-text-color);
+      }
+
       .add-btn {
         background-color: var(--primary-color);
         color: var(--text-primary-color);
@@ -741,86 +1015,32 @@ const x=globalThis,w=x.trustedTypes,S=w?w.createPolicy("lit-html",{createHTML:t=
       .add-btn:active {
         opacity: 0.7;
       }
-`,ht="instance_title",ut=[15,30,60,90,120,150];class _t extends st{constructor(){super(),this._configFullyLoaded=!1,this._timerInstancesOptions=[],this._tempSliderMaxValue=null,this._newTimerButtonValue="",this._config={type:"custom:timer-card",timer_buttons:[...ut],timer_instance_id:null,card_title:null}}_getComputedCSSVariable(t,e="#000000"){try{const e=getComputedStyle(document.documentElement).getPropertyValue(t).trim();if(e&&""!==e)return e}catch(e){console.warn(`Failed to get CSS variable ${t}:`,e)}return e}_rgbToHex(t){const e=t.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);if(e){return"#"+((1<<24)+(parseInt(e[1])<<16)+(parseInt(e[2])<<8)+parseInt(e[3])).toString(16).slice(1)}return t}_getThemeColorHex(t,e="#000000"){const i=this._getComputedCSSVariable(t,e);return i.startsWith("#")?i:i.startsWith("rgb")?this._rgbToHex(i):e}async _getSimpleTimerInstances(){if(!this.hass||!this.hass.states)return console.warn("TimerCardEditor: hass.states not available when trying to fetch instances from states."),[];const t=new Map;for(const e in this.hass.states){const i=this.hass.states[e];if(e.startsWith("sensor.")&&e.includes("runtime")&&i.attributes.entry_id&&"string"==typeof i.attributes.entry_id&&i.attributes.switch_entity_id&&"string"==typeof i.attributes.switch_entity_id){const o=i.attributes.entry_id,n=i.attributes[ht];let s=`Timer Control (${o.substring(0,8)})`;console.debug(`TimerCardEditor: Processing sensor ${e} (Entry: ${o})`),console.debug(`TimerCardEditor: Found raw attribute '${ht}': ${n}`),console.debug("TimerCardEditor: Type of raw attribute: "+typeof n),n&&"string"==typeof n&&""!==n.trim()?(s=n.trim(),console.debug(`TimerCardEditor: Using '${ht}' for label: "${s}"`)):console.warn(`TimerCardEditor: Sensor '${e}' has no valid '${ht}' attribute. Falling back to entry ID based label: "${s}".`),t.has(o)?console.debug(`TimerCardEditor: Skipping duplicate entry_id: ${o}`):(t.set(o,{value:o,label:s}),console.debug(`TimerCardEditor: Added instance: ${s} (${o}) from sensor: ${e}`))}}const e=Array.from(t.values());return e.sort((t,e)=>t.label.localeCompare(e.label)),0===e.length&&console.info("TimerCardEditor: No Simple Timer integration instances found by scanning hass.states."),e}_getValidatedTimerButtons(t){if(Array.isArray(t)){const e=[],i=new Set;t.forEach(t=>{let o=String(t).trim().toLowerCase();o.endsWith("*")&&(o=o.slice(0,-1));const n=o.match(/^(\d+(?:\.\d+)?)\s*(s|sec|seconds|m|min|minutes|h|hr|hours|d|day|days)?$/);if(n){const s=parseFloat(n[1]),r=n[1].includes("."),a=n[2]||"min",l=a.startsWith("h")||["h","hr","hours"].includes(a),d=a.startsWith("d")||["d","day","days"].includes(a);if(r&&!l&&!d)return;if(r&&(l||d)){const t=n[1].split(".")[1];if(t&&t.length>1)return}if(s>9999)return;["m","min","minutes"].includes(a)?s>0&&s<=9999&&(i.has(String(s))||(e.push(s),i.add(String(s)))):i.has(o)||(e.push(t.toString().replace("*","")),i.add(o))}});const o=e.filter(t=>"number"==typeof t),n=e.filter(t=>"string"==typeof t);return o.sort((t,e)=>t-e),n.sort(),[...o,...n]}return null==t?(console.log("TimerCardEditor: No timer_buttons in config, using empty array."),[]):(console.warn(`TimerCardEditor: Invalid timer_buttons type (${typeof t}):`,t,"- using empty array"),[])}async setConfig(t){const e=Object.assign({},this._config),i=this._getValidatedTimerButtons(t.timer_buttons),o=Object.assign(Object.assign({},t),{type:t.type||"custom:timer-card",timer_buttons:i,card_title:t.card_title||null,entity_state_icon:t.entity_state_icon||t.power_button_icon||null,slider_max:t.slider_max||120,slider_unit:t.slider_unit||"min",reverse_mode:t.reverse_mode||!1,hide_slider:t.hide_slider||!1,show_daily_usage:!1!==t.show_daily_usage,slider_thumb_color:t.slider_thumb_color||null,slider_background_color:t.slider_background_color||null,timer_button_font_color:t.timer_button_font_color||null,timer_button_background_color:t.timer_button_background_color||null,power_button_background_color:t.power_button_background_color||null,power_button_icon_color:t.power_button_icon_color||null,entity_state_button_background_color:t.entity_state_button_background_color||null,entity_state_button_icon_color:t.entity_state_button_icon_color||null,entity_state_button_background_color_on:t.entity_state_button_background_color_on||null,entity_state_button_icon_color_on:t.entity_state_button_icon_color_on||null,turn_off_on_cancel:!1!==t.turn_off_on_cancel});t.timer_instance_id?o.timer_instance_id=t.timer_instance_id:console.info("TimerCardEditor: setConfig - no timer_instance_id in config, will remain unset"),t.entity&&(o.entity=t.entity),t.sensor_entity&&(o.sensor_entity=t.sensor_entity),this._config=o,this._configFullyLoaded=!0,JSON.stringify(e)!==JSON.stringify(this._config)?this.dispatchEvent(new CustomEvent("config-changed",{detail:{config:this._config}})):console.log("TimerCardEditor: Config unchanged, not dispatching event"),this.requestUpdate()}connectedCallback(){super.connectedCallback(),this.hass?this._fetchTimerInstances():console.warn("TimerCardEditor: hass not available on connectedCallback. Deferring instance fetch.")}updated(t){var e;super.updated(t),t.has("hass")&&this.hass&&((null===(e=t.get("hass"))||void 0===e?void 0:e.states)===this.hass.states&&0!==this._timerInstancesOptions.length||this._fetchTimerInstances())}async _fetchTimerInstances(){var t;if(this.hass){if(this._timerInstancesOptions=await this._getSimpleTimerInstances(),(null===(t=this._config)||void 0===t?void 0:t.timer_instance_id)&&this._timerInstancesOptions.length>0){if(!this._timerInstancesOptions.some(t=>t.value===this._config.timer_instance_id)){console.warn(`TimerCardEditor: Previously configured instance '${this._config.timer_instance_id}' no longer exists. User will need to select a new instance.`);const t=Object.assign(Object.assign({},this._config),{timer_instance_id:null});this._config=t,this.dispatchEvent(new CustomEvent("config-changed",{detail:{config:this._config},bubbles:!0,composed:!0}))}}else console.info("TimerCardEditor: No timer_instance_id configured or no instances available. User must manually select.");this.requestUpdate()}}_handleNewTimerInput(t){const e=t.target;this._newTimerButtonValue=e.value}_addTimerButton(){var t;const e=this._newTimerButtonValue.trim();if(!e)return;const i=e.match(/^(\d+(?:\.\d+)?)\s*(s|sec|seconds|m|min|minutes|h|hr|hours|d|day|days)?$/i);if(!i)return void alert("Invalid format! Use format like: 30, 30s, 10m, 1.5h, 1d.");const o=parseFloat(i[1]),n=i[1].includes("."),s=(i[2]||"min").toLowerCase(),r=s.startsWith("h"),a=s.startsWith("d");if(o>9999)return void alert("Value cannot exceed 9999");if(n&&!r&&!a)return void alert("Fractional values are only allowed for Hours (h) and Days (d)");if(n&&(r||a)){const t=i[1].split(".")[1];if(t&&t.length>1)return void alert("Maximum 1 decimal place allowed (e.g. 1.5)")}let l=o;if(s.startsWith("s")?l=o/60:s.startsWith("h")?l=60*o:s.startsWith("d")&&(l=1440*o),l<=0)return void alert("Timer duration must be greater than 0");let d=Array.isArray(null===(t=this._config)||void 0===t?void 0:t.timer_buttons)?[...this._config.timer_buttons]:[],c=e;if(i[2]||(c=o),d.includes(c))return this._newTimerButtonValue="",void this.requestUpdate();d.push(c);const h=d.filter(t=>"number"==typeof t),u=d.filter(t=>"string"==typeof t);h.sort((t,e)=>t-e),u.sort((t,e)=>t.localeCompare(e,void 0,{numeric:!0,sensitivity:"base"})),d=[...h,...u],this._updateConfig({timer_buttons:d}),this._newTimerButtonValue="",this.requestUpdate()}_removeTimerButton(t){var e;let i=Array.isArray(null===(e=this._config)||void 0===e?void 0:e.timer_buttons)?[...this._config.timer_buttons]:[];i=i.filter(e=>e!==t),this._updateConfig({timer_buttons:i})}_updateConfig(t){const e=Object.assign(Object.assign({},this._config),t);this._config=e,this.dispatchEvent(new CustomEvent("config-changed",{detail:{config:this._config},bubbles:!0,composed:!0})),this.requestUpdate()}render(){var t,e,i,o,n,s,r,a,l,d,c,h,u,_,p,g,m,f,v,b,y,$,x,w,S,C,T,E,k,A,P,M,I,O,V,U;if(!this.hass)return H``;const L=this._timerInstancesOptions||[],B=[{value:"",label:"None"}],N=null!==(t=this._tempSliderMaxValue)&&void 0!==t?t:String(null!==(e=this._config.slider_max)&&void 0!==e?e:120);L.length>0?B.push(...L):B.push({value:"none_found",label:"No Simple Timer Instances Found"});let D=!1,j="";if((null===(i=this._config)||void 0===i?void 0:i.timer_instance_id)&&this.hass&&this.hass.states){const t=Object.values(this.hass.states).find(t=>t.entity_id.startsWith("sensor.")&&t.attributes.entry_id===this._config.timer_instance_id);if(t&&t.attributes.default_timer_enabled){D=!0;j=`(${t.attributes.default_timer_duration}${t.attributes.default_timer_unit||"min"})`}}const R=this._getThemeColorHex("--secondary-background-color","#424242"),z=this._getThemeColorHex("--primary-text-color","#ffffff"),W=this._getThemeColorHex("--secondary-background-color","#424242"),F=this._getThemeColorHex("--secondary-background-color","#424242"),q=this._getThemeColorHex("--primary-color","#03a9f4"),J=this._getThemeColorHex("--ha-card-background",this._getThemeColorHex("--card-background-color","#1c1c1c")),G=this._getThemeColorHex("--secondary-text-color","#727272"),K=this._getThemeColorHex("--ha-card-background",this._getThemeColorHex("--card-background-color","#1c1c1c")),X=this._getThemeColorHex("--primary-color","#03a9f4");return H`
+`;let ht=null;const ut="instance_title",pt=[15,30,60,90,120,150];class _t extends st{constructor(){super(),this._configFullyLoaded=!1,this._timerInstancesOptions=[],this._newTimerButtonValue="",this._lastInstanceSig="",this._computeLabel=t=>{var e;return null!==(e={card_title:"Card Title (optional)",entity_state_icon:"Entity State Icon (optional)",slider_max:"Slider maximum (1–9999)",slider_unit:"Slider Unit",turn_off_on_cancel:"Turn off entity on timer cancel",reverse_mode:"Reverse Mode (Delayed Start)",hide_slider:"Hide Timer Slider",show_daily_usage:"Show Daily Usage",show_schedule:"Show Schedule Panel"}[t.name])&&void 0!==e?e:t.name},this._config={type:"custom:timer-card",timer_buttons:[...pt],timer_instance_id:null,card_title:null}}_getComputedCSSVariable(t,e="#000000"){try{const e=getComputedStyle(document.documentElement).getPropertyValue(t).trim();if(e&&""!==e)return e}catch(e){console.warn(`Failed to get CSS variable ${t}:`,e)}return e}_rgbToHex(t){const e=t.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);if(e){return"#"+((1<<24)+(parseInt(e[1])<<16)+(parseInt(e[2])<<8)+parseInt(e[3])).toString(16).slice(1)}return t}_getThemeColorHex(t,e="#000000"){const i=this._getComputedCSSVariable(t,e);return i.startsWith("#")?i:i.startsWith("rgb")?this._rgbToHex(i):e}async _getSimpleTimerInstances(){if(!this.hass||!this.hass.states)return console.warn("TimerCardEditor: hass.states not available when trying to fetch instances from states."),[];const t=new Map;for(const e in this.hass.states){const i=this.hass.states[e];if(e.startsWith("sensor.")&&e.includes("runtime")&&i.attributes.entry_id&&"string"==typeof i.attributes.entry_id&&i.attributes.switch_entity_id&&"string"==typeof i.attributes.switch_entity_id){const o=i.attributes.entry_id,n=i.attributes[ut];let s=`Timer Control (${o.substring(0,8)})`;console.debug(`TimerCardEditor: Processing sensor ${e} (Entry: ${o})`),console.debug(`TimerCardEditor: Found raw attribute '${ut}': ${n}`),console.debug("TimerCardEditor: Type of raw attribute: "+typeof n),n&&"string"==typeof n&&""!==n.trim()?(s=n.trim(),console.debug(`TimerCardEditor: Using '${ut}' for label: "${s}"`)):console.warn(`TimerCardEditor: Sensor '${e}' has no valid '${ut}' attribute. Falling back to entry ID based label: "${s}".`),t.has(o)?console.debug(`TimerCardEditor: Skipping duplicate entry_id: ${o}`):(t.set(o,{value:o,label:s}),console.debug(`TimerCardEditor: Added instance: ${s} (${o}) from sensor: ${e}`))}}const e=Array.from(t.values());return e.sort((t,e)=>t.label.localeCompare(e.label)),0===e.length&&console.info("TimerCardEditor: No Simple Timer integration instances found by scanning hass.states."),e}_getValidatedTimerButtons(t){if(Array.isArray(t)){const e=[],i=new Set;t.forEach(t=>{let o=String(t).trim().toLowerCase();o.endsWith("*")&&(o=o.slice(0,-1));const n=o.match(/^(\d+(?:\.\d+)?)\s*(s|sec|seconds|m|min|minutes|h|hr|hours|d|day|days)?$/);if(n){const s=parseFloat(n[1]),r=n[1].includes("."),a=n[2]||"min",l=a.startsWith("h")||["h","hr","hours"].includes(a),c=a.startsWith("d")||["d","day","days"].includes(a);if(r&&!l&&!c)return;if(r&&(l||c)){const t=n[1].split(".")[1];if(t&&t.length>1)return}if(s>9999)return;["m","min","minutes"].includes(a)?s>0&&s<=9999&&(i.has(String(s))||(e.push(s),i.add(String(s)))):i.has(o)||(e.push(t.toString().replace("*","")),i.add(o))}});const o=e.filter(t=>"number"==typeof t),n=e.filter(t=>"string"==typeof t);return o.sort((t,e)=>t-e),n.sort(),[...o,...n]}return null==t?(console.log("TimerCardEditor: No timer_buttons in config, using empty array."),[]):(console.warn(`TimerCardEditor: Invalid timer_buttons type (${typeof t}):`,t,"- using empty array"),[])}async setConfig(t){const e=Object.assign({},this._config),i=this._getValidatedTimerButtons(t.timer_buttons),o=Object.assign(Object.assign({},t),{type:t.type||"custom:timer-card",timer_buttons:i,card_title:t.card_title||null,entity_state_icon:t.entity_state_icon||t.power_button_icon||null,slider_max:t.slider_max||120,slider_unit:t.slider_unit||"min",reverse_mode:t.reverse_mode||!1,hide_slider:t.hide_slider||!1,show_daily_usage:!1!==t.show_daily_usage,slider_thumb_color:t.slider_thumb_color||null,slider_background_color:t.slider_background_color||null,timer_button_font_color:t.timer_button_font_color||null,timer_button_background_color:t.timer_button_background_color||null,power_button_background_color:t.power_button_background_color||null,power_button_icon_color:t.power_button_icon_color||null,entity_state_button_background_color:t.entity_state_button_background_color||null,entity_state_button_icon_color:t.entity_state_button_icon_color||null,entity_state_button_background_color_on:t.entity_state_button_background_color_on||null,entity_state_button_icon_color_on:t.entity_state_button_icon_color_on||null,turn_off_on_cancel:!1!==t.turn_off_on_cancel,show_schedule:t.show_schedule||!1});t.timer_instance_id?o.timer_instance_id=t.timer_instance_id:console.info("TimerCardEditor: setConfig - no timer_instance_id in config, will remain unset"),t.entity&&(o.entity=t.entity),t.sensor_entity&&(o.sensor_entity=t.sensor_entity),this._config=o,this._configFullyLoaded=!0,JSON.stringify(e)!==JSON.stringify(this._config)?this.dispatchEvent(new CustomEvent("config-changed",{detail:{config:this._config}})):console.log("TimerCardEditor: Config unchanged, not dispatching event"),this.requestUpdate()}connectedCallback(){super.connectedCallback(),(ht||(ht=(async()=>{var t,e,i,o;if(!customElements.get("ha-form"))try{const n=await(null===(e=(t=window).loadCardHelpers)||void 0===e?void 0:e.call(t));if(!n)return;const s=await n.createCardElement({type:"entities",entities:[]});await(null===(o=null===(i=null==s?void 0:s.constructor)||void 0===i?void 0:i.getConfigElement)||void 0===o?void 0:o.call(i)),await customElements.whenDefined("ha-form")}catch(t){console.warn("TimerCardEditor: could not preload ha-form",t)}})(),ht)).then(()=>this.requestUpdate())}updated(t){if(super.updated(t),t.has("hass")&&this.hass){const t=this._instanceSignature();t===this._lastInstanceSig&&0!==this._timerInstancesOptions.length||(this._lastInstanceSig=t,this._fetchTimerInstances())}}_instanceSignature(){var t;if(!(null===(t=this.hass)||void 0===t?void 0:t.states))return"";const e=[];for(const t in this.hass.states){const i=this.hass.states[t];t.startsWith("sensor.")&&t.includes("runtime")&&i.attributes.entry_id&&i.attributes.switch_entity_id&&e.push(`${i.attributes.entry_id}:${i.attributes[ut]||""}`)}return e.sort().join("|")}async _fetchTimerInstances(){var t;if(this.hass){if(this._timerInstancesOptions=await this._getSimpleTimerInstances(),(null===(t=this._config)||void 0===t?void 0:t.timer_instance_id)&&this._timerInstancesOptions.length>0){if(!this._timerInstancesOptions.some(t=>t.value===this._config.timer_instance_id)){console.warn(`TimerCardEditor: Previously configured instance '${this._config.timer_instance_id}' no longer exists. User will need to select a new instance.`);const t=Object.assign(Object.assign({},this._config),{timer_instance_id:null});this._config=t,this.dispatchEvent(new CustomEvent("config-changed",{detail:{config:this._config},bubbles:!0,composed:!0}))}}else console.info("TimerCardEditor: No timer_instance_id configured or no instances available. User must manually select.");this.requestUpdate()}}_handleNewTimerInput(t){const e=t.target;this._newTimerButtonValue=e.value}_addTimerButton(){var t;const e=this._newTimerButtonValue.trim();if(!e)return;const i=e.match(/^(\d+(?:\.\d+)?)\s*(s|sec|seconds|m|min|minutes|h|hr|hours|d|day|days)?$/i);if(!i)return void alert("Invalid format! Use format like: 30, 30s, 10m, 1.5h, 1d.");const o=parseFloat(i[1]),n=i[1].includes("."),s=(i[2]||"min").toLowerCase(),r=s.startsWith("h"),a=s.startsWith("d");if(o>9999)return void alert("Value cannot exceed 9999");if(n&&!r&&!a)return void alert("Fractional values are only allowed for Hours (h) and Days (d)");if(n&&(r||a)){const t=i[1].split(".")[1];if(t&&t.length>1)return void alert("Maximum 1 decimal place allowed (e.g. 1.5)")}let l=o;if(s.startsWith("s")?l=o/60:s.startsWith("h")?l=60*o:s.startsWith("d")&&(l=1440*o),l<=0)return void alert("Timer duration must be greater than 0");let c=Array.isArray(null===(t=this._config)||void 0===t?void 0:t.timer_buttons)?[...this._config.timer_buttons]:[],d=e;if(i[2]||(d=o),c.includes(d))return this._newTimerButtonValue="",void this.requestUpdate();c.push(d);const h=c.filter(t=>"number"==typeof t),u=c.filter(t=>"string"==typeof t);h.sort((t,e)=>t-e),u.sort((t,e)=>t.localeCompare(e,void 0,{numeric:!0,sensitivity:"base"})),c=[...h,...u],this._updateConfig({timer_buttons:c}),this._newTimerButtonValue="",this.requestUpdate()}_removeTimerButton(t){var e;let i=Array.isArray(null===(e=this._config)||void 0===e?void 0:e.timer_buttons)?[...this._config.timer_buttons]:[];i=i.filter(e=>e!==t),this._updateConfig({timer_buttons:i})}_updateConfig(t){const e=Object.assign(Object.assign({},this._config),t);this._config=e,this.dispatchEvent(new CustomEvent("config-changed",{detail:{config:this._config},bubbles:!0,composed:!0})),this.requestUpdate()}_mainSchema(){return[{name:"card_title",selector:{text:{}}},{name:"entity_state_icon",selector:{icon:{}}},{name:"",type:"grid",schema:[{name:"slider_max",selector:{number:{min:1,max:9999,step:1,mode:"box"}}},{name:"slider_unit",selector:{select:{mode:"dropdown",options:[{value:"sec",label:"Seconds (s)"},{value:"min",label:"Minutes (m)"},{value:"hr",label:"Hours (h)"},{value:"day",label:"Days (d)"}]}}}]}]}_formChanged(t){var e;t.stopPropagation();const i=Object.assign({},(null===(e=t.detail)||void 0===e?void 0:e.value)||{}),o=Object.assign({},this._config);if("card_title"in i&&(i.card_title&&""!==i.card_title?o.card_title=i.card_title:delete o.card_title,delete i.card_title),"entity_state_icon"in i&&(o.entity_state_icon=i.entity_state_icon&&""!==i.entity_state_icon?i.entity_state_icon:null,delete i.entity_state_icon),"slider_max"in i){let t=Number(i.slider_max);(!Number.isFinite(t)||t<1||t>9999)&&(t=120),t=Math.trunc(t),o.slider_max=t,o.timer_buttons=[...this._config.timer_buttons||[]].filter(e=>"number"!=typeof e||e<=t),delete i.slider_max}if(Object.assign(o,i),JSON.stringify(this._config)===JSON.stringify(o))return;this._config=o;const n=Object.assign({},o);delete n.notification_entity,delete n.show_seconds,this.dispatchEvent(new CustomEvent("config-changed",{detail:{config:n},bubbles:!0,composed:!0})),this.requestUpdate()}render(){var t,e,i,o,n,s,r,a,l,c,d,h,u,p,_,g,m,f,b,v,y,x,$,w,S,C,k,T,E,A,P;if(!this.hass)return j``;const I=this._timerInstancesOptions||[],M=[{value:"",label:"None"}];I.length>0?M.push(...I):M.push({value:"none_found",label:"No Simple Timer Instances Found"});let O=!1,D="";if((null===(t=this._config)||void 0===t?void 0:t.timer_instance_id)&&this.hass&&this.hass.states){const t=Object.values(this.hass.states).find(t=>t.entity_id.startsWith("sensor.")&&t.attributes.entry_id===this._config.timer_instance_id);if(t&&t.attributes.default_timer_enabled){O=!0;D=`(${t.attributes.default_timer_duration}${t.attributes.default_timer_unit||"min"})`}}const U=this._getThemeColorHex("--secondary-background-color","#424242"),L=this._getThemeColorHex("--primary-text-color","#ffffff"),V=this._getThemeColorHex("--secondary-background-color","#424242"),R=this._getThemeColorHex("--secondary-background-color","#424242"),B=this._getThemeColorHex("--primary-color","#03a9f4"),N=this._getThemeColorHex("--ha-card-background",this._getThemeColorHex("--card-background-color","#1c1c1c")),z=this._getThemeColorHex("--secondary-text-color","#727272"),H=this._getThemeColorHex("--ha-card-background",this._getThemeColorHex("--card-background-color","#1c1c1c")),W=this._getThemeColorHex("--primary-color","#03a9f4");return j`
       <div class="card-config">
-        <div class="config-row">
-          <ha-textfield
-            .label=${"Card Title (optional)"}
-            .value=${(null===(o=this._config)||void 0===o?void 0:o.card_title)||""}
-            .configValue=${"card_title"}
-            @input=${this._valueChanged}
-            .placeholder=${"Optional title for the card"}
-          ></ha-textfield>
-        </div>
-        
         <div class="config-row">
           <ha-select
             .label=${"Select Simple Timer Instance"}
-            .value=${(null===(n=this._config)||void 0===n?void 0:n.timer_instance_id)||""}
-            .options=${B}
+            .value=${(null===(e=this._config)||void 0===e?void 0:e.timer_instance_id)||""}
+            .options=${M}
             @selected=${this._instanceSelected}
             @closed=${t=>t.stopPropagation()}
             fixedMenuPosition
             naturalMenuWidth
             required
           >
-            ${B.map(t=>H`
+            ${M.map(t=>j`
               <mwc-list-item .value=${t.value}>${t.label}</mwc-list-item>
             `)}
           </ha-select>
         </div>
-        
-        <div class="config-row">
-          <ha-textfield
-            .label=${"Entity State Icon (optional)"}
-            .value=${(null===(s=this._config)||void 0===s?void 0:s.entity_state_icon)||""}
-            .configValue=${"entity_state_icon"}
-            @input=${this._valueChanged}
-            .placeholder=${"e.g., mdi:power, mdi:lightbulb, or leave empty for no icon"}
-            .helper=${"Enter any MDI icon name (mdi:icon-name) or leave empty to default to mdi:power"}
-          >
-            ${(null===(r=this._config)||void 0===r?void 0:r.entity_state_icon)?H`
-              <ha-icon icon="${this._config.entity_state_icon}" slot="leadingIcon"></ha-icon>
-            `:""}
-          </ha-textfield>
-        </div>
 
-
-        
-        <div class="config-row">
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-             <ha-textfield
-              label="Slider maximum (1–9999)"
-              type="number"
-              min="1"
-              max="9999"
-              inputmode="numeric"
-              value=${N}
-              helper="Enter a number between 1 and 9999"
-              validationMessage="Must be 1–9999"
-              ?invalid=${this._isSliderMaxInvalid()}
-              @input=${this._onSliderMaxInput}
-              @change=${this._handleSliderMaxBlur}
-              @blur=${this._handleSliderMaxBlur}
-              @keydown=${t=>{"Enter"===t.key&&this._handleSliderMaxBlur(t)}}
-            ></ha-textfield>
-
-            <ha-select
-              .label=${"Slider Unit"}
-              .value=${(null===(a=this._config)||void 0===a?void 0:a.slider_unit)||"min"}
-              .options=${[{value:"sec",label:"Seconds (s)"},{value:"min",label:"Minutes (m)"},{value:"hr",label:"Hours (h)"},{value:"day",label:"Days (d)"}]}
-              @selected=${this._sliderUnitSelected}
-              @closed=${t=>t.stopPropagation()}
-              fixedMenuPosition
-              naturalMenuWidth
-            >
-              <mwc-list-item value="sec">Seconds (s)</mwc-list-item>
-              <mwc-list-item value="min">Minutes (m)</mwc-list-item>
-              <mwc-list-item value="hr">Hours (h)</mwc-list-item>
-              <mwc-list-item value="day">Days (d)</mwc-list-item>
-            </ha-select>
-          </div>
-        </div>
+        <ha-form
+          .hass=${this.hass}
+          .data=${this._config}
+          .schema=${this._mainSchema()}
+          .computeLabel=${this._computeLabel}
+          @value-changed=${this._formChanged}
+        ></ha-form>
 
         <ha-expansion-panel outlined style="margin-top: 16px; margin-bottom: 16px;">
           <div slot="header" style="display: flex; align-items: center;">
@@ -834,38 +1054,22 @@ const x=globalThis,w=x.trustedTypes,S=w?w.createPolicy("lit-html",{createHTML:t=
                 <div style="display: flex; gap: 8px; align-items: center;">
                   <input
                     type="color"
-                    value=${(null===(l=this._config)||void 0===l?void 0:l.slider_thumb_color)||"#2ab69c"}
+                    value=${(null===(i=this._config)||void 0===i?void 0:i.slider_thumb_color)||"#2ab69c"}
                     @input=${t=>{const e=t.target;this._valueChanged({target:{configValue:"slider_thumb_color",value:e.value},stopPropagation:()=>{}})}}
                     style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
                   />
-                  <ha-textfield
-                    .label=${"Slider Thumb Color"}
-                    .value=${(null===(d=this._config)||void 0===d?void 0:d.slider_thumb_color)||""}
-                    .configValue=${"slider_thumb_color"}
-                    @input=${this._valueChanged}
-                    .placeholder=${"Theme default"}
-                    .helper=${"Leave empty to use default (#2ab69c)"}
-                    style="flex: 1; min-width: 0;"
-                  ></ha-textfield>
+                  <label style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;"><span class="ht-color-label">Slider Thumb Color</span><input class="ht-input" type="text" placeholder="Theme default" .value=${(null===(o=this._config)||void 0===o?void 0:o.slider_thumb_color)||""} .configValue=${"slider_thumb_color"} @input=${this._valueChanged} /></label>
                 </div>
                 
                 <!-- Slider Background Color -->
                 <div style="display: flex; gap: 8px; align-items: center;">
                   <input
                     type="color"
-                    value=${(null===(c=this._config)||void 0===c?void 0:c.slider_background_color)||R}
+                    value=${(null===(n=this._config)||void 0===n?void 0:n.slider_background_color)||U}
                     @input=${t=>{const e=t.target;this._valueChanged({target:{configValue:"slider_background_color",value:e.value},stopPropagation:()=>{}})}}
                     style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
                   />
-                  <ha-textfield
-                    .label=${"Slider Background Color"}
-                    .value=${(null===(h=this._config)||void 0===h?void 0:h.slider_background_color)||""}
-                    .configValue=${"slider_background_color"}
-                    @input=${this._valueChanged}
-                    .placeholder=${"Theme default"}
-                    .helper=${"Leave empty to use theme color"}
-                    style="flex: 1; min-width: 0;"
-                  ></ha-textfield>
+                  <label style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;"><span class="ht-color-label">Slider Background Color</span><input class="ht-input" type="text" placeholder="Theme default" .value=${(null===(s=this._config)||void 0===s?void 0:s.slider_background_color)||""} .configValue=${"slider_background_color"} @input=${this._valueChanged} /></label>
                 </div>
               </div>
             </div>
@@ -876,38 +1080,22 @@ const x=globalThis,w=x.trustedTypes,S=w?w.createPolicy("lit-html",{createHTML:t=
                 <div style="display: flex; gap: 8px; align-items: center;">
                   <input
                     type="color"
-                    value=${(null===(u=this._config)||void 0===u?void 0:u.timer_button_font_color)||z}
+                    value=${(null===(r=this._config)||void 0===r?void 0:r.timer_button_font_color)||L}
                     @input=${t=>{const e=t.target;this._valueChanged({target:{configValue:"timer_button_font_color",value:e.value},stopPropagation:()=>{}})}}
                     style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
                   />
-                  <ha-textfield
-                    .label=${"Timer Button Font Color"}
-                    .value=${(null===(_=this._config)||void 0===_?void 0:_.timer_button_font_color)||""}
-                    .configValue=${"timer_button_font_color"}
-                    @input=${this._valueChanged}
-                    .placeholder=${"Theme default"}
-                    .helper=${"Leave empty to use theme color"}
-                    style="flex: 1; min-width: 0;"
-                  ></ha-textfield>
+                  <label style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;"><span class="ht-color-label">Timer Button Font Color</span><input class="ht-input" type="text" placeholder="Theme default" .value=${(null===(a=this._config)||void 0===a?void 0:a.timer_button_font_color)||""} .configValue=${"timer_button_font_color"} @input=${this._valueChanged} /></label>
                 </div>
                 
                 <!-- Timer Button Background Color -->
                 <div style="display: flex; gap: 8px; align-items: center;">
                   <input
                     type="color"
-                    value=${(null===(p=this._config)||void 0===p?void 0:p.timer_button_background_color)||W}
+                    value=${(null===(l=this._config)||void 0===l?void 0:l.timer_button_background_color)||V}
                     @input=${t=>{const e=t.target;this._valueChanged({target:{configValue:"timer_button_background_color",value:e.value},stopPropagation:()=>{}})}}
                     style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
                   />
-                  <ha-textfield
-                    .label=${"Timer Button Background Color"}
-                    .value=${(null===(g=this._config)||void 0===g?void 0:g.timer_button_background_color)||""}
-                    .configValue=${"timer_button_background_color"}
-                    @input=${this._valueChanged}
-                    .placeholder=${"Theme default"}
-                    .helper=${"Leave empty to use theme color"}
-                    style="flex: 1; min-width: 0;"
-                  ></ha-textfield>
+                  <label style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;"><span class="ht-color-label">Timer Button Background Color</span><input class="ht-input" type="text" placeholder="Theme default" .value=${(null===(c=this._config)||void 0===c?void 0:c.timer_button_background_color)||""} .configValue=${"timer_button_background_color"} @input=${this._valueChanged} /></label>
                 </div>
               </div>
             </div>
@@ -918,38 +1106,22 @@ const x=globalThis,w=x.trustedTypes,S=w?w.createPolicy("lit-html",{createHTML:t=
                 <div style="display: flex; gap: 8px; align-items: center;">
                   <input
                     type="color"
-                    value=${(null===(m=this._config)||void 0===m?void 0:m.power_button_background_color)||F}
+                    value=${(null===(d=this._config)||void 0===d?void 0:d.power_button_background_color)||R}
                     @input=${t=>{const e=t.target;this._valueChanged({target:{configValue:"power_button_background_color",value:e.value},stopPropagation:()=>{}})}}
                     style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
                   />
-                  <ha-textfield
-                    .label=${"Timer Control Button Background"}
-                    .value=${(null===(f=this._config)||void 0===f?void 0:f.power_button_background_color)||""}
-                    .configValue=${"power_button_background_color"}
-                    @input=${this._valueChanged}
-                    .placeholder=${"Theme default"}
-                    .helper=${"Button next to slider"}
-                    style="flex: 1; min-width: 0;"
-                  ></ha-textfield>
+                  <label style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;"><span class="ht-color-label">Timer Control Button Background</span><input class="ht-input" type="text" placeholder="Theme default" .value=${(null===(h=this._config)||void 0===h?void 0:h.power_button_background_color)||""} .configValue=${"power_button_background_color"} @input=${this._valueChanged} /></label>
                 </div>
                 
                 <!-- Timer Control Button Icon Color -->
                 <div style="display: flex; gap: 8px; align-items: center;">
                   <input
                     type="color"
-                    value=${(null===(v=this._config)||void 0===v?void 0:v.power_button_icon_color)||q}
+                    value=${(null===(u=this._config)||void 0===u?void 0:u.power_button_icon_color)||B}
                     @input=${t=>{const e=t.target;this._valueChanged({target:{configValue:"power_button_icon_color",value:e.value},stopPropagation:()=>{}})}}
                     style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
                   />
-                  <ha-textfield
-                    .label=${"Timer Control Button Icon Color"}
-                    .value=${(null===(b=this._config)||void 0===b?void 0:b.power_button_icon_color)||""}
-                    .configValue=${"power_button_icon_color"}
-                    @input=${this._valueChanged}
-                    .placeholder=${"Theme default"}
-                    .helper=${"Button next to slider"}
-                    style="flex: 1; min-width: 0;"
-                  ></ha-textfield>
+                  <label style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;"><span class="ht-color-label">Timer Control Button Icon Color</span><input class="ht-input" type="text" placeholder="Theme default" .value=${(null===(p=this._config)||void 0===p?void 0:p.power_button_icon_color)||""} .configValue=${"power_button_icon_color"} @input=${this._valueChanged} /></label>
                 </div>
               </div>
             </div>
@@ -961,19 +1133,11 @@ const x=globalThis,w=x.trustedTypes,S=w?w.createPolicy("lit-html",{createHTML:t=
                 <div style="display: flex; gap: 8px; align-items: center;">
                   <input
                     type="color"
-                    value=${(null===(y=this._config)||void 0===y?void 0:y.entity_state_button_background_color)||J}
+                    value=${(null===(_=this._config)||void 0===_?void 0:_.entity_state_button_background_color)||N}
                     @input=${t=>{const e=t.target;this._valueChanged({target:{configValue:"entity_state_button_background_color",value:e.value},stopPropagation:()=>{}})}}
                     style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
                   />
-                  <ha-textfield
-                    .label=${"State Icon Background (Off)"}
-                    .value=${(null===($=this._config)||void 0===$?void 0:$.entity_state_button_background_color)||""}
-                    .configValue=${"entity_state_button_background_color"}
-                    @input=${this._valueChanged}
-                    .placeholder=${"Theme default (Transparent)"}
-                    .helper=${"Leave empty to use theme color"}
-                    style="flex: 1; min-width: 0;"
-                  ></ha-textfield>
+                  <label style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;"><span class="ht-color-label">State Icon Background (Off)</span><input class="ht-input" type="text" placeholder="Theme default" .value=${(null===(g=this._config)||void 0===g?void 0:g.entity_state_button_background_color)||""} .configValue=${"entity_state_button_background_color"} @input=${this._valueChanged} /></label>
                 </div>
                 
                 
@@ -981,57 +1145,33 @@ const x=globalThis,w=x.trustedTypes,S=w?w.createPolicy("lit-html",{createHTML:t=
                 <div style="display: flex; gap: 8px; align-items: center;">
                   <input
                     type="color"
-                    value=${(null===(x=this._config)||void 0===x?void 0:x.entity_state_button_icon_color)||G}
+                    value=${(null===(m=this._config)||void 0===m?void 0:m.entity_state_button_icon_color)||z}
                     @input=${t=>{const e=t.target;this._valueChanged({target:{configValue:"entity_state_button_icon_color",value:e.value},stopPropagation:()=>{}})}}
                     style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
                   />
-                  <ha-textfield
-                    .label=${"State Icon Color (Off)"}
-                    .value=${(null===(w=this._config)||void 0===w?void 0:w.entity_state_button_icon_color)||""}
-                    .configValue=${"entity_state_button_icon_color"}
-                    @input=${this._valueChanged}
-                    .placeholder=${"Theme default"}
-                    .helper=${"Leave empty to use theme color"}
-                    style="flex: 1; min-width: 0;"
-                  ></ha-textfield>
+                  <label style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;"><span class="ht-color-label">State Icon Color (Off)</span><input class="ht-input" type="text" placeholder="Theme default" .value=${(null===(f=this._config)||void 0===f?void 0:f.entity_state_button_icon_color)||""} .configValue=${"entity_state_button_icon_color"} @input=${this._valueChanged} /></label>
                 </div>
 
                 <!-- Entity State Button Background Color (On) -->
                 <div style="display: flex; gap: 8px; align-items: center;">
                   <input
                     type="color"
-                    value=${(null===(S=this._config)||void 0===S?void 0:S.entity_state_button_background_color_on)||K}
+                    value=${(null===(b=this._config)||void 0===b?void 0:b.entity_state_button_background_color_on)||H}
                     @input=${t=>{const e=t.target;this._valueChanged({target:{configValue:"entity_state_button_background_color_on",value:e.value},stopPropagation:()=>{}})}}
                     style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
                   />
-                  <ha-textfield
-                    .label=${"State Icon Background (On)"}
-                    .value=${(null===(C=this._config)||void 0===C?void 0:C.entity_state_button_background_color_on)||""}
-                    .configValue=${"entity_state_button_background_color_on"}
-                    @input=${this._valueChanged}
-                    .placeholder=${"Theme default"}
-                    .helper=${"Leave empty to use theme color"}
-                    style="flex: 1; min-width: 0;"
-                  ></ha-textfield>
+                  <label style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;"><span class="ht-color-label">State Icon Background (On)</span><input class="ht-input" type="text" placeholder="Theme default" .value=${(null===(v=this._config)||void 0===v?void 0:v.entity_state_button_background_color_on)||""} .configValue=${"entity_state_button_background_color_on"} @input=${this._valueChanged} /></label>
                 </div>
 
                 <!-- Entity State Button Icon Color (On) -->
                 <div style="display: flex; gap: 8px; align-items: center;">
                   <input
                     type="color"
-                    value=${(null===(T=this._config)||void 0===T?void 0:T.entity_state_button_icon_color_on)||X}
+                    value=${(null===(y=this._config)||void 0===y?void 0:y.entity_state_button_icon_color_on)||W}
                     @input=${t=>{const e=t.target;this._valueChanged({target:{configValue:"entity_state_button_icon_color_on",value:e.value},stopPropagation:()=>{}})}}
                     style="width: 40px; height: 40px; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;"
                   />
-                  <ha-textfield
-                    .label=${"State Icon Color (On)"}
-                    .value=${(null===(E=this._config)||void 0===E?void 0:E.entity_state_button_icon_color_on)||""}
-                    .configValue=${"entity_state_button_icon_color_on"}
-                    @input=${this._valueChanged}
-                    .placeholder=${"Theme default"}
-                    .helper=${"Leave empty to use theme color"}
-                    style="flex: 1; min-width: 0;"
-                  ></ha-textfield>
+                  <label style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;"><span class="ht-color-label">State Icon Color (On)</span><input class="ht-input" type="text" placeholder="Theme default" .value=${(null===(x=this._config)||void 0===x?void 0:x.entity_state_button_icon_color_on)||""} .configValue=${"entity_state_button_icon_color_on"} @input=${this._valueChanged} /></label>
                 </div>
               </div>
             </div>
@@ -1041,64 +1181,72 @@ const x=globalThis,w=x.trustedTypes,S=w?w.createPolicy("lit-html",{createHTML:t=
         <div class="config-row">
           <ha-formfield .label=${"Turn off entity on timer cancel"}>
             <ha-switch
-              .checked=${!1!==(null===(k=this._config)||void 0===k?void 0:k.turn_off_on_cancel)}
+              .checked=${!1!==(null===($=this._config)||void 0===$?void 0:$.turn_off_on_cancel)}
               .configValue=${"turn_off_on_cancel"}
               @change=${this._valueChanged}
             ></ha-switch>
           </ha-formfield>
         </div>
 
-
-
         <div class="config-row">
-          <ha-formfield .label=${"Reverse Mode (Delayed Start)"+(D?" (Disabled)":"")}>
+          <ha-formfield .label=${"Reverse Mode (Delayed Start)"+(O?" (Disabled)":"")}>
             <ha-switch
-              .checked=${!!(null===(A=this._config)||void 0===A?void 0:A.reverse_mode)&&!D}
+              .checked=${!!(null===(w=this._config)||void 0===w?void 0:w.reverse_mode)&&!O}
               .configValue=${"reverse_mode"}
               @change=${this._valueChanged}
-              .disabled=${D}
+              .disabled=${O}
             ></ha-switch>
           </ha-formfield>
-          ${D?H`
+          ${O?j`
             <div class="helper-text" style="color: var(--warning-color, orange); margin-top: 4px;">
-              Disabled because a 
-              <span 
-                @click=${t=>this._navigate(t,"/config/integrations/integration/simple_timer")} 
+              Disabled because a
+              <span
+                @click=${t=>this._navigate(t,"/config/integrations/integration/simple_timer")}
                 style="color: inherit; text-decoration: underline; font-weight: bold; cursor: pointer;">
                 Default Timer
               </span>
-              is configured ${j}.
+              is configured ${D}.
             </div>
           `:""}
         </div>
-        
+
         <div class="config-row">
           <ha-formfield .label=${"Hide Timer Slider"}>
             <ha-switch
-              .checked=${(null===(P=this._config)||void 0===P?void 0:P.hide_slider)||!1}
+              .checked=${(null===(S=this._config)||void 0===S?void 0:S.hide_slider)||!1}
               .configValue=${"hide_slider"}
               @change=${this._valueChanged}
             ></ha-switch>
           </ha-formfield>
         </div>
-        
+
         <div class="config-row">
           <ha-formfield .label=${"Show Daily Usage"}>
             <ha-switch
-              .checked=${!1!==(null===(M=this._config)||void 0===M?void 0:M.show_daily_usage)}
+              .checked=${!1!==(null===(C=this._config)||void 0===C?void 0:C.show_daily_usage)}
               .configValue=${"show_daily_usage"}
               @change=${this._valueChanged}
             ></ha-switch>
           </ha-formfield>
         </div>
-        
+
+        <div class="config-row">
+          <ha-formfield .label=${"Show Schedule Panel"}>
+            <ha-switch
+              .checked=${(null===(k=this._config)||void 0===k?void 0:k.show_schedule)||!1}
+              .configValue=${"show_schedule"}
+              @change=${this._valueChanged}
+            ></ha-switch>
+          </ha-formfield>
+        </div>
+
       </div>
 
         <div class="config-row">
             <div class="timer-chips-container">
              <label class="config-label">Timer Presets</label>
              <div class="chips-wrapper">
-                ${((null===(I=this._config)||void 0===I?void 0:I.timer_buttons)||ut).map(t=>{const e=String(t).replace("*","");return H`
+                ${((null===(T=this._config)||void 0===T?void 0:T.timer_buttons)||pt).map(t=>{const e=String(t).replace("*","");return j`
                     <div class="timer-chip">
                         <span>${"number"==typeof t?t+"m":e}</span>
                         <span class="remove-chip" @click=${()=>this._removeTimerButton(t)}>✕</span>
@@ -1108,23 +1256,25 @@ const x=globalThis,w=x.trustedTypes,S=w?w.createPolicy("lit-html",{createHTML:t=
             </div>
             
             <div class="add-timer-row">
-               <ha-textfield
-                  .label=${"Add Timer (e.g. 30s, 10m, 1h)"}
+               <input
+                  class="ht-field"
+                  type="text"
+                  placeholder="Add Timer (e.g. 30s, 10m, 1h)"
                   .value=${this._newTimerButtonValue}
                   @input=${this._handleNewTimerInput}
                   @keypress=${t=>{"Enter"===t.key&&this._addTimerButton()}}
                   style="flex: 1;"
-               ></ha-textfield>
+               />
                <div class="add-btn" @click=${this._addTimerButton} role="button">ADD</div>
             </div>
             <div class="helper-text" style="font-size: 0.8em; color: var(--secondary-text-color); margin-top: 4px;">
                 Supports seconds (s), minutes (m), hours (h), days (d). Example: 30s, 10, 1.5h, 1d.
             </div>
         </div>
-          ${!(null===(V=null===(O=this._config)||void 0===O?void 0:O.timer_buttons)||void 0===V?void 0:V.length)&&(null===(U=this._config)||void 0===U?void 0:U.hide_slider)?H`
+          ${!(null===(A=null===(E=this._config)||void 0===E?void 0:E.timer_buttons)||void 0===A?void 0:A.length)&&(null===(P=this._config)||void 0===P?void 0:P.hide_slider)?j`
             <p class="info-text">ℹ️ No timer presets logic and the Slider is also hidden. The card will not be able to set a duration.</p>
           `:""}
         </div>
       </div>
-    `}_onSliderMaxInput(t){const e=t.currentTarget;this._tempSliderMaxValue=e.value,this.requestUpdate()}_isSliderMaxInvalid(){var t,e;const i=null!==(t=this._tempSliderMaxValue)&&void 0!==t?t:String(null!==(e=this._config.slider_max)&&void 0!==e?e:"");if(""===i)return!0;const o=Number(i);return!Number.isFinite(o)||!(o>=1&&o<=9999)}_instanceSelected(t){var e,i,o;t.stopPropagation();const n=null!==(i=null===(e=t.detail)||void 0===e?void 0:e.value)&&void 0!==i?i:null===(o=t.target)||void 0===o?void 0:o.value;n&&"none_found"!==n&&""!==n?this._updateConfig({timer_instance_id:n}):this._updateConfig({timer_instance_id:null})}_sliderUnitSelected(t){var e,i,o;t.stopPropagation();const n=null!==(i=null===(e=t.detail)||void 0===e?void 0:e.value)&&void 0!==i?i:null===(o=t.target)||void 0===o?void 0:o.value;n&&this._updateConfig({slider_unit:n})}_valueChanged(t){t.stopPropagation();const e=t.target;if(!this._config||!e.configValue)return;const i=e.configValue;let o;if(void 0!==e.checked)o=e.checked;else if(void 0!==e.selected)o=e.value;else{if(void 0===e.value)return;o=e.value}const n=Object.assign({},this._config);if("card_title"===i?o&&""!==o?n.card_title=o:delete n.card_title:"timer_instance_id"===i?n.timer_instance_id=o&&"none_found"!==o&&""!==o?o:null:"show_daily_usage"===i?n.show_daily_usage=o:"hide_slider"===i?n.hide_slider=o:"reverse_mode"===i?n.reverse_mode=o:"slider_unit"===i?n.slider_unit=o:"turn_off_on_cancel"===i?n.turn_off_on_cancel=o:o&&""!==o?n[i]=o:["entity_state_icon","power_button_icon","slider_thumb_color","slider_background_color","timer_button_font_color","timer_button_background_color","power_button_background_color","power_button_icon_color","entity_state_button_background_color","entity_state_button_icon_color","entity_state_button_background_color_on","entity_state_button_icon_color_on"].includes(i)?n[i]=null:delete n[i],JSON.stringify(this._config)!==JSON.stringify(n)){this._config=n;const t=Object.assign({},n);delete t.notification_entity,delete t.show_seconds,this.dispatchEvent(new CustomEvent("config-changed",{detail:{config:t},bubbles:!0,composed:!0})),this.requestUpdate()}}_handleSliderMaxBlur(t){var e;const i=t.currentTarget,o=(null!==(e=i.value)&&void 0!==e?e:"").trim(),n=Number(o),s=!o||!Number.isFinite(n)||n<1||n>9999?120:Math.trunc(n);i.value=String(s),this._tempSliderMaxValue=null;let r=[...this._config.timer_buttons||[]];r=r.filter(t=>"number"!=typeof t||t<=s);const a=Object.assign(Object.assign({},this._config),{slider_max:s,timer_buttons:r});this._config=a,this.dispatchEvent(new CustomEvent("config-changed",{detail:{config:a},bubbles:!0,composed:!0})),this.requestUpdate()}_navigate(t,e){t.stopPropagation(),t.preventDefault(),this.dispatchEvent(new CustomEvent("close-dialog",{bubbles:!0,composed:!0}));try{let t=this;for(;t;){if("HA-DIALOG"===t.tagName||"MWC-DIALOG"===t.tagName){"function"==typeof t.close&&t.close();break}if(t.parentNode)t=t.parentNode;else{if(!t.host)break;t=t.host}}}catch(t){console.warn("TimerCardEditor: Failed to force close dialog",t)}history.pushState(null,"",e);const i=new Event("location-changed",{bubbles:!0,composed:!0});window.dispatchEvent(i)}static get styles(){return ct}}_t.properties={hass:{type:Object},_config:{type:Object},_newTimerButtonValue:{type:String}},customElements.define("timer-card-editor",_t);var pt=Object.freeze({__proto__:null});
+    `}_instanceSelected(t){var e,i,o;t.stopPropagation();const n=null!==(i=null===(e=t.detail)||void 0===e?void 0:e.value)&&void 0!==i?i:null===(o=t.target)||void 0===o?void 0:o.value;n&&"none_found"!==n&&""!==n?this._updateConfig({timer_instance_id:n}):this._updateConfig({timer_instance_id:null})}_valueChanged(t){t.stopPropagation();const e=t.target;if(!this._config||!e.configValue)return;const i=e.configValue;let o;if(void 0!==e.checked)o=e.checked;else if(void 0!==e.selected)o=e.value;else{if(void 0===e.value)return;o=e.value}const n=Object.assign({},this._config);if("card_title"===i?o&&""!==o?n.card_title=o:delete n.card_title:"timer_instance_id"===i?n.timer_instance_id=o&&"none_found"!==o&&""!==o?o:null:"show_daily_usage"===i?n.show_daily_usage=o:"hide_slider"===i?n.hide_slider=o:"reverse_mode"===i?n.reverse_mode=o:"show_schedule"===i?n.show_schedule=o:"slider_unit"===i?n.slider_unit=o:"turn_off_on_cancel"===i?n.turn_off_on_cancel=o:o&&""!==o?n[i]=o:["entity_state_icon","power_button_icon","slider_thumb_color","slider_background_color","timer_button_font_color","timer_button_background_color","power_button_background_color","power_button_icon_color","entity_state_button_background_color","entity_state_button_icon_color","entity_state_button_background_color_on","entity_state_button_icon_color_on"].includes(i)?n[i]=null:delete n[i],JSON.stringify(this._config)!==JSON.stringify(n)){this._config=n;const t=Object.assign({},n);delete t.notification_entity,delete t.show_seconds,this.dispatchEvent(new CustomEvent("config-changed",{detail:{config:t},bubbles:!0,composed:!0})),this.requestUpdate()}}_navigate(t,e){t.stopPropagation(),t.preventDefault(),this.dispatchEvent(new CustomEvent("close-dialog",{bubbles:!0,composed:!0}));try{let t=this;for(;t;){if("HA-DIALOG"===t.tagName||"MWC-DIALOG"===t.tagName){"function"==typeof t.close&&t.close();break}if(t.parentNode)t=t.parentNode;else{if(!t.host)break;t=t.host}}}catch(t){console.warn("TimerCardEditor: Failed to force close dialog",t)}history.pushState(null,"",e);const i=new Event("location-changed",{bubbles:!0,composed:!0});window.dispatchEvent(i)}static get styles(){return dt}}_t.properties={hass:{type:Object},_config:{type:Object},_newTimerButtonValue:{type:String}},customElements.define("timer-card-editor",_t);var gt=Object.freeze({__proto__:null});
 //# sourceMappingURL=timer-card.js.map

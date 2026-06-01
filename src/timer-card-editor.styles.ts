@@ -128,6 +128,55 @@ export const editorCardStyles = css`
         margin-top: 8px;
       }
 
+      /* Native input styled like HA's filled ha-textfield (Add Timer field) */
+      .ht-field {
+        height: 56px;
+        box-sizing: border-box;
+        padding: 0 12px;
+        border: none;
+        border-bottom: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4));
+        border-radius: 4px 4px 0 0;
+        background: var(--secondary-background-color, rgba(127, 127, 127, 0.1));
+        color: var(--primary-text-color);
+        font-size: 1em;
+        font-family: inherit;
+        outline: none;
+      }
+      .ht-field:focus {
+        border-bottom: 2px solid var(--primary-color);
+      }
+      .ht-field::placeholder {
+        color: var(--secondary-text-color);
+      }
+
+      /* Compact native input for the color hex fields */
+      .ht-color-label {
+        font-size: 0.72em;
+        color: var(--secondary-text-color);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .ht-input {
+        height: 34px;
+        width: 100%;
+        box-sizing: border-box;
+        padding: 0 8px;
+        border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4));
+        border-radius: 4px;
+        background: var(--secondary-background-color, rgba(127, 127, 127, 0.1));
+        color: var(--primary-text-color);
+        font-size: 0.85em;
+        font-family: inherit;
+        outline: none;
+      }
+      .ht-input:focus {
+        border-color: var(--primary-color);
+      }
+      .ht-input::placeholder {
+        color: var(--secondary-text-color);
+      }
+
       .add-btn {
         background-color: var(--primary-color);
         color: var(--text-primary-color);

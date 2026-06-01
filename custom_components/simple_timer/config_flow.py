@@ -15,11 +15,14 @@ _LOGGER = logging.getLogger(__name__)
 import re
 
 def _validate_time_string(time_str: str) -> bool:
-    """Validate time string format (HH:MM)."""
+    """Validate time string format (HH:MM or HH:MM:SS)."""
     try:
-        time.fromisoformat(time_str + ":00")
+        # Normalize HH:MM to HH:MM:SS before parsing
+        if len(time_str) == 5:
+            time_str += ":00"
+        time.fromisoformat(time_str)
         return True
-    except ValueError:
+    except (ValueError, TypeError):
         return False
 
 def _parse_duration_string(duration_str: str) -> tuple[float, str | None]:
@@ -302,11 +305,7 @@ class SimpleTimerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
         
         # Add reset time configuration
-        schema_dict[vol.Optional("reset_time", default="00:00")] = selector.TextSelector(
-            selector.TextSelectorConfig(
-                type=selector.TextSelectorType.TIME
-            )
-        )
+        schema_dict[vol.Optional("reset_time", default="00:00:00")] = selector.TimeSelector()
 
         # Default Timer Configuration
         schema_dict[vol.Optional("default_timer_duration", default="0")] = selector.TextSelector(
@@ -525,11 +524,7 @@ class SimpleTimerOptionsFlow(config_entries.OptionsFlow):
             )
         
         # Add reset time configuration
-        schema_dict[vol.Optional("reset_time", default=current_reset_time)] = selector.TextSelector(
-            selector.TextSelectorConfig(
-                type=selector.TextSelectorType.TIME
-            )
-        )
+        schema_dict[vol.Optional("reset_time", default=current_reset_time)] = selector.TimeSelector()
         
         # Default Timer Configuration (Single Field)
         schema_dict[vol.Optional("default_timer_duration", default=display_default_duration)] = selector.TextSelector(

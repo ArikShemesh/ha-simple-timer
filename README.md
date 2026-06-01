@@ -32,6 +32,8 @@ A simple Home Assistant integration that turns entities on and off with a precis
 
 ⏰ **Delayed Start Timers** - Turns devices ON when timer completes and keeps them on indefinitely until manually turned off
 
+⏱️ **Schedule Timer** - Start a timer at a chosen time of day (one-shot or recurring on selected days). Survives restarts. Optional, enabled per-card.
+
 ➕ **Extend Timer** - Add time to actively running timers on the fly without restarting
 
 ## 🏠 Perfect For
@@ -81,6 +83,7 @@ You will continue to receive updates in both cases, but switching ensures you're
    - Select your timer instance
    - Customize timer buttons
    - Add a custom card title (optional)
+   - Enable **Show Schedule Panel** to let users schedule a future start (off by default)
   
 ## 🔄 Renaming Timer Instances
 
@@ -92,6 +95,17 @@ You will continue to receive updates in both cases, but switching ensures you're
 
 ### 💡 Note on 3-Dots Rename
 If you use the 3-dots menu to rename, open **Configure** once afterward to sync the change.
+
+## ⏱️ Schedule Timer
+
+Enable **Show Schedule Panel** in the card editor to add a collapsible "Schedule Timer" panel:
+
+- Pick a **start time** and **run-for** duration (free input + quick-fill from your preset buttons).
+- **One-shot** (next occurrence) or **Repeat** on selected days of the week.
+- Once set, the card shows a banner ("Starts … · runs …"); ✕ cancels it.
+- Survives Home Assistant restarts. On a reverse-mode card, the schedule runs as a normal bounded timer (start at the time, auto-off after the duration).
+
+Disabled by default — existing cards are unchanged until you turn it on.
 
 ## 🎛️ Card Configuration
 
@@ -129,6 +143,7 @@ turn_off_on_cancel: true      # Turn off the device when timer is cancelled?
 card_title: "Water Heater"    # Custom title
 hide_slider: false            # Set true to hide the slider
 show_daily_usage: true        # Show/Hide the daily usage stats
+show_schedule: false          # Show the "Schedule Timer" panel on the card
 slider_max: 120               # Maximum value for the slider
 slider_unit: min              # Unit for slider: 's', 'min', 'h', 'd'
 
@@ -164,6 +179,7 @@ Option | Type | Default | Description
 `reverse_mode` | boolean | false | Enable delayed start (turns device ON when timer ends). `Note: Disabled if Default Timer is enabled for this entity.`
 `hide_slider` | boolean | false | Hide the slider control completely
 `show_daily_usage` | boolean | true | Display daily usage statistics
+`show_schedule` | boolean | false | Show the "Schedule Timer" panel (future-start scheduling)
 `turn_off_on_cancel` | boolean | true | Whether to turn off the entity when the timer is cancelled
 `slider_thumb_color` | string | - | Custom color for the slider thumb (hex or rgba)
 `slider_background_color` | string | - | Custom color for the slider track
@@ -183,7 +199,7 @@ Option | Type | Default | Description
 Yes! Add multiple integrations for different devices.
 
 ### Does the timer work if Home Assistant restarts?
-Yes, active timers resume automatically with offline time compensation.
+Yes, active timers resume automatically with offline time compensation. Scheduled starts also survive restarts (recurring schedules re-arm; a missed one-shot is dropped).
 
 ### Can I have multiple timer cards?
 Yes! You can add multiple cards for the same timer instance on different dashboards (or the same one). They will stay synchronized.
@@ -203,6 +219,21 @@ actions:
       reverse_mode: false
     action: simple_timer.start_timer
 ```
+
+### How to schedule a timer for a future time?
+Use the card's **Schedule Timer** panel, or the `simple_timer.schedule_timer` service:
+
+```yaml
+action: simple_timer.schedule_timer
+data:
+  entry_id: your_entry_id      # or entity_id: sensor.your_timer_runtime_...
+  start_time: "21:30:00"
+  duration: 30
+  unit: min
+  repeat: true                 # optional; daily/recurring
+  days: [mon, tue, wed, thu, fri]   # optional; empty = every day
+```
+Cancel an armed schedule with `simple_timer.cancel_schedule` (same `entry_id`/`entity_id`).
 
 ### Can I control my A/C or Climate entity?
 Not directly, but you can achieve this easily!

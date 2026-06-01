@@ -463,5 +463,148 @@ export const cardStyles = css`
       50% { box-shadow: 0 0 25px rgba(242, 186, 90, 0.9); }
   }
 
+  /* ---- Schedule panel ---- */
+  .schedule-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin: 14px 16px 4px;
+    padding-top: 12px;
+    border-top: 1px solid var(--divider-color, rgba(255,255,255,0.12));
+    font-size: 13px;
+    color: var(--secondary-text-color);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .schedule-toggle span { flex: 0 1 auto; overflow: visible; }
+  .schedule-toggle ha-icon:first-child { color: var(--primary-color); --mdc-icon-size: 18px; }
+  .schedule-toggle .sched-chevron { --mdc-icon-size: 18px; }
+
+  .schedule-panel {
+    margin: 14px 16px 8px;
+    padding-top: 4px;
+  }
+  .schedule-panel .schedule-toggle {
+    margin: 0 0 12px;
+    padding-top: 12px;
+  }
+
+  .sched-field { margin-bottom: 14px; }
+  .sched-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--secondary-text-color);
+    margin-bottom: 6px;
+  }
+  .sched-time, .sched-num, .sched-unit {
+    background: var(--secondary-background-color, rgba(255,255,255,0.05));
+    color: var(--primary-text-color);
+    border: 1px solid var(--divider-color, rgba(255,255,255,0.12));
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 15px;
+    font-family: inherit;
+  }
+  .sched-time { width: 120px; }
+  .sched-dur-row { display: flex; gap: 8px; }
+  .sched-num { width: 90px; }
+  .sched-unit { cursor: pointer; }
+
+  .sched-shortcut-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--secondary-text-color);
+    opacity: 0.7;
+    margin: 10px 0 6px;
+  }
+  .sched-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+  }
+  .sched-pill {
+    width: 72px;
+    box-sizing: border-box;
+    text-align: center;
+    font-size: 12px;
+    padding: 8px 6px;
+    border-radius: 8px;
+    background: var(--secondary-background-color, rgba(255,255,255,0.05));
+    border: 1px solid var(--divider-color, rgba(255,255,255,0.12));
+    color: var(--primary-text-color);
+    cursor: pointer;
+  }
+  .sched-pill.selected {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    background: rgba(var(--rgb-primary-color), 0.14);
+  }
+
+  .sched-repeat-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 4px 0 12px;
+    font-size: 14px;
+    color: var(--primary-text-color);
+  }
+
+  .sched-days { display: flex; gap: 6px; margin-bottom: 14px; }
+  .sched-day {
+    flex: 1;
+    text-align: center;
+    font-size: 11px;
+    padding: 7px 0;
+    border-radius: 7px;
+    background: var(--secondary-background-color, rgba(255,255,255,0.05));
+    border: 1px solid var(--divider-color, rgba(255,255,255,0.12));
+    color: var(--secondary-text-color);
+    cursor: pointer;
+  }
+  .sched-day.on {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    background: rgba(var(--rgb-primary-color), 0.14);
+  }
+
+  .sched-actions { display: flex; gap: 10px; }
+  .sched-btn {
+    flex: 1;
+    text-align: center;
+    font-size: 13px;
+    padding: 10px 0;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .sched-btn.primary {
+    background: var(--primary-color);
+    color: var(--text-primary-color, #fff);
+    font-weight: 600;
+  }
+  .sched-btn.ghost {
+    background: transparent;
+    border: 1px solid var(--divider-color, rgba(255,255,255,0.12));
+    color: var(--secondary-text-color);
+  }
+
+  .schedule-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 14px 16px 8px;
+    padding: 11px 13px;
+    border-radius: 10px;
+    background: rgba(var(--rgb-primary-color), 0.10);
+    border: 1px solid rgba(var(--rgb-primary-color), 0.4);
+  }
+  .schedule-banner .sched-ico { color: var(--primary-color); --mdc-icon-size: 20px; }
+  .sched-banner-text { flex: 1; line-height: 1.4; }
+  .sched-banner-main { font-size: 13.5px; color: var(--primary-text-color); }
+  .sched-banner-sub { font-size: 12px; color: var(--secondary-text-color); }
+  .sched-banner-x { cursor: pointer; color: var(--secondary-text-color); --mdc-icon-size: 18px; padding: 2px; }
 
   `;

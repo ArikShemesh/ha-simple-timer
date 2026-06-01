@@ -9,6 +9,8 @@ import homeassistant.helpers.config_validation as cv
 
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.components.frontend import async_register_built_in_panel, add_extra_js_url
 from homeassistant.components.lovelace.resources import ResourceStorageCollection
@@ -90,197 +92,201 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
 
     await init_resource(hass, "/local/simple-timer/timer-card.js", cache_id)
 
-    # Schema for the timer services
-    SERVICE_START_TIMER_SCHEMA = vol.Schema({
-        vol.Required("entry_id"): cv.string,
-        vol.Required("duration"): cv.positive_float,
-        vol.Optional("unit", default="min"): vol.In(["s", "sec", "seconds", "m", "min", "minutes", "h", "hr", "hours", "d", "day", "days"]),
-        vol.Optional("reverse_mode", default=False): cv.boolean,
-        vol.Optional("start_method", default="button"): vol.In(["button", "slider"]),
-    })
-    SERVICE_ADD_TIMER_SCHEMA = vol.Schema({
-        vol.Required("entry_id"): cv.string,
-        vol.Required("duration"): cv.positive_float,
-        vol.Optional("unit", default="min"): vol.In(["s", "sec", "seconds", "m", "min", "minutes", "h", "hr", "hours", "d", "day", "days"]),
-    })
-    SERVICE_CANCEL_TIMER_SCHEMA = vol.Schema({
-        vol.Required("entry_id"): cv.string,
-        vol.Optional("turn_off_entity", default=True): cv.boolean,
-    })
-    # Schema for the service that tells the sensor which switch to monitor
-    SERVICE_UPDATE_SWITCH_SCHEMA = vol.Schema({
-        vol.Required("entry_id"): cv.string,
-        vol.Required("switch_entity_id"): cv.string,
-    })
-    # Schema for manual name sync service
+    UNIT_OPTIONS = ["s", "sec", "seconds", "m", "min", "minutes", "h", "hr", "hours", "d", "day", "days"]
+
+    # Services accept either entry_id or entity_id (exactly one). entity_id
+    # resolves via the entity registry to the owning config entry.
+    SERVICE_START_TIMER_SCHEMA = vol.Schema(vol.All(
+        {
+            vol.Exclusive("entry_id", "target"): cv.string,
+            vol.Exclusive("entity_id", "target"): cv.entity_id,
+            vol.Required("duration"): cv.positive_float,
+            vol.Optional("unit", default="min"): vol.In(UNIT_OPTIONS),
+            vol.Optional("reverse_mode", default=False): cv.boolean,
+            vol.Optional("start_method", default="button"): vol.In(["button", "slider"]),
+        },
+        cv.has_at_least_one_key("entry_id", "entity_id"),
+    ))
+    DAY_OPTIONS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+    DAY_TO_WEEKDAY = {d: i for i, d in enumerate(DAY_OPTIONS)}
+
+    SERVICE_SCHEDULE_TIMER_SCHEMA = vol.Schema(vol.All(
+        {
+            vol.Exclusive("entry_id", "target"): cv.string,
+            vol.Exclusive("entity_id", "target"): cv.entity_id,
+            vol.Required("start_time"): cv.time,
+            vol.Required("duration"): cv.positive_float,
+            vol.Optional("unit", default="min"): vol.In(UNIT_OPTIONS),
+            vol.Optional("repeat", default=False): cv.boolean,
+            vol.Optional("days", default=list): [vol.In(DAY_OPTIONS)],
+        },
+        cv.has_at_least_one_key("entry_id", "entity_id"),
+    ))
+    SERVICE_CANCEL_SCHEDULE_SCHEMA = vol.Schema(vol.All(
+        {
+            vol.Exclusive("entry_id", "target"): cv.string,
+            vol.Exclusive("entity_id", "target"): cv.entity_id,
+        },
+        cv.has_at_least_one_key("entry_id", "entity_id"),
+    ))
+    SERVICE_ADD_TIMER_SCHEMA = vol.Schema(vol.All(
+        {
+            vol.Exclusive("entry_id", "target"): cv.string,
+            vol.Exclusive("entity_id", "target"): cv.entity_id,
+            vol.Required("duration"): cv.positive_float,
+            vol.Optional("unit", default="min"): vol.In(UNIT_OPTIONS),
+        },
+        cv.has_at_least_one_key("entry_id", "entity_id"),
+    ))
+    SERVICE_CANCEL_TIMER_SCHEMA = vol.Schema(vol.All(
+        {
+            vol.Exclusive("entry_id", "target"): cv.string,
+            vol.Exclusive("entity_id", "target"): cv.entity_id,
+            vol.Optional("turn_off_entity", default=True): cv.boolean,
+        },
+        cv.has_at_least_one_key("entry_id", "entity_id"),
+    ))
+    SERVICE_UPDATE_SWITCH_SCHEMA = vol.Schema(vol.All(
+        {
+            vol.Exclusive("entry_id", "target"): cv.string,
+            vol.Exclusive("entity_id", "target"): cv.entity_id,
+            vol.Required("switch_entity_id"): cv.string,
+        },
+        cv.has_at_least_one_key("entry_id", "entity_id"),
+    ))
+    # force_name_sync: both identifiers optional; if neither given, syncs all.
     SERVICE_FORCE_NAME_SYNC_SCHEMA = vol.Schema({
-        vol.Optional("entry_id"): cv.string,
-    })  
-    # Schema for manual power toggle service  
-    SERVICE_MANUAL_POWER_TOGGLE_SCHEMA = vol.Schema({
-        vol.Required("entry_id"): cv.string,
-        vol.Required("action"): vol.In(["turn_on", "turn_off"]),
+        vol.Exclusive("entry_id", "target"): cv.string,
+        vol.Exclusive("entity_id", "target"): cv.entity_id,
     })
-    # Schema for test notification service  
-    SERVICE_TEST_NOTIFICATION_SCHEMA = vol.Schema({
-        vol.Required("entry_id"): cv.string,
-        vol.Optional("message", default="Test notification"): cv.string,
-    })
-    SERVICE_RESET_DAILY_USAGE_SCHEMA = vol.Schema({
-        vol.Required("entry_id"): cv.string,
-    })
+    SERVICE_MANUAL_POWER_TOGGLE_SCHEMA = vol.Schema(vol.All(
+        {
+            vol.Exclusive("entry_id", "target"): cv.string,
+            vol.Exclusive("entity_id", "target"): cv.entity_id,
+            vol.Required("action"): vol.In(["turn_on", "turn_off"]),
+        },
+        cv.has_at_least_one_key("entry_id", "entity_id"),
+    ))
+    SERVICE_TEST_NOTIFICATION_SCHEMA = vol.Schema(vol.All(
+        {
+            vol.Exclusive("entry_id", "target"): cv.string,
+            vol.Exclusive("entity_id", "target"): cv.entity_id,
+            vol.Optional("message", default="Test notification"): cv.string,
+        },
+        cv.has_at_least_one_key("entry_id", "entity_id"),
+    ))
+    SERVICE_RESET_DAILY_USAGE_SCHEMA = vol.Schema(vol.All(
+        {
+            vol.Exclusive("entry_id", "target"): cv.string,
+            vol.Exclusive("entity_id", "target"): cv.entity_id,
+        },
+        cv.has_at_least_one_key("entry_id", "entity_id"),
+    ))
     SERVICE_RELOAD_RESOURCES_SCHEMA = vol.Schema({})
+
+    def _resolve_entry_id(call: ServiceCall) -> tuple[str, str]:
+        """Return (config_entry_id, human_label) from entry_id or entity_id."""
+        entry_id = call.data.get("entry_id")
+        if entry_id:
+            return entry_id, f"entry_id: {entry_id}"
+
+        entity_id = call.data["entity_id"]
+        registry = er.async_get(hass)
+        reg_entry = registry.async_get(entity_id)
+        if reg_entry is None or reg_entry.platform != DOMAIN:
+            raise ServiceValidationError(
+                f"'{entity_id}' is not a Simple Timer entity"
+            )
+        if reg_entry.config_entry_id is None:
+            raise ServiceValidationError(
+                f"'{entity_id}' has no associated config entry"
+            )
+        return reg_entry.config_entry_id, f"entity_id: {entity_id}"
+
+    def _get_sensor(entry_id: str, label: str):
+        """Return the loaded sensor for entry_id or raise a clear error."""
+        entry_data = hass.data.get(DOMAIN, {}).get(entry_id)
+        sensor = entry_data.get("sensor") if isinstance(entry_data, dict) else None
+        if sensor is None:
+            raise ServiceValidationError(
+                f"No Simple Timer sensor loaded for {label}"
+            )
+        return sensor
 
     async def test_notification(call: ServiceCall):
         """Test notification functionality."""
-        entry_id = call.data["entry_id"]
-        message = call.data.get("message", "Test notification")
-        
-        # Find the sensor by entry_id (hass is available from the outer scope here)
-        sensor = None
-        for stored_entry_id, entry_data in hass.data[DOMAIN].items():
-            if stored_entry_id == entry_id and "sensor" in entry_data:
-                sensor = entry_data["sensor"]
-                break
-        
-        if sensor:
-            await sensor._send_notification(message)
-        else:
-            raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
+        sensor = _get_sensor(*_resolve_entry_id(call))
+        await sensor._send_notification(call.data.get("message", "Test notification"))
 
     async def start_timer(call: ServiceCall):
         """Handle the service call to start the device timer."""
-        entry_id = call.data["entry_id"]
-        duration = call.data["duration"]
-        unit = call.data.get("unit", "min")
-        reverse_mode = call.data.get("reverse_mode", False)
-        start_method = call.data.get("start_method", "button")
-        
-        # Find the sensor by entry_id
-        sensor = None
-        for stored_entry_id, entry_data in hass.data[DOMAIN].items():
-            if stored_entry_id == entry_id and "sensor" in entry_data:
-                sensor = entry_data["sensor"]
-                break
-        
-        if sensor:
-            await sensor.async_start_timer(duration, unit, reverse_mode, start_method)
-        else:
-            raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
+        sensor = _get_sensor(*_resolve_entry_id(call))
+        await sensor.async_start_timer(
+            call.data["duration"],
+            call.data.get("unit", "min"),
+            call.data.get("reverse_mode", False),
+            call.data.get("start_method", "button"),
+        )
 
     async def add_timer(call: ServiceCall):
         """Handle the service call to add time to an active timer."""
-        entry_id = call.data["entry_id"]
-        duration = call.data["duration"]
-        unit = call.data.get("unit", "min")
-        
-        # Find the sensor by entry_id
-        sensor = None
-        for stored_entry_id, entry_data in hass.data[DOMAIN].items():
-            if stored_entry_id == entry_id and "sensor" in entry_data:
-                sensor = entry_data["sensor"]
-                break
-        
-        if sensor:
-            await sensor.async_add_timer(duration, unit)
-        else:
-            raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
+        sensor = _get_sensor(*_resolve_entry_id(call))
+        await sensor.async_add_timer(call.data["duration"], call.data.get("unit", "min"))
+
+    async def schedule_timer(call: ServiceCall):
+        """Handle the service call to arm a scheduled start."""
+        sensor = _get_sensor(*_resolve_entry_id(call))
+        days = [DAY_TO_WEEKDAY[d] for d in call.data.get("days", [])]
+        await sensor.async_schedule_timer(
+            call.data["start_time"],
+            call.data["duration"],
+            call.data.get("unit", "min"),
+            call.data.get("repeat", False),
+            days,
+        )
+
+    async def cancel_schedule(call: ServiceCall):
+        """Handle the service call to cancel an armed schedule."""
+        sensor = _get_sensor(*_resolve_entry_id(call))
+        await sensor.async_cancel_schedule()
 
     async def cancel_timer(call: ServiceCall):
         """Handle the service call to cancel the device timer."""
-        entry_id = call.data["entry_id"]
-        turn_off_entity = call.data.get("turn_off_entity", True)
-        
-        # Find the sensor by entry_id
-        sensor = None
-        for stored_entry_id, entry_data in hass.data[DOMAIN].items():
-            if stored_entry_id == entry_id and "sensor" in entry_data:
-                sensor = entry_data["sensor"]
-                break
-        
-        if sensor:
-            await sensor.async_cancel_timer(turn_off_entity)
-        else:
-            raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
+        sensor = _get_sensor(*_resolve_entry_id(call))
+        await sensor.async_cancel_timer(call.data.get("turn_off_entity", True))
 
     async def update_switch_entity(call: ServiceCall):
         """Handle the service call to update the switch entity for the sensor."""
-        entry_id = call.data["entry_id"]
-        switch_entity_id = call.data["switch_entity_id"]
-        
-        # Find the sensor by entry_id
-        sensor = None
-        for stored_entry_id, entry_data in hass.data[DOMAIN].items():
-            if stored_entry_id == entry_id and "sensor" in entry_data:
-                sensor = entry_data["sensor"]
-                break
-        
-        if sensor:
-            await sensor.async_update_switch_entity(switch_entity_id)
-        else:
-            raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
+        sensor = _get_sensor(*_resolve_entry_id(call))
+        await sensor.async_update_switch_entity(call.data["switch_entity_id"])
 
     async def force_name_sync(call: ServiceCall):
         """Handle the service call to force immediate name synchronization."""
-        entry_id = call.data.get("entry_id")
-        
-        if entry_id:
-            # Sync specific entry
-            if entry_id in hass.data[DOMAIN] and "sensor" in hass.data[DOMAIN][entry_id]:
-                sensor = hass.data[DOMAIN][entry_id]["sensor"]
-                if sensor:
-                    result = await sensor.async_force_name_sync()
-                    if result:
-                        return
-            raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
-        else:
-            # Sync all entries
-            synced_count = 0
-            for stored_entry_id, entry_data in hass.data[DOMAIN].items():
-                if "sensor" in entry_data and entry_data["sensor"]:
-                    try:
-                        await entry_data["sensor"].async_force_name_sync()
-                        synced_count += 1
-                    except Exception as e:
-                        # Log error but continue with other sensors
-                        pass
-            
-            if synced_count > 0:
-                # Could add notification here if desired
+        # If either identifier is supplied, sync only that entry; otherwise sync all.
+        if call.data.get("entry_id") or call.data.get("entity_id"):
+            sensor = _get_sensor(*_resolve_entry_id(call))
+            await sensor.async_force_name_sync()
+            return
+
+        for entry_data in hass.data[DOMAIN].values():
+            sensor = entry_data.get("sensor") if isinstance(entry_data, dict) else None
+            if sensor is None:
+                continue
+            try:
+                await sensor.async_force_name_sync()
+            except Exception:
+                # Continue syncing remaining sensors on individual failure.
                 pass
 
     async def manual_power_toggle(call: ServiceCall):
         """Handle manual power toggle from frontend card."""
-        entry_id = call.data["entry_id"]
-        action = call.data["action"]
-        
-        # Find the sensor by entry_id
-        sensor = None
-        for stored_entry_id, entry_data in hass.data[DOMAIN].items():
-            if stored_entry_id == entry_id and "sensor" in entry_data:
-                sensor = entry_data["sensor"]
-                break
-        
-        if sensor:
-            await sensor.async_manual_power_toggle(action)
-        else:
-            raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
-            
+        sensor = _get_sensor(*_resolve_entry_id(call))
+        await sensor.async_manual_power_toggle(call.data["action"])
+
     async def reset_daily_usage(call: ServiceCall):
         """Handle manual daily usage reset."""
-        entry_id = call.data["entry_id"]
-        
-        # Find the sensor by entry_id
-        sensor = None
-        for stored_entry_id, entry_data in hass.data[DOMAIN].items():
-            if stored_entry_id == entry_id and "sensor" in entry_data:
-                sensor = entry_data["sensor"]
-                break
-        
-        if sensor:
-            await sensor.async_reset_daily_usage()
-        else:
-            raise ValueError(f"No simple timer sensor found for entry_id: {entry_id}")
+        sensor = _get_sensor(*_resolve_entry_id(call))
+        await sensor.async_reset_daily_usage()
             
     async def reload_resources(call: ServiceCall):
         """Reload frontend resources with current manifest version."""
@@ -336,6 +342,12 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
     )
     hass.services.async_register(
         DOMAIN, "add_timer", add_timer, schema=SERVICE_ADD_TIMER_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, "schedule_timer", schedule_timer, schema=SERVICE_SCHEDULE_TIMER_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, "cancel_schedule", cancel_schedule, schema=SERVICE_CANCEL_SCHEDULE_SCHEMA
     )
     hass.services.async_register(
         DOMAIN, "cancel_timer", cancel_timer, schema=SERVICE_CANCEL_TIMER_SCHEMA

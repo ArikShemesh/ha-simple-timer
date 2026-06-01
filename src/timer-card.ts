@@ -52,7 +52,7 @@ interface HomeAssistant {
 }
 
 const DOMAIN = "simple_timer";
-const CARD_VERSION = "1.4.5";
+const CARD_VERSION = "1.5.0";
 const DEFAULT_TIMER_BUTTONS = [15, 30, 60, 90, 120, 150]; // Default for new cards only
 
 console.info(
@@ -80,6 +80,12 @@ class TimerCard extends LitElement {
       _effectiveSwitchEntity: { state: true },
       _effectiveSensorEntity: { state: true },
       _validationMessages: { state: true },
+      _scheduleExpanded: { state: true },
+      _scheduleTime: { state: true },
+      _scheduleDuration: { state: true },
+      _scheduleUnit: { state: true },
+      _scheduleRepeat: { state: true },
+      _scheduleDays: { state: true },
     };
   }
 
@@ -106,6 +112,14 @@ class TimerCard extends LitElement {
   _isLongPress: boolean = false;
   _touchStartPosition: { x: number; y: number } | null = null;
   _isCancelling: boolean = false;
+
+  // Schedule panel state
+  _scheduleExpanded: boolean = false;
+  _scheduleTime: string = "21:30";
+  _scheduleDuration: number = 30;
+  _scheduleUnit: string = "min";
+  _scheduleRepeat: boolean = false;
+  _scheduleDays: string[] = [];
 
   static async getConfigElement(): Promise<HTMLElement> {
     await import("./timer-card-editor.js");
@@ -160,7 +174,8 @@ class TimerCard extends LitElement {
       entity_state_button_icon_color: cfg.entity_state_button_icon_color || null,
       entity_state_button_background_color_on: cfg.entity_state_button_background_color_on || null,
       entity_state_button_icon_color_on: cfg.entity_state_button_icon_color_on || null,
-      turn_off_on_cancel: cfg.turn_off_on_cancel !== false
+      turn_off_on_cancel: cfg.turn_off_on_cancel !== false,
+      show_schedule: cfg.show_schedule || false
     };
 
     if (cfg.timer_instance_id) {
@@ -187,6 +202,9 @@ class TimerCard extends LitElement {
 
     this._sliderValue = parsed;
     localStorage.setItem(`simple-timer-slider-${instanceId}`, this._sliderValue.toString());
+
+    // Restore last-used schedule form values (survives page refresh)
+    this._restoreSchedule();
 
     this.requestUpdate();
 
@@ -440,6 +458,86 @@ class TimerCard extends LitElement {
     }).catch(error => {
       console.error("Timer-card: Error adding to timer:", error);
     });
+  }
+
+  _setSchedule(): void {
+    this._validationMessages = [];
+    if (!this._entitiesLoaded || !this.hass || !this.hass.callService) {
+      console.error("Timer-card: Cannot set schedule. Entities not loaded or callService unavailable.");
+      return;
+    }
+
+    const entryId = this._getEntryId();
+    if (!entryId) { console.error("Timer-card: Entry ID not found for scheduling."); return; }
+
+    const duration = Number(this._scheduleDuration);
+    if (!this._scheduleTime || !(duration > 0)) {
+      this._validationMessages = ["Set a start time and a run-for duration above 0."];
+      return;
+    }
+
+    this._persistSchedule();
+
+    this.hass.callService(DOMAIN, "schedule_timer", {
+      entry_id: entryId,
+      start_time: this._scheduleTime.length === 5 ? `${this._scheduleTime}:00` : this._scheduleTime,
+      duration: duration,
+      unit: this._scheduleUnit,
+      repeat: this._scheduleRepeat,
+      days: this._scheduleRepeat ? this._scheduleDays : [],
+    }).then(() => {
+      this._scheduleExpanded = false;
+    }).catch(error => {
+      console.error("Timer-card: Error setting schedule:", error);
+    });
+  }
+
+  _cancelSchedule(): void {
+    if (!this.hass || !this.hass.callService) return;
+    const entryId = this._getEntryId();
+    if (!entryId) { console.error("Timer-card: Entry ID not found for cancelling schedule."); return; }
+    this.hass.callService(DOMAIN, "cancel_schedule", { entry_id: entryId })
+      .catch(error => console.error("Timer-card: Error cancelling schedule:", error));
+  }
+
+  _toggleScheduleDay(day: string): void {
+    this._scheduleDays = this._scheduleDays.includes(day)
+      ? this._scheduleDays.filter(d => d !== day)
+      : [...this._scheduleDays, day];
+    this._persistSchedule();
+  }
+
+  _scheduleStorageKey(): string {
+    return `simple-timer-schedule-${this._config?.timer_instance_id || 'default'}`;
+  }
+
+  _persistSchedule(): void {
+    try {
+      localStorage.setItem(this._scheduleStorageKey(), JSON.stringify({
+        time: this._scheduleTime,
+        duration: this._scheduleDuration,
+        unit: this._scheduleUnit,
+        repeat: this._scheduleRepeat,
+        days: this._scheduleDays,
+      }));
+    } catch (e) {
+      console.warn("Timer-card: could not persist schedule form", e);
+    }
+  }
+
+  _restoreSchedule(): void {
+    try {
+      const raw = localStorage.getItem(this._scheduleStorageKey());
+      if (!raw) return;
+      const s = JSON.parse(raw);
+      if (typeof s.time === 'string') this._scheduleTime = s.time;
+      if (typeof s.duration === 'number') this._scheduleDuration = s.duration;
+      if (typeof s.unit === 'string') this._scheduleUnit = s.unit;
+      if (typeof s.repeat === 'boolean') this._scheduleRepeat = s.repeat;
+      if (Array.isArray(s.days)) this._scheduleDays = s.days;
+    } catch (e) {
+      console.warn("Timer-card: could not restore schedule form", e);
+    }
   }
 
   _cancelTimer(): void {
@@ -1228,6 +1326,8 @@ class TimerCard extends LitElement {
             ` : ''}
           </div>
           ` : ''}
+
+          ${this._config?.show_schedule ? this._renderSchedulePanel(sensor) : ''}
         </div>
 
         ${this._validationMessages.length > 0 ? html`
@@ -1239,6 +1339,179 @@ class TimerCard extends LitElement {
           </div>
         ` : ''}
       </ha-card>
+    `;
+  }
+
+  _formatScheduleClock(iso: string): string {
+    try {
+      const d = new Date(iso);
+      const locale = (this.hass as any)?.locale;
+      const lang = locale?.language || [];
+      // Respect HA's configured time format (falls back to locale/OS default).
+      let hour12: boolean | undefined;
+      if (locale?.time_format === '12') hour12 = true;
+      else if (locale?.time_format === '24') hour12 = false;
+      return d.toLocaleString(lang, {
+        month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+        ...(hour12 === undefined ? {} : { hour12 }),
+      });
+    } catch {
+      return iso;
+    }
+  }
+
+  _orderDaysByLocale(): { key: string; label: string }[] {
+    const days: Record<string, { key: string; label: string }> = {
+      mon: { key: 'mon', label: 'M' }, tue: { key: 'tue', label: 'T' },
+      wed: { key: 'wed', label: 'W' }, thu: { key: 'thu', label: 'T' },
+      fri: { key: 'fri', label: 'F' }, sat: { key: 'sat', label: 'S' },
+      sun: { key: 'sun', label: 'S' },
+    };
+    const order = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']; // Mon=0 .. Sun=6
+    let startKey = 'mon';
+
+    const fw = (this.hass as any)?.locale?.first_weekday;
+    const nameMap: Record<string, string> = {
+      monday: 'mon', tuesday: 'tue', wednesday: 'wed', thursday: 'thu',
+      friday: 'fri', saturday: 'sat', sunday: 'sun',
+    };
+    if (fw && nameMap[fw]) {
+      startKey = nameMap[fw];
+    } else {
+      // "language" / "system" / unknown -> derive from the locale's week info.
+      try {
+        const lang = (this.hass as any)?.locale?.language;
+        const loc: any = new (Intl as any).Locale(lang);
+        const info = loc.weekInfo || (loc.getWeekInfo && loc.getWeekInfo());
+        const firstDay = info?.firstDay; // 1=Mon .. 7=Sun
+        if (firstDay) startKey = order[(firstDay - 1) % 7];
+      } catch {
+        /* keep Monday */
+      }
+    }
+
+    const start = order.indexOf(startKey);
+    const rotated = [...order.slice(start), ...order.slice(0, start)];
+    return rotated.map(k => days[k]);
+  }
+
+  _renderSchedulePanel(sensor: HAState) {
+    const DAYS = this._orderDaysByLocale();
+
+    // Armed state -> banner
+    if (sensor?.attributes?.schedule_state === 'armed' && sensor.attributes.scheduled_start) {
+      const start = this._formatScheduleClock(sensor.attributes.scheduled_start);
+      const dur = sensor.attributes.scheduled_duration;
+      const unit = sensor.attributes.scheduled_unit || 'min';
+      const repeat = sensor.attributes.schedule_repeat;
+      const days: number[] = sensor.attributes.schedule_days || [];
+      const keyToInt: Record<string, number> = { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: 6 };
+      const intToName: Record<number, string> = { 0: 'Mon', 1: 'Tue', 2: 'Wed', 3: 'Thu', 4: 'Fri', 5: 'Sat', 6: 'Sun' };
+      let repeatText = '';
+      if (repeat) {
+        if (days.length === 0 || days.length === 7) {
+          repeatText = 'Repeats daily';
+        } else {
+          // Order the selected days by the locale's first weekday (same as the chips).
+          const ordered = DAYS
+            .map(d => keyToInt[d.key])
+            .filter(i => days.includes(i))
+            .map(i => intToName[i]);
+          repeatText = `Repeats ${ordered.join(', ')}`;
+        }
+      } else {
+        repeatText = 'One-shot';
+      }
+      return html`
+        <div class="schedule-banner">
+          <ha-icon class="sched-ico" icon="mdi:clock-outline"></ha-icon>
+          <div class="sched-banner-text">
+            <div class="sched-banner-main">Starts ${start} · runs ${dur} ${unit}</div>
+            <div class="sched-banner-sub">${repeatText}</div>
+          </div>
+          <div class="sched-banner-x" @click=${this._cancelSchedule} title="Cancel schedule">
+            <ha-icon icon="mdi:close"></ha-icon>
+          </div>
+        </div>
+      `;
+    }
+
+    // Collapsed trigger
+    if (!this._scheduleExpanded) {
+      return html`
+        <div class="schedule-toggle" @click=${() => { this._scheduleExpanded = true; }}>
+          <ha-icon icon="mdi:clock-outline"></ha-icon>
+          <span>Schedule Timer</span>
+          <ha-icon class="sched-chevron" icon="mdi:chevron-down"></ha-icon>
+        </div>
+      `;
+    }
+
+    // Expanded panel
+    return html`
+      <div class="schedule-panel">
+        <div class="schedule-toggle open" @click=${() => { this._scheduleExpanded = false; }}>
+          <ha-icon icon="mdi:clock-outline"></ha-icon>
+          <span>Schedule Timer</span>
+          <ha-icon class="sched-chevron" icon="mdi:chevron-up"></ha-icon>
+        </div>
+
+        <div class="sched-field">
+          <div class="sched-label">Start at</div>
+          <input class="sched-time" type="time"
+            .value=${this._scheduleTime}
+            @input=${(e: Event) => { this._scheduleTime = (e.target as HTMLInputElement).value; this._persistSchedule(); }} />
+        </div>
+
+        <div class="sched-field">
+          <div class="sched-label">Run for</div>
+          <div class="sched-dur-row">
+            <input class="sched-num" type="number" min="1" step="1"
+              .value=${String(this._scheduleDuration)}
+              @input=${(e: Event) => { this._scheduleDuration = Number((e.target as HTMLInputElement).value); this._persistSchedule(); }} />
+            <select class="sched-unit"
+              .value=${this._scheduleUnit}
+              @change=${(e: Event) => { this._scheduleUnit = (e.target as HTMLSelectElement).value; this._persistSchedule(); }}>
+              <option value="s">sec</option>
+              <option value="min">min</option>
+              <option value="h">hr</option>
+            </select>
+          </div>
+          ${this.buttons.filter(b => !b.isDefault).length > 0 ? html`
+            <div class="sched-shortcut-label">Quick fill</div>
+            <div class="sched-pills">
+              ${this.buttons.filter(b => !b.isDefault).map(b => html`
+                <div class="sched-pill ${this._scheduleDuration === b.displayValue && this._scheduleUnit === b.unit ? 'selected' : ''}"
+                  @click=${() => { this._scheduleDuration = b.displayValue; this._scheduleUnit = b.unit; this._persistSchedule(); }}>
+                  ${b.displayValue} ${b.labelUnit}
+                </div>
+              `)}
+            </div>
+          ` : ''}
+        </div>
+
+        <div class="sched-repeat-row">
+          <span>Repeat daily</span>
+          <ha-switch
+            .checked=${this._scheduleRepeat}
+            @change=${(e: Event) => { this._scheduleRepeat = (e.target as any).checked; this._persistSchedule(); }}></ha-switch>
+        </div>
+
+        ${this._scheduleRepeat ? html`
+          <div class="sched-days">
+            ${DAYS.map(d => html`
+              <div class="sched-day ${this._scheduleDays.includes(d.key) ? 'on' : ''}"
+                @click=${() => this._toggleScheduleDay(d.key)}>${d.label}</div>
+            `)}
+          </div>
+        ` : ''}
+
+        <div class="sched-actions">
+          <div class="sched-btn ghost" @click=${() => { this._scheduleExpanded = false; }}>Cancel</div>
+          <div class="sched-btn primary" @click=${this._setSchedule}>Set schedule</div>
+        </div>
+      </div>
     `;
   }
 

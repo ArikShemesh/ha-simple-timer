@@ -51,6 +51,14 @@ ATTR_NEXT_RESET_DATE = "next_reset_date"
 ATTR_RESET_TIME = "reset_time"
 ATTR_TIMER_START_METHOD = "timer_start_method"
 
+# Scheduled-start attributes
+ATTR_SCHEDULE_STATE = "schedule_state"
+ATTR_SCHEDULED_START = "scheduled_start"
+ATTR_SCHEDULED_DURATION = "scheduled_duration"
+ATTR_SCHEDULED_UNIT = "scheduled_unit"
+ATTR_SCHEDULE_REPEAT = "schedule_repeat"
+ATTR_SCHEDULE_DAYS = "schedule_days"
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities) -> None:
     """Create a TimerRuntimeSensor for this config entry."""
     async_add_entities([TimerRuntimeSensor(hass, entry)])
@@ -75,7 +83,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
         self._attr_unique_id = f"timer_runtime_{self._entry_id}"
         self._attr_device_class = SensorDeviceClass.DURATION
-        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        self._attr_state_class = SensorStateClass.TOTAL
         self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
         self._attr_icon = "mdi:timer"
 
@@ -110,6 +118,14 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._next_reset_date = None
         self._last_reset_was_catchup = False
         self._catchup_reset_info = None
+
+        # Scheduled-start (future absolute clock time)
+        self._schedule_unsub = None
+        self._scheduled_fire_at = None      # datetime | None (next fire, local tz aware)
+        self._scheduled_duration = 0.0
+        self._scheduled_unit = "min"
+        self._schedule_repeat = False
+        self._schedule_days = []            # list[int] weekday Mon=0; empty = every day
 
         # Default timer config
         # Default timer config from entry data
@@ -249,6 +265,14 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             "default_timer_duration": self._default_timer_duration,
             "default_timer_unit": self._default_timer_unit,
             "default_timer_reverse_mode": self._default_timer_reverse_mode,
+
+            # Scheduled-start attributes for frontend sync
+            ATTR_SCHEDULE_STATE: "armed" if self._scheduled_fire_at else "idle",
+            ATTR_SCHEDULED_START: self._scheduled_fire_at.isoformat() if self._scheduled_fire_at else None,
+            ATTR_SCHEDULED_DURATION: self._scheduled_duration,
+            ATTR_SCHEDULED_UNIT: self._scheduled_unit,
+            ATTR_SCHEDULE_REPEAT: self._schedule_repeat,
+            ATTR_SCHEDULE_DAYS: self._schedule_days,
         }
 
         if self._last_reset_was_catchup:
@@ -1235,7 +1259,12 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         if self._reset_time_tracker:
             self._reset_time_tracker()
             self._reset_time_tracker = None
-        
+
+        # Clean up schedule tracker
+        if self._schedule_unsub:
+            self._schedule_unsub()
+            self._schedule_unsub = None
+
         # Clean up domain data
         if (DOMAIN in self.hass.data and
             self._entry_id in self.hass.data[DOMAIN] and
@@ -1521,6 +1550,9 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             else:
                 _LOGGER.info(f"Simple Timer: [{self._entry_id}] No timer data in storage")
 
+            # Restore any armed scheduled-start
+            await self._restore_schedule(storage_data)
+
             # Start accumulation if needed
             await self._start_accumulation_if_needed()
 
@@ -1586,6 +1618,182 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             minute=self._reset_time.minute, 
             second=self._reset_time.second
         )
+
+    # ------------------------------------------------------------------
+    # Scheduled-start (fire async_start_timer at a future absolute clock time)
+    # ------------------------------------------------------------------
+
+    def _compute_next_fire(self, start_time: time, repeat: bool, days: list[int],
+                           now: datetime | None = None) -> datetime | None:
+        """Return the next local datetime >= now matching start_time (and weekday set)."""
+        now = now or dt_util.now()
+        candidate = now.replace(
+            hour=start_time.hour, minute=start_time.minute,
+            second=getattr(start_time, "second", 0), microsecond=0,
+        )
+        if candidate <= now:
+            candidate += timedelta(days=1)
+
+        if repeat and days:
+            # Advance up to 7 days to the next allowed weekday (Mon=0).
+            for _ in range(7):
+                if candidate.weekday() in days:
+                    break
+                candidate += timedelta(days=1)
+            else:
+                return None  # No valid weekday (shouldn't happen with non-empty days)
+        return candidate
+
+    async def async_schedule_timer(self, start_time: time, duration: float,
+                                   unit: str = "min", repeat: bool = False,
+                                   days: list[int] | None = None) -> None:
+        """Arm a scheduled start: at start_time run a bounded timer for duration."""
+        days = sorted(set(days or []))
+        fire_at = self._compute_next_fire(start_time, repeat, days)
+        if fire_at is None:
+            _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Could not compute schedule fire time")
+            return
+
+        # Clear any previous schedule before arming the new one.
+        if self._schedule_unsub:
+            self._schedule_unsub()
+            self._schedule_unsub = None
+
+        self._scheduled_fire_at = fire_at
+        self._scheduled_duration = duration
+        self._scheduled_unit = unit
+        self._schedule_repeat = repeat
+        self._schedule_days = days
+
+        self._arm_schedule()
+        await self._save_schedule()
+
+        _LOGGER.info(
+            f"Simple Timer: [{self._entry_id}] Scheduled start at {fire_at.isoformat()} "
+            f"for {duration} {unit} (repeat={repeat}, days={days})"
+        )
+        self.async_write_ha_state()
+
+    def _arm_schedule(self) -> None:
+        """Register the point-in-time callback for the current _scheduled_fire_at."""
+        if not self._scheduled_fire_at:
+            return
+        fire_at_utc = dt_util.as_utc(self._scheduled_fire_at)
+        self._schedule_unsub = async_track_point_in_utc_time(
+            self.hass, self._schedule_fired, fire_at_utc
+        )
+
+    @callback
+    def _schedule_fired(self, now) -> None:
+        """Point-in-time callback - fire on the event loop."""
+        self.hass.async_create_task(self._async_schedule_fired())
+
+    async def _async_schedule_fired(self) -> None:
+        """Run the scheduled timer, then re-arm (recurring) or clear (one-shot)."""
+        self._schedule_unsub = None
+        duration, unit = self._scheduled_duration, self._scheduled_unit
+        repeat, days = self._schedule_repeat, self._schedule_days
+        start_time = (self._scheduled_fire_at or dt_util.now()).timetz().replace(tzinfo=None)
+
+        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Schedule fired - starting bounded timer")
+
+        # Reverse is always overridden for scheduled runs (bounded auto-off).
+        await self.async_start_timer(duration, unit, reverse_mode=False, start_method="schedule")
+
+        if repeat:
+            next_fire = self._compute_next_fire(start_time, repeat, days)
+            if next_fire:
+                self._scheduled_fire_at = next_fire
+                self._arm_schedule()
+                await self._save_schedule()
+                self.async_write_ha_state()
+                return
+
+        # One-shot (or no valid recurrence) - clear the schedule.
+        await self._clear_schedule(write_state=True)
+
+    async def async_cancel_schedule(self) -> None:
+        """Cancel an armed scheduled-start."""
+        _LOGGER.info(f"Simple Timer: [{self._entry_id}] Cancelling schedule")
+        await self._clear_schedule(write_state=True)
+
+    async def _clear_schedule(self, write_state: bool = False) -> None:
+        """Tear down schedule state + storage."""
+        if self._schedule_unsub:
+            self._schedule_unsub()
+            self._schedule_unsub = None
+        self._scheduled_fire_at = None
+        self._scheduled_duration = 0.0
+        self._scheduled_unit = "min"
+        self._schedule_repeat = False
+        self._schedule_days = []
+
+        async with self._storage_lock:
+            try:
+                data = await self._store.async_load() or {}
+                if data.pop("schedule", None) is not None:
+                    await self._store.async_save(data)
+            except Exception as e:
+                _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Could not clear schedule storage: {e}")
+
+        if write_state:
+            self.async_write_ha_state()
+
+    async def _save_schedule(self) -> None:
+        """Persist the current schedule to storage."""
+        async with self._storage_lock:
+            try:
+                data = await self._store.async_load() or {}
+                data["schedule"] = {
+                    "fire_at": self._scheduled_fire_at.isoformat() if self._scheduled_fire_at else None,
+                    "duration": self._scheduled_duration,
+                    "unit": self._scheduled_unit,
+                    "repeat": self._schedule_repeat,
+                    "days": self._schedule_days,
+                }
+                await self._store.async_save(data)
+            except Exception as e:
+                _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Could not save schedule: {e}")
+
+    async def _restore_schedule(self, storage_data: dict) -> None:
+        """Re-arm a stored schedule on startup; discard missed one-shots."""
+        sched = storage_data.get("schedule")
+        if not sched or not sched.get("fire_at"):
+            return
+
+        try:
+            fire_at = datetime.fromisoformat(sched["fire_at"])
+        except (ValueError, TypeError) as e:
+            _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Bad stored schedule fire_at: {e}")
+            await self._clear_schedule()
+            return
+
+        self._scheduled_duration = sched.get("duration", 0.0)
+        self._scheduled_unit = sched.get("unit", "min")
+        self._schedule_repeat = sched.get("repeat", False)
+        self._schedule_days = sched.get("days", []) or []
+        now = dt_util.now()
+
+        if self._schedule_repeat:
+            # Recurring: always recompute the next occurrence from now.
+            start_time = fire_at.timetz().replace(tzinfo=None)
+            next_fire = self._compute_next_fire(start_time, True, self._schedule_days, now)
+            if not next_fire:
+                await self._clear_schedule()
+                return
+            self._scheduled_fire_at = next_fire
+            self._arm_schedule()
+            await self._save_schedule()
+            _LOGGER.info(f"Simple Timer: [{self._entry_id}] Restored recurring schedule -> {next_fire.isoformat()}")
+        elif fire_at > now:
+            # One-shot still in the future: re-arm as stored.
+            self._scheduled_fire_at = fire_at
+            self._arm_schedule()
+            _LOGGER.info(f"Simple Timer: [{self._entry_id}] Restored one-shot schedule -> {fire_at.isoformat()}")
+        else:
+            # One-shot missed while offline: discard (a late bounded run is wrong).
+            _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Discarding missed one-shot schedule ({fire_at.isoformat()})")
+            await self._clear_schedule()
 
     async def _setup_listeners_and_handlers(self):
         """Set up event listeners and handlers."""
