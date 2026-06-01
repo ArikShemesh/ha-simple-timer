@@ -108,6 +108,7 @@ class TimerCardEditor extends LitElement {
 
   private _timerInstancesOptions: Array<{ value: string; label: string }> = [];
   private _newTimerButtonValue: string = "";
+  private _lastInstanceSig: string = "";
 
   constructor() {
     super();
@@ -360,20 +361,34 @@ class TimerCardEditor extends LitElement {
     // Ensure HA form elements (ha-textfield, etc.) are defined, then re-render
     // so previously-blank inputs appear.
     ensureHaComponents().then(() => this.requestUpdate());
-    if (this.hass) {
-      this._fetchTimerInstances();
-    } else {
-      console.warn("TimerCardEditor: hass not available on connectedCallback. Deferring instance fetch.");
-    }
+    // Instance fetch is handled in updated() once hass arrives (after setConfig),
+    // so the real config is available — avoids a premature "no instance" pass.
   }
 
   updated(changedProperties: Map<string | number | symbol, unknown>): void {
     super.updated(changedProperties);
     if (changedProperties.has("hass") && this.hass) {
-      if ((changedProperties.get("hass") as any)?.states !== this.hass.states || this._timerInstancesOptions.length === 0) {
+      // Only refetch when the set of timer instances actually changes, not on
+      // every state tick (hass.states is a fresh object each update).
+      const sig = this._instanceSignature();
+      if (sig !== this._lastInstanceSig || this._timerInstancesOptions.length === 0) {
+        this._lastInstanceSig = sig;
         this._fetchTimerInstances();
       }
     }
+  }
+
+  private _instanceSignature(): string {
+    if (!this.hass?.states) return "";
+    const ids: string[] = [];
+    for (const id in this.hass.states) {
+      const s = this.hass.states[id];
+      if (id.startsWith('sensor.') && id.includes('runtime') &&
+        s.attributes.entry_id && s.attributes.switch_entity_id) {
+        ids.push(`${s.attributes.entry_id}:${s.attributes[ATTR_INSTANCE_TITLE] || ''}`);
+      }
+    }
+    return ids.sort().join('|');
   }
 
   async _fetchTimerInstances() {

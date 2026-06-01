@@ -1442,7 +1442,7 @@ class TimerCard extends LitElement {
       return html`
         <div class="schedule-toggle" @click=${() => { this._scheduleExpanded = true; }}>
           <ha-icon icon="mdi:clock-outline"></ha-icon>
-          <span>Schedule start</span>
+          <span>Schedule Timer</span>
           <ha-icon class="sched-chevron" icon="mdi:chevron-down"></ha-icon>
         </div>
       `;
@@ -1453,7 +1453,7 @@ class TimerCard extends LitElement {
       <div class="schedule-panel">
         <div class="schedule-toggle open" @click=${() => { this._scheduleExpanded = false; }}>
           <ha-icon icon="mdi:clock-outline"></ha-icon>
-          <span>Schedule start</span>
+          <span>Schedule Timer</span>
           <ha-icon class="sched-chevron" icon="mdi:chevron-up"></ha-icon>
         </div>
 
