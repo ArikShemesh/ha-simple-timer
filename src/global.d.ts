@@ -105,5 +105,6 @@ interface Window {
     type: string;
     name: string;
     description: string;
+    preview?: boolean | string;
   }>;
 }
