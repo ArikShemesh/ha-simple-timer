@@ -75,10 +75,9 @@ echo.
 
 set "SRC_DIST=custom_components\simple_timer\dist"
 set "DEST_INTEGRATION=%HA_CONFIG_DIR%\custom_components\simple_timer"
-set "DEST_WWW=%HA_CONFIG_DIR%\www"
 
 echo.
-call :ColorEcho "Cyan" "[1/3] Building card..."
+call :ColorEcho "Cyan" "[1/2] Building card..."
 call npm run build
 if %errorlevel% neq 0 (
     call :ColorEcho "Red" "[ERROR] Build failed. Halting."
@@ -86,19 +85,16 @@ if %errorlevel% neq 0 (
 )
 
 echo.
-call :ColorEcho "Cyan" "[2/3] Copying integration files..."
+call :ColorEcho "Cyan" "[2/2] Copying integration files..."
 if not exist "%DEST_INTEGRATION%" (
     call :ColorEcho "Yellow" "[INFO] Creating destination directory: %DEST_INTEGRATION%"
     mkdir "%DEST_INTEGRATION%"
 )
 xcopy /E /I /Y "custom_components\simple_timer\*" "%DEST_INTEGRATION%\" >nul
 echo Integration files copied.
-
-echo.
-call :ColorEcho "Cyan" "[3/3] Copying frontend resources..."
-if not exist "%DEST_WWW%" mkdir "%DEST_WWW%"
-copy /Y "%SRC_DIST%\timer-card.js" "%DEST_WWW%\timer-card.js" >nul
-echo timer-card.js copied.
+REM NOTE: The card is served by the integration from its own dist folder at
+REM /simple_timer/timer-card.js. Do NOT copy it into <config>\www\ — that path
+REM ("/local/") collides with HA's www mount and breaks the card.
 
 echo.
 call :ColorEcho "Green" "*****************************************"

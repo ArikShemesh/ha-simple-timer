@@ -52,7 +52,7 @@ interface HomeAssistant {
 }
 
 const DOMAIN = "simple_timer";
-const CARD_VERSION = "1.5.0";
+const CARD_VERSION = "1.5.1";
 const DEFAULT_TIMER_BUTTONS = [15, 30, 60, 90, 120, 150]; // Default for new cards only
 
 console.info(
@@ -1542,11 +1542,17 @@ class TimerCard extends LitElement {
     }
   }
 }
-customElements.define("timer-card", TimerCard);
+// Guard against double-registration: a stale resource or duplicated module
+// load would otherwise make the second define() throw and abort evaluation.
+if (!customElements.get("timer-card")) {
+  customElements.define("timer-card", TimerCard);
+}
 
 window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "timer-card",
-  name: "Simple Timer Card",
-  description: "A card for the Simple Timer integration.",
-});
+if (!window.customCards.some((c) => c.type === "timer-card")) {
+  window.customCards.push({
+    type: "timer-card",
+    name: "Simple Timer Card",
+    description: "A card for the Simple Timer integration.",
+  });
+}

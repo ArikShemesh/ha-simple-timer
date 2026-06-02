@@ -15,7 +15,7 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.components.frontend import async_register_built_in_panel, add_extra_js_url
 from homeassistant.components.lovelace.resources import ResourceStorageCollection
 
-from .const import DOMAIN, PLATFORMS
+from .const import DOMAIN, PLATFORMS, CARD_URL, LEGACY_CARD_URL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -68,11 +68,12 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
     if hass.data.setdefault(DOMAIN, {}).get("services_registered"):
         return True
 
-    # Serve directly from custom_components
+    # Serve the card from our own URL namespace (CARD_URL), directly out of the
+    # integration's dist folder. Not under "/local/" — see const.py for why.
     integration_path = os.path.dirname(__file__)
     await hass.http.async_register_static_paths([
         StaticPathConfig(
-            "/local/simple-timer/timer-card.js",
+            CARD_URL,
             os.path.join(integration_path, "dist", "timer-card.js"),
             True
         )
@@ -90,7 +91,11 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
     except Exception:
         cache_id = str(version)
 
-    await init_resource(hass, "/local/simple-timer/timer-card.js", cache_id)
+    # Remove any leftover resource/file from the old "/local/" path before
+    # registering the new one, so upgraded installs don't keep a dead resource.
+    await _async_migrate_legacy(hass)
+
+    await init_resource(hass, CARD_URL, cache_id)
 
     UNIT_OPTIONS = ["s", "sec", "seconds", "m", "min", "minutes", "h", "hr", "hours", "d", "day", "days"]
 
@@ -317,7 +322,7 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
             cache_id = await hass.async_add_executor_job(get_cache_id, version)
 
             # Re-register resource with new version
-            await init_resource(hass, "/local/simple-timer/timer-card.js", cache_id)
+            await init_resource(hass, CARD_URL, cache_id)
             
             _LOGGER.info(f"Simple Timer: Resources updated to version {cache_id}")
             
@@ -398,38 +403,60 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN].pop(entry.entry_id, None)
     return unload_ok
 
+async def _async_delete_resources(hass: HomeAssistant, *url_prefixes: str) -> None:
+    """Delete every Lovelace resource whose url starts with any given prefix."""
+    if "lovelace" not in hass.data:
+        return
+
+    resources = hass.data["lovelace"].resources
+    # Ensure resources are loaded
+    if not resources.loaded:
+        await resources.async_get_info()
+
+    if not isinstance(resources, ResourceStorageCollection):
+        # YAML-mode / extra-JS resources aren't persisted here, nothing to delete.
+        return
+
+    # Snapshot first: async_delete_item mutates the collection we're iterating.
+    for item in list(resources.async_items()):
+        url = item.get("url", "")
+        if any(url.startswith(prefix) for prefix in url_prefixes):
+            _LOGGER.info(f"Simple Timer: Removing dashboard resource {url}")
+            await resources.async_delete_item(item["id"])
+
+
+def _cleanup_legacy_www_file(hass: HomeAssistant) -> None:
+    """Remove the legacy <config>/www/simple-timer/timer-card.js file (blocking)."""
+    try:
+        www_file = hass.config.path("www", "simple-timer", "timer-card.js")
+        if os.path.exists(www_file):
+            _LOGGER.info("Simple Timer: Removing legacy www file")
+            os.remove(www_file)
+
+            # Try to remove directory if empty
+            www_dir = hass.config.path("www", "simple-timer")
+            if os.path.exists(www_dir) and not os.listdir(www_dir):
+                os.rmdir(www_dir)
+    except Exception as e:
+        _LOGGER.warning(f"Simple Timer: Error cleaning up legacy files: {e}")
+
+
+async def _async_migrate_legacy(hass: HomeAssistant) -> None:
+    """Remove artifacts left by versions that served the card from "/local/".
+
+    Idempotent: runs on every startup. Once the old resource and www file are
+    gone, subsequent runs find nothing to do.
+    """
+    await _async_delete_resources(hass, LEGACY_CARD_URL)
+    await hass.async_add_executor_job(_cleanup_legacy_www_file, hass)
+
+
 async def _async_cleanup_resources(hass: HomeAssistant) -> None:
-    """Remove resources and legacy files."""
-    # Remove Lovelace resource
-    if "lovelace" in hass.data:
-        resources = hass.data["lovelace"].resources
-        # Ensure resources are loaded
-        if not resources.loaded:
-            await resources.async_get_info()
-
-        for item in resources.async_items():
-            if item.get("url", "").startswith("/local/simple-timer/timer-card.js"):
-                _LOGGER.info("Simple Timer: Removing dashboard resource")
-                if isinstance(resources, ResourceStorageCollection):
-                    await resources.async_delete_item(item["id"])
-                break
-    
-    # Remove legacy www file if it exists
-    def cleanup_legacy_files():
-        try:
-            www_file = hass.config.path("www", "simple-timer", "timer-card.js")
-            if os.path.exists(www_file):
-                _LOGGER.info("Simple Timer: Removing legacy www file")
-                os.remove(www_file)
-                
-                # Try to remove directory if empty
-                www_dir = hass.config.path("www", "simple-timer")
-                if os.path.exists(www_dir) and not os.listdir(www_dir):
-                    os.rmdir(www_dir)
-        except Exception as e:
-            _LOGGER.warning(f"Simple Timer: Error cleaning up legacy files: {e}")
-
-    await hass.async_add_executor_job(cleanup_legacy_files)
+    """Remove our Lovelace resource(s) and legacy files on uninstall."""
+    # Match both the current and legacy URLs so nothing is left behind
+    # regardless of which version the resource was created by.
+    await _async_delete_resources(hass, CARD_URL, LEGACY_CARD_URL)
+    await hass.async_add_executor_job(_cleanup_legacy_www_file, hass)
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Remove a Simple Timer config entry."""

@@ -280,9 +280,9 @@ This appears when HA was offline during a timer to indicate potential time sync 
 
 ### Card Not Appearing in Card Picker
 
-1. **Restart Home Assistant:** The card is installed during integration setup
-2. **Check integration logs:** Look for any errors during the card installation process
-3. **Verify automatic installation:** Check if `/config/www/simple-timer/timer-card.js` exists
+1. **Restart Home Assistant:** The card resource is registered during integration setup
+2. **Check integration logs:** Look for any errors during the card registration process
+3. **Verify the resource:** In Settings → Dashboards → Resources, confirm an entry for `/simple_timer/timer-card.js` exists. Opening that URL in your browser should return the card's JavaScript (not a 404). The card is served straight from the integration — it is **not** copied into `/config/www/`.
 4. **Clear browser cache:** Hard refresh with Ctrl+F5 (Windows) or Cmd+Shift+R (Mac)
 5. **Check browser console:** Press F12 and look for JavaScript errors
 
@@ -301,11 +301,11 @@ This appears when HA was offline during a timer to indicate potential time sync 
 
 ### Card Installation Issues
 
-If the automatic card installation fails:
-1. **Check file permissions:** Ensure Home Assistant can write to the `www` directory
-2. **Verify disk space:** Ensure sufficient space for file copying
-3. **Check integration logs:** Look for specific error messages
-4. **Manual fallback:** You can still manually copy the card file from the integration's `dist` folder
+If the card resource does not register:
+1. **Check integration logs:** Look for specific error messages during setup
+2. **Reload Resources:** Call the `simple_timer.reload_resources` service from Developer Tools → Actions to re-register the resource
+3. **Restart Home Assistant:** Re-runs the resource registration
+4. **Verify the resource:** Settings → Dashboards → Resources should list `/simple_timer/timer-card.js`
 
 ### Card Not Updating After Upgrade
 
