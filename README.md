@@ -64,6 +64,10 @@ You will continue to receive updates in both cases, but switching ensures you're
 
 **That's it!** The timer card is automatically installed and ready to use.
 
+> [!IMPORTANT]
+> This integration includes its own Lovelace card — **no additional HACS components needed.**<br>
+> There is a separate, unrelated plugin called "Simple Timer Card" in HACS. That is **not** this integration.
+
 ## ⚙️ Configuration
 
 ### Add Integration Instance
