@@ -1,5 +1,8 @@
 ![image](https://github.com/ArikShemesh/ha-simple-timer/blob/main/custom_components/simple_timer/brands/simple_timer/logo.png)
 
+[![GitHub Release](https://img.shields.io/github/v/release/arikshemesh/ha-simple-timer)](https://github.com/arikshemesh/ha-simple-timer/releases)
+[![Downloads](https://img.shields.io/github/downloads/arikshemesh/ha-simple-timer/total.svg)](https://github.com/arikshemesh/ha-simple-timer/releases)
+[![Community Forum](https://img.shields.io/badge/Community-Forum-5294E2.svg)](https://community.home-assistant.io/t/custom-integration-simple-timer-card/919597)
 
 # HA Simple Timer Integration (+ Card)
 A simple Home Assistant integration that turns entities on and off with a precise countdown timer and daily runtime tracking.
@@ -63,10 +66,6 @@ You will continue to receive updates in both cases, but switching ensures you're
 4. **Note:** You do **NOT** need to add the dashboard resource manually. It is automatically registered when the integration starts.
 
 **That's it!** The timer card is automatically installed and ready to use.
-
-> [!IMPORTANT]
-> This integration includes its own Lovelace card — **no additional HACS components needed.**<br>
-> There is a separate, unrelated plugin called "Simple Timer Card" in HACS. That is **not** this integration.
 
 ## ⚙️ Configuration
 
@@ -284,9 +283,9 @@ This appears when HA was offline during a timer to indicate potential time sync 
 
 ### Card Not Appearing in Card Picker
 
-1. **Restart Home Assistant:** The card resource is registered during integration setup
-2. **Check integration logs:** Look for any errors during the card registration process
-3. **Verify the resource:** In Settings → Dashboards → Resources, confirm an entry for `/simple_timer/timer-card.js` exists. Opening that URL in your browser should return the card's JavaScript (not a 404). The card is served straight from the integration — it is **not** copied into `/config/www/`.
+1. **Restart Home Assistant:** The card is installed during integration setup
+2. **Check integration logs:** Look for any errors during the card installation process
+3. **Verify automatic installation:** Check if `/config/www/simple-timer/timer-card.js` exists
 4. **Clear browser cache:** Hard refresh with Ctrl+F5 (Windows) or Cmd+Shift+R (Mac)
 5. **Check browser console:** Press F12 and look for JavaScript errors
 
@@ -305,11 +304,11 @@ This appears when HA was offline during a timer to indicate potential time sync 
 
 ### Card Installation Issues
 
-If the card resource does not register:
-1. **Check integration logs:** Look for specific error messages during setup
-2. **Reload Resources:** Call the `simple_timer.reload_resources` service from Developer Tools → Actions to re-register the resource
-3. **Restart Home Assistant:** Re-runs the resource registration
-4. **Verify the resource:** Settings → Dashboards → Resources should list `/simple_timer/timer-card.js`
+If the automatic card installation fails:
+1. **Check file permissions:** Ensure Home Assistant can write to the `www` directory
+2. **Verify disk space:** Ensure sufficient space for file copying
+3. **Check integration logs:** Look for specific error messages
+4. **Manual fallback:** You can still manually copy the card file from the integration's `dist` folder
 
 ### Card Not Updating After Upgrade
 
