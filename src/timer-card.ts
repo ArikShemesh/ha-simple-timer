@@ -1596,5 +1596,13 @@ if (!window.customCards.some((c) => c.type === "timer-card")) {
     name: "HA Simple Timer Card",
     description: "A card for the Simple Timer integration.",
     preview: true,
+    getEntitySuggestion: (hass, entityId) => {
+      if (!entityId.startsWith("sensor.")) return null;
+      const state = hass.states[entityId];
+      if (!state || typeof state.attributes.switch_entity_id !== "string") return null;
+      return {
+        config: { type: "custom:timer-card", sensor_entity: entityId },
+      };
+    },
   });
 }

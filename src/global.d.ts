@@ -106,5 +106,9 @@ interface Window {
     name: string;
     description: string;
     preview?: boolean | string;
+    getEntitySuggestion?: (
+      hass: HomeAssistant,
+      entityId: string
+    ) => { config: Record<string, unknown>; label?: string } | { config: Record<string, unknown>; label?: string }[] | null;
   }>;
 }
