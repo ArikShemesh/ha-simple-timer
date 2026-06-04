@@ -1600,8 +1600,9 @@ if (!window.customCards.some((c) => c.type === "timer-card")) {
       if (!entityId.startsWith("sensor.")) return null;
       const state = hass.states[entityId];
       if (!state || typeof state.attributes.switch_entity_id !== "string") return null;
+      const entryId = state.attributes.entry_id as string | undefined;
       return {
-        config: { type: "custom:timer-card", sensor_entity: entityId },
+        config: { ...TimerCard.getStubConfig(hass as any), ...(entryId ? { timer_instance_id: entryId } : { sensor_entity: entityId }) },
       };
     },
   });
