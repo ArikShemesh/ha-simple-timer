@@ -27,6 +27,7 @@ interface TimerCardConfig {
   turn_off_on_cancel?: boolean;
   use_default_timer?: boolean;
   show_schedule?: boolean;
+  chime_on_finish?: boolean;
 }
 
 // Define the structure for a Home Assistant state object

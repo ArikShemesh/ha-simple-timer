@@ -112,6 +112,7 @@ class TimerCard extends LitElement {
   _isLongPress: boolean = false;
   _touchStartPosition: { x: number; y: number } | null = null;
   _isCancelling: boolean = false;
+  _chimeAudioContext: AudioContext | null = null;
 
   // Schedule panel state
   _scheduleExpanded: boolean = false;
@@ -139,7 +140,8 @@ class TimerCard extends LitElement {
       slider_thumb_color: null,
       slider_background_color: null,
       power_button_background_color: null,
-      power_button_icon_color: null
+      power_button_icon_color: null,
+      chime_on_finish: false
     };
   }
 
@@ -175,7 +177,8 @@ class TimerCard extends LitElement {
       entity_state_button_background_color_on: cfg.entity_state_button_background_color_on || null,
       entity_state_button_icon_color_on: cfg.entity_state_button_icon_color_on || null,
       turn_off_on_cancel: cfg.turn_off_on_cancel !== false,
-      show_schedule: cfg.show_schedule || false
+      show_schedule: cfg.show_schedule || false,
+      chime_on_finish: cfg.chime_on_finish || false
     };
 
     if (cfg.timer_instance_id) {
@@ -412,6 +415,8 @@ class TimerCard extends LitElement {
 
     const switchId = this._effectiveSwitchEntity!;
     let reverseMode = this._config?.reverse_mode || false;
+
+    this._primeChimeAudio();
 
     // Override: If a Default Timer is active on the backend, Reverse Mode is strictly disabled
     // to prevent conflicting logic (Auto-Off vs Delayed-Start).
@@ -764,11 +769,69 @@ class TimerCard extends LitElement {
           this._stopCountdown();
           if (!this._notificationSentForCurrentCycle) {
             this._notificationSentForCurrentCycle = true;
+            this._playFinishChime();
           }
         }
       };
       this._countdownInterval = window.setInterval(update, 500);
       update();
+    }
+  }
+
+  _primeChimeAudio(): void {
+    if (!this._config?.chime_on_finish) return;
+    try {
+      const AudioContextConstructor = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextConstructor) return;
+      if (!this._chimeAudioContext) {
+        this._chimeAudioContext = new AudioContextConstructor();
+      }
+      if (this._chimeAudioContext.state === 'suspended') {
+        this._chimeAudioContext.resume().catch(err => console.warn("Timer-card: could not prime chime audio:", err));
+      }
+    } catch (err) {
+      console.warn("Timer-card: could not initialize chime audio:", err);
+    }
+  }
+
+  _playFinishChime(): void {
+    if (!this._config?.chime_on_finish) return;
+    try {
+      const AudioContextConstructor = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextConstructor) return;
+      const audioContext = this._chimeAudioContext || new AudioContextConstructor();
+      this._chimeAudioContext = audioContext;
+
+      const play = () => {
+        const now = audioContext.currentTime;
+        const notes = [
+          { frequency: 880, start: 0, duration: 0.18 },
+          { frequency: 1174.66, start: 0.16, duration: 0.22 },
+          { frequency: 1567.98, start: 0.34, duration: 0.28 },
+        ];
+
+        for (const note of notes) {
+          const oscillator = audioContext.createOscillator();
+          const gain = audioContext.createGain();
+          oscillator.type = 'sine';
+          oscillator.frequency.setValueAtTime(note.frequency, now + note.start);
+          gain.gain.setValueAtTime(0.0001, now + note.start);
+          gain.gain.exponentialRampToValueAtTime(0.22, now + note.start + 0.025);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + note.start + note.duration);
+          oscillator.connect(gain);
+          gain.connect(audioContext.destination);
+          oscillator.start(now + note.start);
+          oscillator.stop(now + note.start + note.duration + 0.04);
+        }
+      };
+
+      if (audioContext.state === 'suspended') {
+        audioContext.resume().then(play).catch(err => console.warn("Timer-card: could not play finish chime:", err));
+      } else {
+        play();
+      }
+    } catch (err) {
+      console.warn("Timer-card: could not play finish chime:", err);
     }
   }
 
