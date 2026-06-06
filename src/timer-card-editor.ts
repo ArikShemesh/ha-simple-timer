@@ -329,7 +329,8 @@ class TimerCardEditor extends LitElement {
       entity_state_button_background_color_on: cfg.entity_state_button_background_color_on || null,
       entity_state_button_icon_color_on: cfg.entity_state_button_icon_color_on || null,
       turn_off_on_cancel: cfg.turn_off_on_cancel !== false,
-      show_schedule: cfg.show_schedule || false
+      show_schedule: cfg.show_schedule || false,
+      chime_on_finish: cfg.chime_on_finish || false
     };
 
     if (cfg.timer_instance_id) {
@@ -546,6 +547,7 @@ class TimerCardEditor extends LitElement {
       hide_slider: "Hide Timer Slider",
       show_daily_usage: "Show Daily Usage",
       show_schedule: "Show Schedule Panel",
+      chime_on_finish: "Chime when timer finishes",
     };
     return labels[schema.name] ?? schema.name;
   };
@@ -977,6 +979,16 @@ class TimerCardEditor extends LitElement {
           </ha-formfield>
         </div>
 
+        <div class="config-row">
+          <ha-formfield .label=${"Chime when timer finishes"}>
+            <ha-switch
+              .checked=${this._config?.chime_on_finish || false}
+              .configValue=${"chime_on_finish"}
+              @change=${this._valueChanged}
+            ></ha-switch>
+          </ha-formfield>
+        </div>
+
       </div>
 
         <div class="config-row">
@@ -1075,6 +1087,8 @@ class TimerCardEditor extends LitElement {
       updatedConfig.reverse_mode = value; // boolean
     } else if (configValue === "show_schedule") {
       updatedConfig.show_schedule = value; // boolean
+    } else if (configValue === "chime_on_finish") {
+      updatedConfig.chime_on_finish = value; // boolean
     } else if (configValue === "slider_unit") {
       updatedConfig.slider_unit = value;
     } else if (configValue === "turn_off_on_cancel") {

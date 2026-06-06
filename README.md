@@ -144,6 +144,7 @@ card_title: "Water Heater"    # Custom title
 hide_slider: false            # Set true to hide the slider
 show_daily_usage: true        # Show/Hide the daily usage stats
 show_schedule: false          # Show the "Schedule Timer" panel on the card
+chime_on_finish: false        # Play a browser chime when the timer finishes
 slider_max: 120               # Maximum value for the slider
 slider_unit: min              # Unit for slider: 's', 'min', 'h', 'd'
 
@@ -180,6 +181,7 @@ Option | Type | Default | Description
 `hide_slider` | boolean | false | Hide the slider control completely
 `show_daily_usage` | boolean | true | Display daily usage statistics
 `show_schedule` | boolean | false | Show the "Schedule Timer" panel (future-start scheduling)
+`chime_on_finish` | boolean | false | Play a short browser chime when the countdown reaches zero
 `turn_off_on_cancel` | boolean | true | Whether to turn off the entity when the timer is cancelled
 `slider_thumb_color` | string | - | Custom color for the slider thumb (hex or rgba)
 `slider_background_color` | string | - | Custom color for the slider track
