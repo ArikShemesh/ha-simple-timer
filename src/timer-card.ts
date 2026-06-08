@@ -52,7 +52,7 @@ interface HomeAssistant {
 }
 
 const DOMAIN = "simple_timer";
-const CARD_VERSION = "1.5.0";
+const CARD_VERSION = "1.6.0";
 const DEFAULT_TIMER_BUTTONS = [15, 30, 60, 90, 120, 150]; // Default for new cards only
 
 console.info(
@@ -1123,6 +1123,48 @@ class TimerCard extends LitElement {
 
 
 
+  _renderPreview() {
+    const previewButtons = [15, 30, 60, 90, 120];
+    return html`
+      <style>
+        ${this._getSliderStyle()}
+        ${this._getTimerButtonStyle()}
+        ${this._getPowerButtonStyle()}
+      </style>
+      <ha-card>
+        <div class="card-header ${this._config?.card_title ? 'has-title' : ''}">
+          <div class="card-title">${this._config?.card_title || ''}</div>
+        </div>
+        <div class="card-content">
+          <div class="entity-state-button">
+            <ha-icon icon="${this._config?.entity_state_icon || this._config?.power_button_icon || 'mdi:power'}"></ha-icon>
+          </div>
+          <div class="countdown-section">
+            <div class="countdown-display">00:10:00</div>
+            <div class="daily-usage-display">Daily usage: 00:03:20</div>
+          </div>
+          <div class="slider-row">
+            <input type="range" min="0" step="1" max="${this._config?.slider_max || 120}" value="10" class="timer-slider" />
+            <div class="slider-right-group">
+              <span class="slider-label">10 ${this._config?.slider_unit || 'min'}</span>
+              <div class="timer-control-button">
+                <ha-icon icon="mdi:play"></ha-icon>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="button-grid">
+          ${previewButtons.map(m => html`
+            <div class="timer-button">
+              <div class="timer-button-value">${m}</div>
+              <div class="timer-button-unit">min</div>
+            </div>
+          `)}
+        </div>
+      </ha-card>
+    `;
+  }
+
   render() {
 
     let message: string | null = null;
@@ -1132,7 +1174,7 @@ class TimerCard extends LitElement {
       message = "Home Assistant object (hass) not available. Card cannot load.";
       isWarning = true;
     } else if (!this._entitiesLoaded) {
-      if (this._config?.timer_instance_id) {
+      if (this._config?.timer_instance_id && this._config.timer_instance_id !== 'default') {
         const configuredSensorState = Object.values(this.hass.states).find(
           (state: HAState) => state.attributes.entry_id === this._config!.timer_instance_id && state.entity_id.startsWith('sensor.')
         ) as HAState | undefined;
@@ -1160,8 +1202,7 @@ class TimerCard extends LitElement {
           isWarning = false;
         }
       } else {
-        message = "Select a Timer Control Instance from the dropdown in the card editor to link this card.";
-        isWarning = false;
+        return this._renderPreview();
       }
     }
 
@@ -1542,11 +1583,27 @@ class TimerCard extends LitElement {
     }
   }
 }
-customElements.define("timer-card", TimerCard);
+// Guard against double-registration: a stale resource or duplicated module
+// load would otherwise make the second define() throw and abort evaluation.
+if (!customElements.get("timer-card")) {
+  customElements.define("timer-card", TimerCard);
+}
 
 window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "timer-card",
-  name: "Simple Timer Card",
-  description: "A card for the Simple Timer integration.",
-});
+if (!window.customCards.some((c) => c.type === "timer-card")) {
+  window.customCards.push({
+    type: "timer-card",
+    name: "HA Simple Timer Card",
+    description: "A card for the Simple Timer integration.",
+    preview: true,
+    getEntitySuggestion: (hass, entityId) => {
+      if (!entityId.startsWith("sensor.")) return null;
+      const state = hass.states[entityId];
+      if (!state || typeof state.attributes.switch_entity_id !== "string") return null;
+      const entryId = state.attributes.entry_id as string | undefined;
+      return {
+        config: { ...TimerCard.getStubConfig(hass as any), ...(entryId ? { timer_instance_id: entryId } : { sensor_entity: entityId }) },
+      };
+    },
+  });
+}

@@ -1,5 +1,8 @@
 ![image](https://github.com/ArikShemesh/ha-simple-timer/blob/main/custom_components/simple_timer/brands/simple_timer/logo.png)
 
+[![GitHub Release](https://img.shields.io/github/v/release/arikshemesh/ha-simple-timer)](https://github.com/arikshemesh/ha-simple-timer/releases)
+[![Downloads](https://img.shields.io/github/downloads/arikshemesh/ha-simple-timer/total.svg)](https://github.com/arikshemesh/ha-simple-timer/releases)
+[![Community Forum](https://img.shields.io/badge/Community-Forum-5294E2.svg)](https://community.home-assistant.io/t/custom-integration-simple-timer-card/919597)
 
 # HA Simple Timer Integration (+ Card)
 A simple Home Assistant integration that turns entities on and off with a precise countdown timer and daily runtime tracking.

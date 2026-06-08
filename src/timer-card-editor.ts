@@ -1169,4 +1169,7 @@ class TimerCardEditor extends LitElement {
   }
 }
 
-customElements.define("timer-card-editor", TimerCardEditor);
+// Guard against double-registration (see timer-card.ts).
+if (!customElements.get("timer-card-editor")) {
+  customElements.define("timer-card-editor", TimerCardEditor);
+}
