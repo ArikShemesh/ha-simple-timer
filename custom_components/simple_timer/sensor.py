@@ -374,20 +374,85 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             return None
 
     def _format_time_for_notification(self, total_seconds: float, show_seconds: bool = False) -> tuple[str, str]:
-        """Format time for notifications."""
-        if show_seconds:
-            total_seconds_int = int(total_seconds)
-            hours = total_seconds_int // 3600
-            minutes = (total_seconds_int % 3600) // 60
-            seconds = total_seconds_int % 60
-            formatted_time = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-            return formatted_time, "(hh\u2236mm\u2236ss)"
-        else:
-            total_minutes = int(total_seconds // 60)
-            hours = total_minutes // 60
-            minutes = total_minutes % 60
-            formatted_time = f"{hours:02d}:{minutes:02d}"
-            return formatted_time, "(hh\u2236mm)"
+        """Format time for notifications.
+
+        Deprecated in favor of :meth:`_format_duration_human`, kept for any
+        legacy callers. Returns a human readable duration string and an empty
+        label (kept for backward compatibility with the (text, label) tuple
+        interface).
+        """
+        return self._format_duration_human(total_seconds, include_seconds=show_seconds), ""
+
+    @staticmethod
+    def _format_duration_human(total_seconds: float, include_seconds: bool = False) -> str:
+        """Format a duration (in seconds) as a human readable string.
+
+        Examples:
+            0           -> "0 minutes"            (or "0 seconds" with seconds)
+            45          -> "less than a minute"   (or "45 seconds" with seconds)
+            60          -> "1 minute"
+            125         -> "2 minutes"            (or "2 minutes 5 seconds")
+            3600        -> "1 hour"
+            3725        -> "1 hour 2 minutes"     (or "1 hour 2 minutes 5 seconds")
+            90061       -> "1 day 1 hour 1 minute"
+        """
+        total_seconds_int = max(0, int(round(total_seconds)))
+
+        days, remainder = divmod(total_seconds_int, 86400)
+        hours, remainder = divmod(remainder, 3600)
+        minutes, seconds = divmod(remainder, 60)
+
+        parts: list[str] = []
+        if days:
+            parts.append(f"{days} day" + ("s" if days != 1 else ""))
+        if hours:
+            parts.append(f"{hours} hour" + ("s" if hours != 1 else ""))
+        if minutes:
+            parts.append(f"{minutes} minute" + ("s" if minutes != 1 else ""))
+        if include_seconds and seconds:
+            parts.append(f"{seconds} second" + ("s" if seconds != 1 else ""))
+
+        if not parts:
+            if include_seconds:
+                # Whole zero with seconds requested
+                return "0 seconds"
+            # Without seconds, anything below a minute rounds to "less than a minute"
+            if total_seconds_int == 0:
+                return "0 minutes"
+            return "less than a minute"
+
+        return " ".join(parts)
+
+    @staticmethod
+    def _format_input_duration_human(duration: float, unit: str) -> str:
+        """Convert a (duration, unit) input pair into a human readable string.
+
+        Used for messages describing the duration the user requested
+        (e.g. "30 minutes", "2 hours", "1 day", "45 seconds").
+        Falls back to a generic " <value> <unit>" when the unit is unknown.
+        """
+        try:
+            value = float(duration)
+        except (TypeError, ValueError):
+            return f"{duration} {unit}".strip()
+
+        # Normalise unit aliases to a singular noun
+        unit_map = {
+            "s": "second", "sec": "second", "seconds": "second",
+            "m": "minute", "min": "minute", "minutes": "minute",
+            "h": "hour", "hr": "hour", "hours": "hour",
+            "d": "day", "day": "day", "days": "day",
+        }
+        noun = unit_map.get(unit, unit or "minute")
+
+        # Prefer integer formatting when the value is a whole number
+        if value.is_integer():
+            value_int = int(value)
+            return f"{value_int} {noun}" + ("s" if value_int != 1 else "")
+
+        # Trim trailing zeros for a cleaner display (e.g. 1.5 hours)
+        value_str = f"{value:.2f}".rstrip("0").rstrip(".")
+        return f"{value_str} {noun}s"
 
     async def _ensure_switch_state(self, desired_state: str, action_description: str, blocking: bool = True, force: bool = False) -> None:
         """Ensure switch is in desired state, attempt to correct if not, and warn on failure."""
@@ -428,14 +493,22 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             # Verify correction worked
             updated_state = self.hass.states.get(self._switch_entity_id)
             if updated_state and updated_state.state != desired_state:
-                warning_msg = f"Warning: {action_description} - switch should be '{desired_state}' but remains '{updated_state.state}'. Check switch connectivity."
-                _LOGGER.warning(f"Simple Timer: [{self._entry_id}] {warning_msg}")
-                await self._send_notification(warning_msg)
-                
+                log_msg = f"Warning: {action_description} - switch should be '{desired_state}' but remains '{updated_state.state}'. Check switch connectivity."
+                _LOGGER.warning(f"Simple Timer: [{self._entry_id}] {log_msg}")
+                desired_human = "ON" if desired_state == "on" else "OFF"
+                current_human = "ON" if updated_state.state == "on" else "OFF"
+                await self._send_notification(
+                    f"Warning: tried to turn the device {desired_human} but it is still {current_human}. "
+                    "Please check the switch connectivity."
+                )
+
         except Exception as e:
-            warning_msg = f"Warning: {action_description} - failed to set switch to '{desired_state}': {e}"
-            _LOGGER.warning(f"Simple Timer: [{self._entry_id}] {warning_msg}")
-            await self._send_notification(warning_msg)
+            log_msg = f"Warning: {action_description} - failed to set switch to '{desired_state}': {e}"
+            _LOGGER.warning(f"Simple Timer: [{self._entry_id}] {log_msg}")
+            desired_human = "ON" if desired_state == "on" else "OFF"
+            await self._send_notification(
+                f"Warning: failed to turn the device {desired_human}. Please check the switch."
+            )
 
     async def _send_notification(self, message: str) -> None:
         """Send notification using configured notification entities."""
@@ -983,9 +1056,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                self.hass, self._async_timer_finished, self._timer_finishes_at
             )
         
-        # Send notification
-        mode_text = "Delayed timer started for" if reverse_mode else "Timer was started for"
-        await self._send_notification(f"{mode_text} {duration_display} {unit_display}")
+        # Send notification (human readable duration, e.g. "30 minutes")
+        duration_human = self._format_input_duration_human(duration, unit)
+        mode_text = "Delayed start timer set for" if reverse_mode else "Timer started for"
+        await self._send_notification(f"{mode_text} {duration_human}.")
         
         self.async_write_ha_state()
 
@@ -1065,12 +1139,15 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
            self.hass, self._async_timer_finished, self._timer_finishes_at
         )
         
-        # Send notification
+        # Send notification (human readable extension + remaining time)
         remaining_seconds = max(0, int((self._timer_finishes_at - dt_util.utcnow()).total_seconds()))
-        notification_entity, show_seconds = await self._get_card_notification_config()
-        formatted_rest, label = self._format_time_for_notification(remaining_seconds, show_seconds)
-        
-        await self._send_notification(f"Timer extended by {duration_display} {unit_display}. New remaining: {formatted_rest} {label}")
+        _, show_seconds = await self._get_card_notification_config()
+        extension_human = self._format_input_duration_human(duration_display, unit_display)
+        remaining_human = self._format_duration_human(remaining_seconds, include_seconds=show_seconds)
+
+        await self._send_notification(
+            f"Timer extended by {extension_human}. Time remaining: {remaining_human}."
+        )
         self.async_write_ha_state()
 
     async def async_cancel_timer(self, turn_off_entity: bool = True) -> None:
@@ -1092,9 +1169,9 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         
         # Get current usage for notification
         current_usage = self._state
-        notification_entity, show_seconds = await self._get_card_notification_config()
-        formatted_time, label = self._format_time_for_notification(current_usage, show_seconds)
-        
+        _, show_seconds = await self._get_card_notification_config()
+        usage_human = self._format_duration_human(current_usage, include_seconds=show_seconds)
+
         # Clean up timer
         await self._cleanup_timer_state()
         
@@ -1124,7 +1201,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                  pass
         
         # Send notification
-        await self._send_notification(f"Timer finished – daily usage {formatted_time} {label}")
+        await self._send_notification(f"Timer cancelled. Daily usage: {usage_human}.")
         
         self.async_write_ha_state()
         
@@ -1187,15 +1264,17 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 await asyncio.sleep(0.1)
                 
                 current_usage = self._state
-                notification_entity, show_seconds = await self._get_card_notification_config()
-                formatted_time, label = self._format_time_for_notification(current_usage, show_seconds)
-                
+                _, show_seconds = await self._get_card_notification_config()
+                usage_human = self._format_duration_human(current_usage, include_seconds=show_seconds)
+
                 await self._cleanup_timer_state()
-                
+
                 if self._switch_entity_id:
                     await self._ensure_switch_state("off", "Timer completion turn-off", blocking=True)
-                    
-                await self._send_notification(f"Timer was turned off - daily usage {formatted_time} {label}")
+
+                await self._send_notification(
+                    f"Timer finished. Device turned OFF. Daily usage: {usage_human}."
+                )
             
             self.async_write_ha_state()
         finally:
@@ -1206,14 +1285,16 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         """Handle manual power toggle from frontend."""
         if action == "turn_on":
             await self._ensure_switch_state("on", "Manual turn-on")
-            await self._send_notification("Timer started")
+            await self._send_notification("Device turned ON manually.")
         elif action == "turn_off":
             current_usage = self._state
-            notification_entity, show_seconds = await self._get_card_notification_config()
-            formatted_time, label = self._format_time_for_notification(current_usage, show_seconds)
-            
+            _, show_seconds = await self._get_card_notification_config()
+            usage_human = self._format_duration_human(current_usage, include_seconds=show_seconds)
+
             await self._ensure_switch_state("off", "Manual turn-off")
-            await self._send_notification(f"Timer was turned off - daily usage {formatted_time} {label}")
+            await self._send_notification(
+                f"Device turned OFF manually. Daily usage: {usage_human}."
+            )
 
     @callback
     def _reset_at_scheduled_time(self, now) -> None:
@@ -1880,8 +1961,8 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         # Get usage for notification BEFORE cleaning up (as cleanup might affect state access?)
         # Actually _state is safe.
         current_usage = self._state
-        notification_entity, show_seconds = await self._get_card_notification_config()
-        formatted_time, label = self._format_time_for_notification(current_usage, show_seconds)
+        _, show_seconds = await self._get_card_notification_config()
+        usage_human = self._format_duration_human(current_usage, include_seconds=show_seconds)
         
         # FIX: Clear last_on_timestamp BEFORE cleanup to prevent final accumulation update from adding offline time
         self._last_on_timestamp = None
@@ -1910,7 +1991,9 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             
             # Send notification
             await asyncio.sleep(1)
-            await self._send_notification(f"Delayed start timer completed - device turned ON")
+            await self._send_notification(
+                "Delayed start timer completed while Home Assistant was offline. Device turned ON."
+            )
         else:
             # For normal mode: timer finished, turn switch OFF
             if self._switch_entity_id:
@@ -1919,10 +2002,12 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                     await self._ensure_switch_state_with_retries("off", "Expired timer turn-off", force=True)
                 except Exception as e:
                     _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Could not turn off switch: {e}")
-            
+
             # Send notification
             await asyncio.sleep(1)
-            await self._send_notification(f"Timer was turned off - daily usage {formatted_time} {label}")
+            await self._send_notification(
+                f"Timer completed while Home Assistant was offline. Device turned OFF. Daily usage: {usage_human}."
+            )
 
     async def _ensure_switch_state_with_retries(self, desired_state: str, context: str, force: bool = False):
         """Ensure switch state with retries to handle startup unavailability."""
@@ -2174,8 +2259,8 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         
         # Get current usage for notification
         current_usage = self._state
-        notification_entity, show_seconds = await self._get_card_notification_config()
-        formatted_time, label = self._format_time_for_notification(current_usage, show_seconds)
+        _, show_seconds = await self._get_card_notification_config()
+        usage_human = self._format_duration_human(current_usage, include_seconds=show_seconds)
         
         # Stop any ongoing accumulation
         await self._stop_realtime_accumulation()
@@ -2206,6 +2291,6 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self.async_write_ha_state()
         
         # Send notification
-        await self._send_notification(f"Daily usage reset from {formatted_time} {label} to 00:00")
+        await self._send_notification(f"Daily usage reset to zero (was {usage_human}).")
         
         _LOGGER.info(f"Simple Timer: [{self._entry_id}] Daily usage reset: {old_state}s -> 0s")
