@@ -374,20 +374,22 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             return None
 
     def _format_time_for_notification(self, total_seconds: float, show_seconds: bool = False) -> tuple[str, str]:
-        """Format time for notifications."""
-        if show_seconds:
-            total_seconds_int = int(total_seconds)
-            hours = total_seconds_int // 3600
-            minutes = (total_seconds_int % 3600) // 60
-            seconds = total_seconds_int % 60
-            formatted_time = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-            return formatted_time, "(hh\u2236mm\u2236ss)"
-        else:
-            total_minutes = int(total_seconds // 60)
-            hours = total_minutes // 60
-            minutes = total_minutes % 60
-            formatted_time = f"{hours:02d}:{minutes:02d}"
-            return formatted_time, "(hh\u2236mm)"
+        """Format time for voice assistants and notifications in natural text."""
+        total_seconds_int = max(0, int(total_seconds))
+        hours = total_seconds_int // 3600
+        minutes = (total_seconds_int % 3600) // 60
+        seconds = total_seconds_int % 60 if show_seconds else 0
+
+        parts = []
+        if hours > 0:
+            parts.append(f"{hours} hour" if hours == 1 else f"{hours} hours")
+        if minutes > 0 or (hours == 0 and not show_seconds and seconds == 0):
+            parts.append(f"{minutes} minute" if minutes == 1 else f"{minutes} minutes")
+        if show_seconds and (seconds > 0 or not parts):
+            parts.append(f"{seconds} second" if seconds == 1 else f"{seconds} seconds")
+
+        formatted_time = " ".join(parts) if parts else "0 minutes"
+        return formatted_time, ""
 
     async def _ensure_switch_state(self, desired_state: str, action_description: str, blocking: bool = True, force: bool = False) -> None:
         """Ensure switch is in desired state, attempt to correct if not, and warn on failure."""
@@ -984,8 +986,13 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             )
         
         # Send notification
+        notification_entity, show_seconds = await self._get_card_notification_config()
+        formatted_duration, label = self._format_time_for_notification(duration_minutes * 60.0, show_seconds)
         mode_text = "Delayed timer started for" if reverse_mode else "Timer was started for"
-        await self._send_notification(f"{mode_text} {duration_display} {unit_display}")
+        notification_msg = f"{mode_text} {formatted_duration}"
+        if label:
+            notification_msg += f" {label}"
+        await self._send_notification(notification_msg)
         
         self.async_write_ha_state()
 
@@ -1069,8 +1076,12 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         remaining_seconds = max(0, int((self._timer_finishes_at - dt_util.utcnow()).total_seconds()))
         notification_entity, show_seconds = await self._get_card_notification_config()
         formatted_rest, label = self._format_time_for_notification(remaining_seconds, show_seconds)
+        formatted_added, _ = self._format_time_for_notification(duration_minutes * 60.0, show_seconds)
         
-        await self._send_notification(f"Timer extended by {duration_display} {unit_display}. New remaining: {formatted_rest} {label}")
+        notification_msg = f"Timer extended by {formatted_added}. New remaining: {formatted_rest}"
+        if label:
+            notification_msg += f" {label}"
+        await self._send_notification(notification_msg)
         self.async_write_ha_state()
 
     async def async_cancel_timer(self, turn_off_entity: bool = True) -> None:
@@ -1124,7 +1135,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                  pass
         
         # Send notification
-        await self._send_notification(f"Timer finished – daily usage {formatted_time} {label}")
+        notification_msg = f"Timer finished – daily usage {formatted_time}"
+        if label:
+            notification_msg += f" {label}"
+        await self._send_notification(notification_msg)
         
         self.async_write_ha_state()
         
@@ -1195,7 +1209,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 if self._switch_entity_id:
                     await self._ensure_switch_state("off", "Timer completion turn-off", blocking=True)
                     
-                await self._send_notification(f"Timer was turned off - daily usage {formatted_time} {label}")
+                notification_msg = f"Timer was turned off - daily usage {formatted_time}"
+                if label:
+                    notification_msg += f" {label}"
+                await self._send_notification(notification_msg)
             
             self.async_write_ha_state()
         finally:
@@ -1213,7 +1230,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             formatted_time, label = self._format_time_for_notification(current_usage, show_seconds)
             
             await self._ensure_switch_state("off", "Manual turn-off")
-            await self._send_notification(f"Timer was turned off - daily usage {formatted_time} {label}")
+            notification_msg = f"Timer was turned off - daily usage {formatted_time}"
+            if label:
+                notification_msg += f" {label}"
+            await self._send_notification(notification_msg)
 
     @callback
     def _reset_at_scheduled_time(self, now) -> None:
@@ -1922,7 +1942,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             
             # Send notification
             await asyncio.sleep(1)
-            await self._send_notification(f"Timer was turned off - daily usage {formatted_time} {label}")
+            notification_msg = f"Timer was turned off - daily usage {formatted_time}"
+            if label:
+                notification_msg += f" {label}"
+            await self._send_notification(notification_msg)
 
     async def _ensure_switch_state_with_retries(self, desired_state: str, context: str, force: bool = False):
         """Ensure switch state with retries to handle startup unavailability."""
@@ -2176,6 +2199,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         current_usage = self._state
         notification_entity, show_seconds = await self._get_card_notification_config()
         formatted_time, label = self._format_time_for_notification(current_usage, show_seconds)
+        formatted_zero, _ = self._format_time_for_notification(0, show_seconds)
         
         # Stop any ongoing accumulation
         await self._stop_realtime_accumulation()
@@ -2206,6 +2230,9 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self.async_write_ha_state()
         
         # Send notification
-        await self._send_notification(f"Daily usage reset from {formatted_time} {label} to 00:00")
+        notification_msg = f"Daily usage reset from {formatted_time} to {formatted_zero}"
+        if label:
+            notification_msg += f" {label}"
+        await self._send_notification(notification_msg)
         
         _LOGGER.info(f"Simple Timer: [{self._entry_id}] Daily usage reset: {old_state}s -> 0s")
