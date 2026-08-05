@@ -318,6 +318,7 @@ class TimerCardEditor extends LitElement {
       reverse_mode: cfg.reverse_mode || false,
       hide_slider: cfg.hide_slider || false,
       show_daily_usage: cfg.show_daily_usage !== false,
+      countdown_display: cfg.countdown_display || 'countdown',
       slider_thumb_color: cfg.slider_thumb_color || null,
       slider_background_color: cfg.slider_background_color || null,
       timer_button_font_color: cfg.timer_button_font_color || null,
@@ -541,6 +542,7 @@ class TimerCardEditor extends LitElement {
       entity_state_icon: "Entity State Icon (optional)",
       slider_max: "Slider maximum (1–9999)",
       slider_unit: "Slider Unit",
+      countdown_display: "Time Remaining Display",
       turn_off_on_cancel: "Turn off entity on timer cancel",
       reverse_mode: "Reverse Mode (Delayed Start)",
       hide_slider: "Hide Timer Slider",
@@ -554,6 +556,17 @@ class TimerCardEditor extends LitElement {
     return [
       { name: "card_title", selector: { text: {} } },
       { name: "entity_state_icon", selector: { icon: {} } },
+      {
+        name: "countdown_display", selector: {
+          select: {
+            mode: "dropdown", options: [
+              { value: "countdown", label: "Countdown" },
+              { value: "progress", label: "Progress Bar" },
+              { value: "both", label: "Countdown + Progress Bar" },
+            ],
+          },
+        },
+      },
       {
         name: "", type: "grid", schema: [
           { name: "slider_max", selector: { number: { min: 1, max: 9999, step: 1, mode: "box" } } },

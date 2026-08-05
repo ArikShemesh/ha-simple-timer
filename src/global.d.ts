@@ -13,6 +13,7 @@ interface TimerCardConfig {
   reverse_mode?: boolean;
   hide_slider?: boolean;
   show_daily_usage?: boolean;
+  countdown_display?: 'countdown' | 'progress' | 'both';
   slider_thumb_color?: string | null;
   slider_background_color?: string | null;
   timer_button_font_color?: string | null;
