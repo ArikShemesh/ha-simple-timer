@@ -1206,7 +1206,7 @@ class TimerCard extends LitElement {
         ) as HAState | undefined;
 
         if (!configuredSensorState) {
-          message = `Please select a valid instance in the card editor.`;
+          message = `Timer instance '${this._config.timer_instance_id}' not found. It may have been removed, or the Simple Timer integration is not loaded yet. Check Settings → Devices & Services, or pick another instance in the card editor.`;
           isWarning = true;
         } else if (typeof configuredSensorState.attributes.switch_entity_id !== 'string' || !(configuredSensorState.attributes.switch_entity_id && this.hass.states[configuredSensorState.attributes.switch_entity_id])) {
           message = `Timer Control Instance '${this._config.timer_instance_id}' linked to missing or invalid switch '${configuredSensorState.attributes.switch_entity_id}'. Please check instance configuration.`;
