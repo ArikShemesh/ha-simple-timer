@@ -15,7 +15,7 @@ from homeassistant.const import (
     UnitOfTime,
     EVENT_HOMEASSISTANT_STOP,
 )
-from homeassistant.core import HomeAssistant, callback, Event, State, CoreState
+from homeassistant.core import HomeAssistant, callback, Context, Event, State, CoreState
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.event import (
     async_track_state_change_event,
@@ -391,8 +391,13 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         formatted_time = " ".join(parts) if parts else "0 minutes"
         return formatted_time, ""
 
-    async def _ensure_switch_state(self, desired_state: str, action_description: str, blocking: bool = True, force: bool = False) -> None:
-        """Ensure switch is in desired state, attempt to correct if not, and warn on failure."""
+    async def _ensure_switch_state(self, desired_state: str, action_description: str, blocking: bool = True, force: bool = False, context: Context | None = None) -> None:
+        """Ensure switch is in desired state, attempt to correct if not, and warn on failure.
+
+        `context` is the originating service call's context, passed only on
+        user-initiated paths so the logbook names the user who acted. Paths with
+        no user behind them (timer expiry, restart recovery) omit it deliberately.
+        """
         if not self._switch_entity_id:
             return
             
@@ -409,7 +414,8 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         try:
             action = "turn_on" if desired_state == "on" else "turn_off"
             await self.hass.services.async_call(
-                "homeassistant", action, {"entity_id": self._switch_entity_id}, blocking=blocking
+                "homeassistant", action, {"entity_id": self._switch_entity_id}, blocking=blocking,
+                context=context
             )
             
             # Wait a moment for state change to propagate
@@ -877,8 +883,13 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             if not final_update:
                 self.hass.async_create_task(self._stop_realtime_accumulation())
 
-    async def async_start_timer(self, duration: float, unit: str = "min", reverse_mode: bool = False, start_method: str = "button") -> None:
-        """Start a countdown timer with synchronized accumulation."""
+    async def async_start_timer(self, duration: float, unit: str = "min", reverse_mode: bool = False, start_method: str = "button", context: Context | None = None) -> None:
+        """Start a countdown timer with synchronized accumulation.
+
+        `context` is the originating service call's context. Passing it through to
+        the switch turn-on lets the logbook attribute the change to the user who
+        pressed start, instead of "Generic turn on".
+        """
         
         # Convert duration to minutes for internal storage
         duration_minutes = duration
@@ -942,7 +953,8 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             current_switch_state = self.hass.states.get(self._switch_entity_id) if self._switch_entity_id else None
             if not current_switch_state or current_switch_state.state != STATE_ON:
                 await self.hass.services.async_call(
-                   "homeassistant", "turn_on", {"entity_id": self._switch_entity_id}, blocking=False
+                   "homeassistant", "turn_on", {"entity_id": self._switch_entity_id}, blocking=False,
+                   context=context
                 )
                 # DECOUPLED: Do NOT wait for state change. Start timer immediately.
                 # User can turn switch on/off manually during timer.
@@ -1084,8 +1096,12 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         await self._send_notification(notification_msg)
         self.async_write_ha_state()
 
-    async def async_cancel_timer(self, turn_off_entity: bool = True) -> None:
-        """Cancel an active timer."""
+    async def async_cancel_timer(self, turn_off_entity: bool = True, context: Context | None = None) -> None:
+        """Cancel an active timer.
+
+        `context` is the originating service call's context, so the logbook
+        attributes the switch turn-off to the user who cancelled.
+        """
         _LOGGER.info(f"Simple Timer: [{self._entry_id}] Cancelling timer")
         
         if self._timer_state == "idle":
@@ -1124,9 +1140,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 if self._switch_entity_id:
                     try:
                         await self.hass.services.async_call(
-                            "homeassistant", "turn_off", {"entity_id": self._switch_entity_id}, blocking=True
+                            "homeassistant", "turn_off", {"entity_id": self._switch_entity_id}, blocking=True,
+                            context=context
                         )
-                        await self._ensure_switch_state("off", "Timer cancellation turn-off")
+                        await self._ensure_switch_state("off", "Timer cancellation turn-off", context=context)
                         await self._stop_realtime_accumulation()
                     except Exception as e:
                         _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Could not turn off switch: {e}")
@@ -1219,17 +1236,21 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             # Always unset the flag
             self._is_finishing_normally = False
 
-    async def async_manual_power_toggle(self, action: str) -> None:
-        """Handle manual power toggle from frontend."""
+    async def async_manual_power_toggle(self, action: str, context: Context | None = None) -> None:
+        """Handle manual power toggle from frontend.
+
+        `context` is the originating service call's context, so the logbook
+        attributes the switch change to the user who pressed the power button.
+        """
         if action == "turn_on":
-            await self._ensure_switch_state("on", "Manual turn-on")
+            await self._ensure_switch_state("on", "Manual turn-on", context=context)
             await self._send_notification("Timer started")
         elif action == "turn_off":
             current_usage = self._state
             notification_entity, show_seconds = await self._get_card_notification_config()
             formatted_time, label = self._format_time_for_notification(current_usage, show_seconds)
             
-            await self._ensure_switch_state("off", "Manual turn-off")
+            await self._ensure_switch_state("off", "Manual turn-off", context=context)
             notification_msg = f"Timer was turned off - daily usage {formatted_time}"
             if label:
                 notification_msg += f" {label}"
@@ -1947,7 +1968,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 notification_msg += f" {label}"
             await self._send_notification(notification_msg)
 
-    async def _ensure_switch_state_with_retries(self, desired_state: str, context: str, force: bool = False):
+    async def _ensure_switch_state_with_retries(self, desired_state: str, action_description: str, force: bool = False):
         """Ensure switch state with retries to handle startup unavailability."""
         if not self._switch_entity_id:
             return
@@ -1955,7 +1976,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         # First attempt (blocking to try and get it right immediately)
         # We wrap this in try/except to ensure we proceed to scheduling retry even if first attempt fails
         try:
-             await self._ensure_switch_state(desired_state, context, blocking=True, force=force)
+             await self._ensure_switch_state(desired_state, action_description, blocking=True, force=force)
         except Exception as e:
              _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Initial switch attempt failed: {e}")
 
