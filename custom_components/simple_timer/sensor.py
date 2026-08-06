@@ -24,6 +24,10 @@ from homeassistant.helpers.event import (
     async_track_point_in_utc_time,
     async_track_time_interval,
 )
+from homeassistant.helpers.dispatcher import (
+    async_dispatcher_connect,
+    async_dispatcher_send,
+)
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
@@ -31,7 +35,22 @@ from homeassistant.util import dt as dt_util
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 
-from .const import DOMAIN, WARNING_MSG_OFFLINE
+from .const import (
+    DOMAIN,
+    WARNING_MSG_OFFLINE,
+    SIGNAL_STATE_UPDATED,
+    STATUS_IDLE,
+    STATUS_ACTIVE,
+    STATUS_DELAYED_START,
+    STATUS_SCHEDULED,
+    STATUS_OPTIONS,
+    EVENT_TIMER_STARTED,
+    EVENT_TIMER_EXTENDED,
+    EVENT_TIMER_CANCELLED,
+    EVENT_TIMER_FINISHED,
+    EVENT_SCHEDULE_SET,
+    EVENT_SCHEDULE_CANCELLED,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -45,6 +64,7 @@ ATTR_TIMER_DURATION = "timer_duration"
 ATTR_TIMER_REMAINING = "timer_remaining"
 ATTR_WATCHDOG_MESSAGE = "watchdog_message"
 ATTR_SWITCH_ENTITY_ID = "switch_entity_id"
+ATTR_STATUS_ENTITY_ID = "status_entity_id"
 ATTR_LAST_ON_TIMESTAMP = "last_on_timestamp"
 ATTR_INSTANCE_TITLE = "instance_title"
 ATTR_NEXT_RESET_DATE = "next_reset_date"
@@ -59,9 +79,66 @@ ATTR_SCHEDULED_UNIT = "scheduled_unit"
 ATTR_SCHEDULE_REPEAT = "schedule_repeat"
 ATTR_SCHEDULE_DAYS = "schedule_days"
 
+def duration_to_seconds(duration: float, unit: str) -> float:
+    """Convert a service-call duration + unit pair to seconds."""
+    if unit in ["s", "sec", "seconds"]:
+        return duration
+    if unit in ["h", "hr", "hours"]:
+        return duration * 3600
+    if unit in ["d", "day", "days"]:
+        return duration * 86400
+    return duration * 60  # minutes is the default unit
+
+
+def derive_timer_status(timer_state: str, reverse_mode: bool, has_schedule: bool) -> str:
+    """Map the runtime sensor's internal flags to a single user-facing status.
+
+    A schedule can stay armed while a timer is running (a repeating schedule
+    arms its next fire immediately), so a running timer deliberately wins.
+
+    Kept as a module-level pure function so it can be unit tested without
+    standing up an entity.
+    """
+    if timer_state == "active":
+        return STATUS_DELAYED_START if reverse_mode else STATUS_ACTIVE
+    if has_schedule:
+        return STATUS_SCHEDULED
+    return STATUS_IDLE
+
+
+def device_info_for_switch(hass: HomeAssistant, switch_entity_id: str | None) -> DeviceInfo | None:
+    """Return DeviceInfo that groups an entity onto the switch's device.
+
+    Reuses the switch device's identifiers so HA merges our entities into that
+    device rather than creating a second one. Shared by both sensors.
+    """
+    if not switch_entity_id:
+        return None
+
+    # Access the Entity Registry to find the registry entry for the switch
+    ent_reg = er.async_get(hass)
+    entity_entry = ent_reg.async_get(switch_entity_id)
+
+    # If the switch doesn't exist or isn't linked to a device, we can't link
+    if not entity_entry or not entity_entry.device_id:
+        return None
+
+    # Access the Device Registry to get the device details
+    dev_reg = dr.async_get(hass)
+    device_entry = dev_reg.async_get(entity_entry.device_id)
+
+    if not device_entry:
+        return None
+
+    return DeviceInfo(
+        connections=device_entry.connections,
+        identifiers=device_entry.identifiers,
+    )
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities) -> None:
-    """Create a TimerRuntimeSensor for this config entry."""
-    async_add_entities([TimerRuntimeSensor(hass, entry)])
+    """Create the runtime and status sensors for this config entry."""
+    async_add_entities([TimerRuntimeSensor(hass, entry), TimerStatusSensor(hass, entry)])
 
 class TimerRuntimeSensor(SensorEntity, RestoreEntity):
     """The sensor entity for Simple Timer."""
@@ -141,30 +218,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
     @property
     def device_info(self) -> DeviceInfo | None:
         """Link this entity to the device of the switch it monitors."""
-        if not self._switch_entity_id:
-            return None
-
-        # Access the Entity Registry to find the registry entry for the switch
-        ent_reg = er.async_get(self.hass)
-        entity_entry = ent_reg.async_get(self._switch_entity_id)
-        
-        # If the switch doesn't exist or isn't linked to a device, we can't link
-        if not entity_entry or not entity_entry.device_id:
-            return None
-
-        # Access the Device Registry to get the device details
-        dev_reg = dr.async_get(self.hass)
-        device_entry = dev_reg.async_get(entity_entry.device_id)
-
-        if not device_entry:
-            return None
-
-        # Return DeviceInfo with the SAME identifiers as the switch's device.
-        # This tells HA to group this sensor with that device.
-        return DeviceInfo(
-            connections=device_entry.connections,
-            identifiers=device_entry.identifiers,
-        )
+        return device_info_for_switch(self.hass, self._switch_entity_id)
 
     def _parse_reset_time(self, time_str: str) -> time:
         """Parse reset time string into time object."""
@@ -228,6 +282,83 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         # Return whole seconds only
         return float(int(self._state))
 
+    def async_write_ha_state(self) -> None:
+        """Write state, then notify the status sensor.
+
+        Overridden rather than firing the signal at each of the ~30 write sites
+        in this class. The signal fires often (the runtime accumulator writes
+        once a second while a timer runs); the status sensor debounces by only
+        writing when its derived state actually changes.
+        """
+        super().async_write_ha_state()
+        async_dispatcher_send(self.hass, SIGNAL_STATE_UPDATED.format(self._entry_id))
+
+    @property
+    def status_entity_id(self) -> str | None:
+        """Entity id of this instance's status sensor, or None if not registered yet."""
+        ent_reg = er.async_get(self.hass)
+        return ent_reg.async_get_entity_id("sensor", DOMAIN, f"timer_status_{self._entry_id}")
+
+    async def _fire_logbook_event(
+        self,
+        event_type: str,
+        context: Context | None = None,
+        **data: Any,
+    ) -> None:
+        """Fire a bus event that logbook.py renders as an Activity line.
+
+        Anchored to the status sensor, since that is the entity users see in a
+        device's Activity feed. No-ops until the status sensor is registered.
+
+        The event carries `context`, and we additionally resolve the acting
+        user's display name into the event data. HA surfaces context.user_id on
+        state-change entries but not on custom-event entries, so the name has to
+        travel in the payload for logbook.py to put it in the message.
+
+        Callers with no user behind them (timer expiry, a schedule firing) pass
+        no context, so no name is resolved and those lines stay unattributed.
+        """
+        status_entity_id = self.status_entity_id
+        if not status_entity_id:
+            return
+
+        user_name = await self._resolve_user_name(context)
+
+        event_data = {
+            "entity_id": status_entity_id,
+            "entry_id": self._entry_id,
+            "name": self.instance_title,
+            **data,
+        }
+        if user_name:
+            event_data["user_name"] = user_name
+
+        self.hass.bus.async_fire(event_type, event_data, context=context)
+
+    def _format_duration_for_logbook(self, total_seconds: float) -> str:
+        """Format a duration for a logbook line, always including seconds.
+
+        Notifications honour the instance's `show_seconds` setting, which
+        rounds sub-minute values down to "0 minutes" — fine when spoken aloud,
+        useless in a historical record where a 10 second timer must not read as
+        zero. The logbook always gets the precise form.
+        """
+        formatted, _ = self._format_time_for_notification(total_seconds, show_seconds=True)
+        return formatted
+
+    async def _resolve_user_name(self, context: Context | None) -> str | None:
+        """Return the display name of the user behind `context`, if any."""
+        if not context or not context.user_id:
+            return None
+
+        try:
+            user = await self.hass.auth.async_get_user(context.user_id)
+        except Exception as e:
+            _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Could not resolve user: {e}")
+            return None
+
+        return user.name if user else None
+
     def _calculate_timer_remaining(self) -> int:
         """Calculate remaining time in seconds for active timer."""
         if self._timer_state == "active" and self._timer_finishes_at:
@@ -252,6 +383,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             ATTR_WATCHDOG_MESSAGE: self._watchdog_message,
             "entry_id": self._entry_id,
             ATTR_SWITCH_ENTITY_ID: self._switch_entity_id,
+            # Lets the card open more-info on the status sensor without having
+            # to scan for it. Safe to add here: the card's instance lookup keys
+            # off entry_id + switch_entity_id, both of which stay on this entity.
+            ATTR_STATUS_ENTITY_ID: self.status_entity_id,
             ATTR_LAST_ON_TIMESTAMP: self._last_on_timestamp.isoformat() if self._last_on_timestamp else None,
             ATTR_INSTANCE_TITLE: self.instance_title,
             ATTR_NEXT_RESET_DATE: self._next_reset_date.isoformat() if self._next_reset_date else None,
@@ -1005,11 +1140,22 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         if label:
             notification_msg += f" {label}"
         await self._send_notification(notification_msg)
-        
+
+        await self._fire_logbook_event(
+            EVENT_TIMER_STARTED,
+            context=context,
+            duration=self._format_duration_for_logbook(duration_minutes * 60.0),
+            reverse_mode=reverse_mode,
+        )
+
         self.async_write_ha_state()
 
-    async def async_add_timer(self, duration: float, unit: str = "min") -> None:
-        """Extend a currently running timer by adding duration."""
+    async def async_add_timer(self, duration: float, unit: str = "min", context: Context | None = None) -> None:
+        """Extend a currently running timer by adding duration.
+
+        `context` is the originating service call's context, so the logbook
+        attributes the extension to the user who requested it.
+        """
         if self._timer_state != "active":
             _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Cannot add time: Timer is not active")
             return
@@ -1094,6 +1240,14 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         if label:
             notification_msg += f" {label}"
         await self._send_notification(notification_msg)
+
+        await self._fire_logbook_event(
+            EVENT_TIMER_EXTENDED,
+            context=context,
+            added=self._format_duration_for_logbook(duration_minutes * 60.0),
+            remaining=self._format_duration_for_logbook(remaining_seconds),
+        )
+
         self.async_write_ha_state()
 
     async def async_cancel_timer(self, turn_off_entity: bool = True, context: Context | None = None) -> None:
@@ -1156,7 +1310,13 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         if label:
             notification_msg += f" {label}"
         await self._send_notification(notification_msg)
-        
+
+        await self._fire_logbook_event(
+            EVENT_TIMER_CANCELLED,
+            context=context,
+            usage=self._format_duration_for_logbook(current_usage),
+        )
+
         self.async_write_ha_state()
         
     @callback
@@ -1194,6 +1354,11 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                     await self._start_realtime_accumulation()
                 
                 await self._send_notification(f"Delayed start timer completed - device turned ON")
+
+                # No context: expiry is the integration acting on its own, not
+                # the user who started the timer. Leaving it unattributed keeps
+                # the logbook from claiming they acted hours after the fact.
+                await self._fire_logbook_event(EVENT_TIMER_FINISHED, reverse_mode=True)
             else:
                 # NORMAL MODE: Original logic - turn switch OFF
                 await self._stop_realtime_accumulation()
@@ -1230,7 +1395,14 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 if label:
                     notification_msg += f" {label}"
                 await self._send_notification(notification_msg)
-            
+
+                # Unattributed on purpose — see the reverse-mode branch above.
+                await self._fire_logbook_event(
+                    EVENT_TIMER_FINISHED,
+                    reverse_mode=False,
+                    usage=self._format_duration_for_logbook(current_usage),
+                )
+
             self.async_write_ha_state()
         finally:
             # Always unset the flag
@@ -1687,8 +1859,14 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
     async def async_schedule_timer(self, start_time: time, duration: float,
                                    unit: str = "min", repeat: bool = False,
-                                   days: list[int] | None = None) -> None:
-        """Arm a scheduled start: at start_time run a bounded timer for duration."""
+                                   days: list[int] | None = None,
+                                   context: Context | None = None) -> None:
+        """Arm a scheduled start: at start_time run a bounded timer for duration.
+
+        `context` is the originating service call's context, so the logbook
+        attributes arming the schedule to the user who set it. The timer that
+        later fires from this schedule is deliberately unattributed.
+        """
         days = sorted(set(days or []))
         fire_at = self._compute_next_fire(start_time, repeat, days)
         if fire_at is None:
@@ -1713,6 +1891,15 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             f"Simple Timer: [{self._entry_id}] Scheduled start at {fire_at.isoformat()} "
             f"for {duration} {unit} (repeat={repeat}, days={days})"
         )
+
+        await self._fire_logbook_event(
+            EVENT_SCHEDULE_SET,
+            context=context,
+            start_time=fire_at.strftime("%H:%M"),
+            duration=self._format_duration_for_logbook(duration_to_seconds(duration, unit)),
+            repeat=repeat,
+        )
+
         self.async_write_ha_state()
 
     def _arm_schedule(self) -> None:
@@ -1753,9 +1940,19 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         # One-shot (or no valid recurrence) - clear the schedule.
         await self._clear_schedule(write_state=True)
 
-    async def async_cancel_schedule(self) -> None:
-        """Cancel an armed scheduled-start."""
+    async def async_cancel_schedule(self, context: Context | None = None) -> None:
+        """Cancel an armed scheduled-start.
+
+        `context` is the originating service call's context, so the logbook
+        attributes the cancellation to the user who requested it.
+        """
         _LOGGER.info(f"Simple Timer: [{self._entry_id}] Cancelling schedule")
+
+        # Fire before clearing, while there is still a schedule to describe.
+        was_armed = bool(self._scheduled_fire_at)
+        if was_armed:
+            await self._fire_logbook_event(EVENT_SCHEDULE_CANCELLED, context=context)
+
         await self._clear_schedule(write_state=True)
 
     async def _clear_schedule(self, write_state: bool = False) -> None:
@@ -2257,3 +2454,115 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         await self._send_notification(notification_msg)
         
         _LOGGER.info(f"Simple Timer: [{self._entry_id}] Daily usage reset: {old_state}s -> 0s")
+
+
+class TimerStatusSensor(SensorEntity):
+    """Non-numeric companion sensor exposing the timer's status as its state.
+
+    Exists so the timer shows up in HA's logbook and device Activity feed. The
+    runtime sensor cannot: it carries a unit_of_measurement, and logbook skips
+    continuous sensors to avoid drowning in numbers.
+
+    Deliberately exposes NO extra state attributes. The card locates a timer
+    instance by scanning every sensor.* for one carrying both `entry_id` and
+    `switch_entity_id` and taking the first match (_determineEffectiveEntities
+    in timer-card.ts). Adding those attributes here would let this entity win
+    that race and break existing cards, including bundles already shipped to
+    users who will not rebuild. Do not add them.
+    """
+
+    _attr_has_entity_name = False
+    _attr_should_poll = False
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = STATUS_OPTIONS
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry):
+        """Initialize the status sensor."""
+        self.hass = hass
+        self._entry = entry
+        self._entry_id = entry.entry_id
+        self._entry_id_short = self._entry_id[:8]
+        self._switch_entity_id = entry.data.get("switch_entity_id")
+
+        self._attr_unique_id = f"timer_status_{self._entry_id}"
+        self._attr_native_value = STATUS_IDLE
+
+        self._unsub_dispatcher = None
+
+    @property
+    def device_info(self) -> DeviceInfo | None:
+        """Group with the switch's device, same as the runtime sensor."""
+        return device_info_for_switch(self.hass, self._switch_entity_id)
+
+    @property
+    def instance_title(self) -> str:
+        """Current instance title, mirroring the runtime sensor."""
+        if self._entry.title:
+            return self._entry.title
+        return self._entry.data.get("name") or "Timer"
+
+    @property
+    def name(self) -> str:
+        """Return the name of the sensor."""
+        return f"{self.instance_title} Status ({self._entry_id_short})"
+
+    @property
+    def icon(self) -> str:
+        """Icon reflecting the current status."""
+        if self._attr_native_value == STATUS_ACTIVE:
+            return "mdi:timer-play"
+        if self._attr_native_value == STATUS_DELAYED_START:
+            return "mdi:timer-sand"
+        if self._attr_native_value == STATUS_SCHEDULED:
+            return "mdi:timer-cog"
+        return "mdi:timer-outline"
+
+    def _read_runtime_sensor(self) -> "TimerRuntimeSensor | None":
+        """Return this entry's runtime sensor, if it is loaded."""
+        entry_data = self.hass.data.get(DOMAIN, {}).get(self._entry_id)
+        if not isinstance(entry_data, dict):
+            return None
+        return entry_data.get("sensor")
+
+    @callback
+    def _handle_state_updated(self) -> None:
+        """Recompute status; write only when it actually changed.
+
+        The signal fires on every runtime sensor write, which is once a second
+        while a timer runs. Filtering here keeps the recorder to a handful of
+        rows per timer instead of one per second.
+        """
+        runtime = self._read_runtime_sensor()
+        if runtime is None:
+            return
+
+        new_status = derive_timer_status(
+            runtime._timer_state,
+            getattr(runtime, "_timer_reverse_mode", False),
+            bool(runtime._scheduled_fire_at),
+        )
+
+        if new_status != self._attr_native_value:
+            self._attr_native_value = new_status
+            self.async_write_ha_state()
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to runtime sensor updates and seed the initial status."""
+        await super().async_added_to_hass()
+
+        self._unsub_dispatcher = async_dispatcher_connect(
+            self.hass,
+            SIGNAL_STATE_UPDATED.format(self._entry_id),
+            self._handle_state_updated,
+        )
+
+        # Seed from the runtime sensor if it is already loaded, so a restart
+        # mid-timer does not report idle until the next write.
+        self._handle_state_updated()
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Drop the dispatcher subscription."""
+        if self._unsub_dispatcher:
+            self._unsub_dispatcher()
+            self._unsub_dispatcher = None
+        await super().async_will_remove_from_hass()

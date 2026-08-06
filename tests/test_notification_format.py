@@ -29,6 +29,7 @@ sys.modules['homeassistant.exceptions'] = ha.exceptions
 sys.modules['homeassistant.helpers'] = ha.helpers
 sys.modules['homeassistant.helpers.config_validation'] = ha.helpers.config_validation
 sys.modules['homeassistant.helpers.device_registry'] = ha.helpers.device_registry
+sys.modules['homeassistant.helpers.dispatcher'] = ha.helpers.dispatcher
 sys.modules['homeassistant.helpers.entity'] = ha.helpers.entity
 sys.modules['homeassistant.helpers.event'] = ha.helpers.event
 sys.modules['homeassistant.helpers.restore_state'] = ha.helpers.restore_state

@@ -3,7 +3,8 @@
   "name": "Simple Timer",
   "after_dependencies": [
     "http",
-    "lovelace"
+    "lovelace",
+    "logbook"
   ],
   "codeowners": [
     "@ArikShemesh"

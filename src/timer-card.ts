@@ -116,6 +116,13 @@ class TimerCard extends LitElement {
   _touchStartPosition: { x: number; y: number } | null = null;
   _isCancelling: boolean = false;
 
+  // Separate long-press state for the countdown/progress area. Kept apart from
+  // the fields above, which belong to the daily-usage display and drive a
+  // *reset* on long press - sharing them would let one element's press cancel
+  // or misfire the other's.
+  _countdownLongPressTimer: number | null = null;
+  _countdownTouchStartPosition: { x: number; y: number } | null = null;
+
   // Schedule panel state
   _scheduleExpanded: boolean = false;
   _scheduleTime: string = "21:30";
@@ -636,12 +643,12 @@ class TimerCard extends LitElement {
       .catch(err => console.error("Timer-card: Error toggling power:", err));
   }
 
-  _showMoreInfo(): void {
+  _showMoreInfo(entityId?: string): void {
     if (!this._entitiesLoaded || !this.hass) {
       console.error("Timer-card: Cannot show more info. Entities not loaded.");
       return;
     }
-    const sensorId = this._effectiveSensorEntity!;
+    const sensorId = entityId || this._effectiveSensorEntity!;
 
     const event = new CustomEvent("hass-more-info", {
       bubbles: true,
@@ -649,6 +656,23 @@ class TimerCard extends LitElement {
       detail: { entityId: sensorId }
     });
     this.dispatchEvent(event);
+  }
+
+  // Status entity for this instance, published by the backend on the runtime
+  // sensor. Absent when the card is newer than the integration, in which case
+  // callers fall back to the runtime sensor.
+  get _effectiveStatusEntity(): string | null {
+    if (!this.hass || !this._effectiveSensorEntity) return null;
+    const sensor = this.hass.states[this._effectiveSensorEntity];
+    const statusId = sensor?.attributes?.status_entity_id;
+    if (typeof statusId !== 'string' || !this.hass.states[statusId]) return null;
+    return statusId;
+  }
+
+  // Opens history on the status entity - a plain state timeline of
+  // idle/active/scheduled, unlike the runtime sensor's sawtooth usage graph.
+  _showHistory(): void {
+    this._showMoreInfo(this._effectiveStatusEntity || undefined);
   }
 
   connectedCallback(): void {
@@ -839,6 +863,57 @@ class TimerCard extends LitElement {
     if (this._longPressTimer) {
       window.clearTimeout(this._longPressTimer);
       this._longPressTimer = null;
+    }
+  }
+
+  // --- Countdown long press: opens history ---------------------------------
+  // Bound to both the countdown text and the progress bar, since either can be
+  // hidden independently and the gesture must survive whichever remains.
+
+  _startCountdownLongPress(event: Event): void {
+    event.preventDefault();
+
+    this._countdownLongPressTimer = window.setTimeout(() => {
+      this._showHistory();
+      if ('vibrate' in navigator) {
+        navigator.vibrate(50);
+      }
+    }, 800); // Matches the daily-usage long press duration
+  }
+
+  _endCountdownLongPress(event?: Event): void {
+    if (event) {
+      event.preventDefault();
+    }
+    if (this._countdownLongPressTimer) {
+      window.clearTimeout(this._countdownLongPressTimer);
+      this._countdownLongPressTimer = null;
+    }
+    this._countdownTouchStartPosition = null;
+  }
+
+  _handleCountdownTouchStart(event: TouchEvent): void {
+    const touch = event.touches[0];
+    this._countdownTouchStartPosition = { x: touch.clientX, y: touch.clientY };
+
+    this._countdownLongPressTimer = window.setTimeout(() => {
+      this._showHistory();
+      if ('vibrate' in navigator) {
+        navigator.vibrate(50);
+      }
+    }, 800);
+  }
+
+  _handleCountdownTouchMove(event: TouchEvent): void {
+    // Cancel if the finger drifts - treats the gesture as a scroll, not a hold.
+    if (!this._countdownTouchStartPosition || !this._countdownLongPressTimer) return;
+
+    const touch = event.touches[0];
+    const deltaX = Math.abs(touch.clientX - this._countdownTouchStartPosition.x);
+    const deltaY = Math.abs(touch.clientY - this._countdownTouchStartPosition.y);
+
+    if (deltaX > 10 || deltaY > 10) {
+      this._endCountdownLongPress();
     }
   }
 
@@ -1333,14 +1408,30 @@ class TimerCard extends LitElement {
           <!-- Countdown Display Section -->
           <div class="countdown-section">
             ${showCountdownText ? html`
-              <div class="countdown-display ${isTimerActive ? 'active' : ''} ${isReverseMode ? 'reverse' : ''}">
+              <div class="countdown-display ${isTimerActive ? 'active' : ''} ${isReverseMode ? 'reverse' : ''}"
+                   @mousedown=${this._startCountdownLongPress}
+                   @mouseup=${this._endCountdownLongPress}
+                   @mouseleave=${this._endCountdownLongPress}
+                   @touchstart=${this._handleCountdownTouchStart}
+                   @touchmove=${this._handleCountdownTouchMove}
+                   @touchend=${this._endCountdownLongPress}
+                   @touchcancel=${this._endCountdownLongPress}
+                   title="Hold to show history">
                 ${countdownDisplay}
               </div>
             ` : ''}
 
             <!-- Block Progress Bar -->
             ${showProgressBar ? html`
-              <div class="block-progress-bar ${isReverseMode ? 'reverse' : ''} ${!showCountdownText ? 'solo' : ''}">
+              <div class="block-progress-bar ${isReverseMode ? 'reverse' : ''} ${!showCountdownText ? 'solo' : ''}"
+                   @mousedown=${this._startCountdownLongPress}
+                   @mouseup=${this._endCountdownLongPress}
+                   @mouseleave=${this._endCountdownLongPress}
+                   @touchstart=${this._handleCountdownTouchStart}
+                   @touchmove=${this._handleCountdownTouchMove}
+                   @touchend=${this._endCountdownLongPress}
+                   @touchcancel=${this._endCountdownLongPress}
+                   title="Hold to show history">
                 ${Array.from({ length: TOTAL_BLOCKS }, (_, index) => {
       const isActiveBlock = index < activeBlocksCount;
       const isLeadBlock = isTimerActive && isActiveBlock && index === activeBlocksCount - 1;

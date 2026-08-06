@@ -110,6 +110,28 @@ Enable **Show Schedule Panel** in the card editor to add a collapsible "Schedule
 
 Disabled by default — existing cards are unchanged until you turn it on.
 
+## 📜 History & Activity
+
+Each timer instance exposes a **Status** sensor (`sensor.<name>_status_<id>`) alongside the runtime sensor. Its state is one of `idle`, `active`, `delayed_start`, or `scheduled`.
+
+This is what makes the timer show up in Home Assistant's **logbook** and in the **Activity** feed on the device page. The runtime sensor cannot do that job: it reports a number of seconds, and the logbook deliberately skips numeric sensors so it isn't flooded with readings.
+
+Entries read naturally and name whoever triggered them:
+
+```
+9:08 PM   Water Heater   started for 30 minutes by Alex
+9:05 PM   Water Heater   finished — device turned off, daily usage 45 minutes
+6:00 AM   Water Heater   scheduled for 18:00 (30 minutes), repeating by Alex
+```
+
+Actions the integration takes on its own — a timer expiring, a schedule firing — are intentionally left unattributed rather than credited to the person who set them up hours earlier.
+
+### Opening history from the card
+
+**Press and hold the countdown display** (or the progress bar) for about a second. This opens the status entity's more-info dialog, showing its state timeline and logbook.
+
+There is no icon for this — it's a hidden gesture, so it's worth knowing it exists. It works in every countdown display mode, since the hold is bound to the countdown text and the progress bar alike.
+
 ## 🎛️ Card Configuration
 
 ### Visual Configuration (Recommended)
