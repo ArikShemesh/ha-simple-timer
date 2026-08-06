@@ -57,6 +57,20 @@ _LOGGER = logging.getLogger(__name__)
 # Default reset time configuration (hour, minute, second)
 DEFAULT_RESET_TIME = time(0, 0, 0)
 
+# How often the accumulated runtime is published to the state machine while the
+# switch is on. Runtime is still accumulated every second; this only controls
+# how many rows the recorder writes. The card renders daily usage as HH:MM
+# unless show_seconds is on, so at this cadence the displayed value is never
+# stale by a visible amount. See _runtime_write_interval.
+RUNTIME_WRITE_INTERVAL_SECONDS = 30
+
+# How often an active timer republishes state. The card runs its own 500ms
+# countdown off timer_finishes_at and does not need these writes; they exist to
+# keep the timer_remaining attribute fresh for templates, automations and the
+# stock entity card. Timer *firing* is a separate async_track_point_in_utc_time
+# and does not depend on this interval.
+TIMER_TICK_INTERVAL_SECONDS = 15
+
 # Sensor state attributes
 ATTR_TIMER_STATE = "timer_state"
 ATTR_TIMER_FINISHES_AT = "timer_finishes_at"
@@ -143,9 +157,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 class TimerRuntimeSensor(SensorEntity, RestoreEntity):
     """The sensor entity for Simple Timer."""
     _attr_has_entity_name = False
-    _attr_icon = "mdi:timer"
-    _attr_native_unit_of_measurement = UnitOfTime.SECONDS
-    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    # Purely push-driven: state is written from switch events, timer callbacks
+    # and the accumulator. There is no async_update, so polling would only
+    # produce a redundant write every SCAN_INTERVAL.
+    _attr_should_poll = False
+
+    # icon, unit and state_class are set in __init__.
 
     STORAGE_VERSION = 2
     STORAGE_KEY_FORMAT = f"{DOMAIN}_{{}}"
@@ -190,6 +207,9 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._is_performing_reset = False
         self._timer_start_method = None
         self._last_accumulated_seconds = 0
+        # Session-elapsed value at the last publish, in the same units as
+        # _last_accumulated_seconds, so the publish cadence cannot drift.
+        self._last_published_seconds = 0
 
         # Reset scheduling
         self._next_reset_date = None
@@ -758,9 +778,17 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         if self._timer_update_task:
             return
             
-        # Use standard HA timer helper instead of a custom loop
+        # Use standard HA timer helper instead of a custom loop.
+        #
+        # Do not remove this task. In reverse mode the switch is off so the
+        # accumulator never runs, and this is the only thing refreshing the
+        # timer_remaining attribute for templates, automations and the stock
+        # entity card. The card itself does not need it - it interpolates the
+        # countdown locally from timer_finishes_at.
         self._timer_update_task = async_track_time_interval(
-            self.hass, self._async_timer_update_tick, timedelta(seconds=1)
+            self.hass,
+            self._async_timer_update_tick,
+            timedelta(seconds=TIMER_TICK_INTERVAL_SECONDS),
         )
 
     async def _stop_timer_update_task(self):
@@ -769,7 +797,6 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             self._timer_update_task()  # Remove callback
             self._timer_update_task = None
 
-    @callback
     async def _async_timer_update_tick(self, now):
         """Timer update tick."""
         if self._timer_state != "active" or not self._timer_finishes_at or self._stop_event_received:
@@ -958,10 +985,31 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         # Initialize session state
         # We perform accumulation by adding the elapsed time of CURRENT session to the base state
         # The base state is the state at the beginning of THIS accumulation session
-        self._last_accumulated_seconds = 0
-        
+        #
+        # Seed from the existing session start rather than 0. On a fresh session
+        # _last_on_timestamp was just set to now, so this is 0 and behaviour is
+        # unchanged. After a restart it is the PRE-restart start time restored by
+        # _restore_basic_state, and self._state already contains that elapsed
+        # time - zeroing here would make the next tick add the whole session a
+        # second time. The active-timer restore path guards against this
+        # separately by resetting _last_on_timestamp to now.
+        #
+        # Known limitation: a manual-on session (switch on, no timer) forfeits
+        # the time HA was actually down, because the restored self._state only
+        # goes up to the last publish and nothing records where this on-period
+        # started. Counting it exactly would mean persisting the session counter
+        # and clearing it at every site that begins a new on-period; losing at
+        # most one restart's worth of runtime is the accepted trade. Timer-driven
+        # sessions are unaffected - _restore_active_timer recomputes them from
+        # _timer_start_moment and adds the offline gap explicitly.
+        self._last_accumulated_seconds = round(
+            (dt_util.utcnow() - self._last_on_timestamp).total_seconds()
+        )
+        self._last_published_seconds = self._last_accumulated_seconds
+
         # Use standard HA timer helper instead of a custom loop
-        # Update once per second - the frontend card handles smooth interpolation
+        # Accumulate once per second; how often that gets *published* to the
+        # state machine is decided in the tick, see _runtime_write_interval.
         self._accumulation_task = async_track_time_interval(
             self.hass, self._async_update_accumulated_runtime, timedelta(seconds=1)
         )
@@ -976,6 +1024,21 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         if self._last_on_timestamp:
              # Final update to capture any sub-second remainder or final segment
              self._async_update_accumulated_runtime(dt_util.utcnow(), final_update=True)
+
+    def _runtime_write_interval(self) -> int:
+        """Seconds between published runtime writes while the switch is on.
+
+        The card renders daily usage as HH:MM unless show_seconds is on, so in
+        the default configuration per-second writes are invisible and only cost
+        recorder rows. Users who turned show_seconds on see a per-second display
+        and keep the per-second cadence.
+
+        Read live from the config entry rather than cached, so toggling the
+        option in the options flow takes effect without a reload.
+        """
+        if self._entry.data.get("show_seconds", False):
+            return 1
+        return RUNTIME_WRITE_INTERVAL_SECONDS
 
     @callback
     def _async_update_accumulated_runtime(self, now, final_update=False) -> None:
@@ -1013,6 +1076,20 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             if diff > 0:
                 self._state += diff
                 self._last_accumulated_seconds = current_whole_second
+
+            # self._state is now exact. Publishing it is what costs a recorder
+            # row, so that is decided separately - every other write site (timer
+            # start/finish, reset, switch change) still publishes the exact
+            # current value on demand.
+            #
+            # Deliberately outside the `diff > 0` branch: a flush can land
+            # mid-second, where diff is 0 but seconds accumulated since the last
+            # publish are still pending. Gating on diff would silently drop them.
+            unpublished = self._last_accumulated_seconds - self._last_published_seconds
+            if unpublished > 0 and (
+                final_update or unpublished >= self._runtime_write_interval()
+            ):
+                self._last_published_seconds = self._last_accumulated_seconds
                 self.async_write_ha_state()
         else:
             if not final_update:
@@ -1441,6 +1518,15 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
     async def _handle_ha_shutdown(self, event):
         """Handle Home Assistant shutdown."""
+        # Publish the un-written tail before the stop flag goes up: runtime is
+        # only published every _runtime_write_interval() seconds, and the
+        # accumulator's opening guard returns early once _stop_event_received
+        # is set. Best effort - whether restore_state snapshots this depends on
+        # EVENT_HOMEASSISTANT_STOP listener ordering - but it at least leaves
+        # hass.states holding the correct value at shutdown.
+        if self._accumulation_task and self._last_on_timestamp:
+            self._async_update_accumulated_runtime(dt_util.utcnow(), final_update=True)
+
         self._stop_event_received = True
         _LOGGER.info(f"Simple Timer: [{self._entry_id}] Home Assistant shutdown - cancelling tasks")
         
