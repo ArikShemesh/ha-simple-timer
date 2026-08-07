@@ -33,6 +33,29 @@ STATUS_OPTIONS = [
     STATUS_SCHEDULED,
 ]
 
+# Runtime sensor state attributes. These are the card's public API - the card
+# reads them by name, and shipped bundles will not be rebuilt. Do not rename.
+ATTR_TIMER_STATE = "timer_state"
+ATTR_TIMER_FINISHES_AT = "timer_finishes_at"
+ATTR_TIMER_DURATION = "timer_duration"
+ATTR_TIMER_REMAINING = "timer_remaining"
+ATTR_WATCHDOG_MESSAGE = "watchdog_message"
+ATTR_SWITCH_ENTITY_ID = "switch_entity_id"
+ATTR_STATUS_ENTITY_ID = "status_entity_id"
+ATTR_LAST_ON_TIMESTAMP = "last_on_timestamp"
+ATTR_INSTANCE_TITLE = "instance_title"
+ATTR_NEXT_RESET_DATE = "next_reset_date"
+ATTR_RESET_TIME = "reset_time"
+ATTR_TIMER_START_METHOD = "timer_start_method"
+
+# Scheduled-start attributes
+ATTR_SCHEDULE_STATE = "schedule_state"
+ATTR_SCHEDULED_START = "scheduled_start"
+ATTR_SCHEDULED_DURATION = "scheduled_duration"
+ATTR_SCHEDULED_UNIT = "scheduled_unit"
+ATTR_SCHEDULE_REPEAT = "schedule_repeat"
+ATTR_SCHEDULE_DAYS = "schedule_days"
+
 # Bus events described by logbook.py for human-readable Activity lines.
 EVENT_TIMER_STARTED = f"{DOMAIN}_started"
 EVENT_TIMER_EXTENDED = f"{DOMAIN}_extended"

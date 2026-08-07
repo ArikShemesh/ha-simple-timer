@@ -35,6 +35,24 @@ from .const import (
     DOMAIN,
     WARNING_MSG_OFFLINE,
     SIGNAL_STATE_UPDATED,
+    ATTR_TIMER_STATE,
+    ATTR_TIMER_FINISHES_AT,
+    ATTR_TIMER_DURATION,
+    ATTR_TIMER_REMAINING,
+    ATTR_WATCHDOG_MESSAGE,
+    ATTR_SWITCH_ENTITY_ID,
+    ATTR_STATUS_ENTITY_ID,
+    ATTR_LAST_ON_TIMESTAMP,
+    ATTR_INSTANCE_TITLE,
+    ATTR_NEXT_RESET_DATE,
+    ATTR_RESET_TIME,
+    ATTR_TIMER_START_METHOD,
+    ATTR_SCHEDULE_STATE,
+    ATTR_SCHEDULED_START,
+    ATTR_SCHEDULED_DURATION,
+    ATTR_SCHEDULED_UNIT,
+    ATTR_SCHEDULE_REPEAT,
+    ATTR_SCHEDULE_DAYS,
     EVENT_TIMER_STARTED,
     EVENT_TIMER_EXTENDED,
     EVENT_TIMER_CANCELLED,
@@ -42,13 +60,18 @@ from .const import (
     EVENT_SCHEDULE_SET,
     EVENT_SCHEDULE_CANCELLED,
 )
-from .helpers import device_info_for_switch
+from .helpers import (
+    DEFAULT_RESET_TIME,
+    compute_next_fire,
+    device_info_for_switch,
+    duration_to_seconds,
+    format_duration_natural,
+    next_reset_datetime,
+    parse_reset_time,
+)
 from .status_sensor import TimerStatusSensor
 
 _LOGGER = logging.getLogger(__name__)
-
-# Default reset time configuration (hour, minute, second)
-DEFAULT_RESET_TIME = time(0, 0, 0)
 
 # How often the accumulated runtime is published to the state machine while the
 # switch is on. Runtime is still accumulated every second; this only controls
@@ -63,39 +86,6 @@ RUNTIME_WRITE_INTERVAL_SECONDS = 30
 # stock entity card. Timer *firing* is a separate async_track_point_in_utc_time
 # and does not depend on this interval.
 TIMER_TICK_INTERVAL_SECONDS = 15
-
-# Sensor state attributes
-ATTR_TIMER_STATE = "timer_state"
-ATTR_TIMER_FINISHES_AT = "timer_finishes_at"
-ATTR_TIMER_DURATION = "timer_duration"
-ATTR_TIMER_REMAINING = "timer_remaining"
-ATTR_WATCHDOG_MESSAGE = "watchdog_message"
-ATTR_SWITCH_ENTITY_ID = "switch_entity_id"
-ATTR_STATUS_ENTITY_ID = "status_entity_id"
-ATTR_LAST_ON_TIMESTAMP = "last_on_timestamp"
-ATTR_INSTANCE_TITLE = "instance_title"
-ATTR_NEXT_RESET_DATE = "next_reset_date"
-ATTR_RESET_TIME = "reset_time"
-ATTR_TIMER_START_METHOD = "timer_start_method"
-
-# Scheduled-start attributes
-ATTR_SCHEDULE_STATE = "schedule_state"
-ATTR_SCHEDULED_START = "scheduled_start"
-ATTR_SCHEDULED_DURATION = "scheduled_duration"
-ATTR_SCHEDULED_UNIT = "scheduled_unit"
-ATTR_SCHEDULE_REPEAT = "schedule_repeat"
-ATTR_SCHEDULE_DAYS = "schedule_days"
-
-def duration_to_seconds(duration: float, unit: str) -> float:
-    """Convert a service-call duration + unit pair to seconds."""
-    if unit in ["s", "sec", "seconds"]:
-        return duration
-    if unit in ["h", "hr", "hours"]:
-        return duration * 3600
-    if unit in ["d", "day", "days"]:
-        return duration * 86400
-    return duration * 60  # minutes is the default unit
-
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities) -> None:
     """Create the runtime and status sensors for this config entry."""
@@ -191,15 +181,12 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         return device_info_for_switch(self.hass, self._switch_entity_id)
 
     def _parse_reset_time(self, time_str: str) -> time:
-        """Parse reset time string into time object."""
-        try:
-            # Support both HH:MM and HH:MM:SS formats
-            if len(time_str) == 5:  # HH:MM
-                time_str += ":00"
-            return time.fromisoformat(time_str)
-        except (ValueError, TypeError):
+        """Parse a configured reset time, warning and falling back if unusable."""
+        parsed = parse_reset_time(time_str)
+        if parsed is None:
             _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Invalid reset time '{time_str}', using default 00:00:00")
             return DEFAULT_RESET_TIME
+        return parsed
 
     @property
     def reset_time(self) -> time:
@@ -226,7 +213,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             await self._setup_reset_scheduling({})
             
             # Update next reset date
-            self._next_reset_date = self._get_next_reset_datetime()
+            self._next_reset_date = next_reset_datetime(self._reset_time)
             await self._save_next_reset_date()
             
             self.async_write_ha_state()
@@ -323,16 +310,19 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
         self.hass.bus.async_fire(event_type, event_data, context=context)
 
-    def _format_duration_for_logbook(self, total_seconds: float) -> str:
-        """Format a duration for a logbook line, always including seconds.
+    def _format_duration_exact(self, total_seconds: float) -> str:
+        """Format a duration the user chose, never dropping the seconds.
 
-        Notifications honour the instance's `show_seconds` setting, which
-        rounds sub-minute values down to "0 minutes" — fine when spoken aloud,
-        useless in a historical record where a 10 second timer must not read as
-        zero. The logbook always gets the precise form.
+        Used for logbook lines and for the notifications that quote a timer's
+        duration or remaining time. `show_seconds` deliberately does not apply:
+        it truncates, so a 108 second timer would report as "1 minute" and a 10
+        second one as "0 minutes". Echoing a value back to the person who just
+        entered it must not round it away, and a history record must not lie.
+
+        Cumulative daily-usage totals are the other case and DO honour
+        `show_seconds` - there the seconds are noise, not the point.
         """
-        formatted, _ = self._format_time_for_notification(total_seconds, show_seconds=True)
-        return formatted
+        return format_duration_natural(total_seconds, show_seconds=True)
 
     async def _resolve_user_name(self, context: Context | None) -> str | None:
         """Return the display name of the user behind `context`, if any."""
@@ -424,24 +414,6 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         except Exception as e:
             _LOGGER.error(f"Simple Timer: [{self._entry_id}] Error getting notification config: {e}")
             return [], False
-
-    def _format_time_for_notification(self, total_seconds: float, show_seconds: bool = False) -> tuple[str, str]:
-        """Format time for voice assistants and notifications in natural text."""
-        total_seconds_int = max(0, int(total_seconds))
-        hours = total_seconds_int // 3600
-        minutes = (total_seconds_int % 3600) // 60
-        seconds = total_seconds_int % 60 if show_seconds else 0
-
-        parts = []
-        if hours > 0:
-            parts.append(f"{hours} hour" if hours == 1 else f"{hours} hours")
-        if minutes > 0 or (hours == 0 and not show_seconds and seconds == 0):
-            parts.append(f"{minutes} minute" if minutes == 1 else f"{minutes} minutes")
-        if show_seconds and (seconds > 0 or not parts):
-            parts.append(f"{seconds} second" if seconds == 1 else f"{seconds} seconds")
-
-        formatted_time = " ".join(parts) if parts else "0 minutes"
-        return formatted_time, ""
 
     async def _ensure_switch_state(self, desired_state: str, action_description: str, blocking: bool = True, force: bool = False, context: Context | None = None) -> None:
         """Ensure switch is in desired state, attempt to correct if not, and warn on failure.
@@ -564,22 +536,6 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             except Exception as e:
                 _LOGGER.error(f"Simple Timer: [{self._entry_id}] Failed to save next reset date: {e}")
 
-    def _get_next_reset_datetime(self, from_date=None):
-        """Calculate the next reset datetime from a given date using configured reset time."""
-        if from_date is None:
-            from_date = dt_util.now().date()
-        
-        reset_datetime = datetime.combine(from_date, self._reset_time)
-        reset_datetime = dt_util.as_local(reset_datetime)
-        
-        now = dt_util.now()
-        if reset_datetime <= now:
-            tomorrow = from_date + timedelta(days=1)
-            reset_datetime = datetime.combine(tomorrow, self._reset_time)
-            reset_datetime = dt_util.as_local(reset_datetime)
-        
-        return reset_datetime
-
     async def _check_missed_reset(self):
         """Check if we missed a reset while HA was offline."""
         if not self._next_reset_date:
@@ -599,7 +555,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             
             await self._perform_reset(is_catchup=True)
             
-            self._next_reset_date = self._get_next_reset_datetime()
+            self._next_reset_date = next_reset_datetime(self._reset_time)
             await self._save_next_reset_date()
             
             self._last_reset_was_catchup = True
@@ -1081,18 +1037,15 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             )
         
         # Send notification
-        notification_entity, show_seconds = await self._get_card_notification_config()
-        formatted_duration, label = self._format_time_for_notification(duration_minutes * 60.0, show_seconds)
+        formatted_duration = self._format_duration_exact(duration_minutes * 60.0)
         mode_text = "Delayed timer started for" if reverse_mode else "Timer was started for"
         notification_msg = f"{mode_text} {formatted_duration}"
-        if label:
-            notification_msg += f" {label}"
         await self._send_notification(notification_msg)
 
         await self._fire_logbook_event(
             EVENT_TIMER_STARTED,
             context=context,
-            duration=self._format_duration_for_logbook(duration_minutes * 60.0),
+            duration=self._format_duration_exact(duration_minutes * 60.0),
             reverse_mode=reverse_mode,
         )
 
@@ -1163,20 +1116,17 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         
         # Send notification
         remaining_seconds = max(0, int((self._timer_finishes_at - dt_util.utcnow()).total_seconds()))
-        notification_entity, show_seconds = await self._get_card_notification_config()
-        formatted_rest, label = self._format_time_for_notification(remaining_seconds, show_seconds)
-        formatted_added, _ = self._format_time_for_notification(duration_minutes * 60.0, show_seconds)
+        formatted_rest = self._format_duration_exact(remaining_seconds)
+        formatted_added = self._format_duration_exact(duration_minutes * 60.0)
         
         notification_msg = f"Timer extended by {formatted_added}. New remaining: {formatted_rest}"
-        if label:
-            notification_msg += f" {label}"
         await self._send_notification(notification_msg)
 
         await self._fire_logbook_event(
             EVENT_TIMER_EXTENDED,
             context=context,
-            added=self._format_duration_for_logbook(duration_minutes * 60.0),
-            remaining=self._format_duration_for_logbook(remaining_seconds),
+            added=self._format_duration_exact(duration_minutes * 60.0),
+            remaining=self._format_duration_exact(remaining_seconds),
         )
 
         self.async_write_ha_state()
@@ -1205,7 +1155,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         # Get current usage for notification
         current_usage = self._state
         notification_entity, show_seconds = await self._get_card_notification_config()
-        formatted_time, label = self._format_time_for_notification(current_usage, show_seconds)
+        formatted_time = format_duration_natural(current_usage, show_seconds)
         
         # Clean up timer
         await self._cleanup_timer_state()
@@ -1238,14 +1188,12 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         
         # Send notification
         notification_msg = f"Timer finished – daily usage {formatted_time}"
-        if label:
-            notification_msg += f" {label}"
         await self._send_notification(notification_msg)
 
         await self._fire_logbook_event(
             EVENT_TIMER_CANCELLED,
             context=context,
-            usage=self._format_duration_for_logbook(current_usage),
+            usage=self._format_duration_exact(current_usage),
         )
 
         self.async_write_ha_state()
@@ -1311,7 +1259,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
             current_usage = self._state
             notification_entity, show_seconds = await self._get_card_notification_config()
-            formatted_time, label = self._format_time_for_notification(current_usage, show_seconds)
+            formatted_time = format_duration_natural(current_usage, show_seconds)
 
             await self._cleanup_timer_state()
 
@@ -1319,15 +1267,13 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 await self._ensure_switch_state("off", "Timer completion turn-off", blocking=True)
 
             notification_msg = f"Timer was turned off - daily usage {formatted_time}"
-            if label:
-                notification_msg += f" {label}"
             await self._send_notification(notification_msg)
 
             # Unattributed on purpose — see the reverse-mode branch above.
             await self._fire_logbook_event(
                 EVENT_TIMER_FINISHED,
                 reverse_mode=False,
-                usage=self._format_duration_for_logbook(current_usage),
+                usage=self._format_duration_exact(current_usage),
             )
 
         self.async_write_ha_state()
@@ -1344,12 +1290,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         elif action == "turn_off":
             current_usage = self._state
             notification_entity, show_seconds = await self._get_card_notification_config()
-            formatted_time, label = self._format_time_for_notification(current_usage, show_seconds)
+            formatted_time = format_duration_natural(current_usage, show_seconds)
             
             await self._ensure_switch_state("off", "Manual turn-off", context=context)
             notification_msg = f"Timer was turned off - daily usage {formatted_time}"
-            if label:
-                notification_msg += f" {label}"
             await self._send_notification(notification_msg)
 
     @callback
@@ -1360,7 +1304,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
     async def _async_reset_at_scheduled_time(self):
         """Perform scheduled daily reset."""
         await self._perform_reset(is_catchup=False)
-        self._next_reset_date = self._get_next_reset_datetime()
+        self._next_reset_date = next_reset_datetime(self._reset_time)
         await self._save_next_reset_date()
 
     async def _handle_ha_shutdown(self, event):
@@ -1736,7 +1680,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
     async def _setup_reset_scheduling(self, storage_data: dict):
         """Set up daily reset scheduling with configurable reset time."""
         # Initialize next reset date
-        self._next_reset_date = self._get_next_reset_datetime()
+        self._next_reset_date = next_reset_datetime(self._reset_time)
         
         # Restore from storage if available
         if storage_data.get("next_reset_date"):
@@ -1744,10 +1688,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 self._next_reset_date = datetime.fromisoformat(storage_data["next_reset_date"])
             except (ValueError, TypeError) as e:
                 _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Could not parse stored reset date: {e}")
-                self._next_reset_date = self._get_next_reset_datetime()
+                self._next_reset_date = next_reset_datetime(self._reset_time)
 
         if not self._next_reset_date:
-            self._next_reset_date = self._get_next_reset_datetime()
+            self._next_reset_date = next_reset_datetime(self._reset_time)
             await self._save_next_reset_date()
 
         # Check for missed resets only if we have historical data
@@ -1769,27 +1713,6 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
     # Scheduled-start (fire async_start_timer at a future absolute clock time)
     # ------------------------------------------------------------------
 
-    def _compute_next_fire(self, start_time: time, repeat: bool, days: list[int],
-                           now: datetime | None = None) -> datetime | None:
-        """Return the next local datetime >= now matching start_time (and weekday set)."""
-        now = now or dt_util.now()
-        candidate = now.replace(
-            hour=start_time.hour, minute=start_time.minute,
-            second=getattr(start_time, "second", 0), microsecond=0,
-        )
-        if candidate <= now:
-            candidate += timedelta(days=1)
-
-        if repeat and days:
-            # Advance up to 7 days to the next allowed weekday (Mon=0).
-            for _ in range(7):
-                if candidate.weekday() in days:
-                    break
-                candidate += timedelta(days=1)
-            else:
-                return None  # No valid weekday (shouldn't happen with non-empty days)
-        return candidate
-
     async def async_schedule_timer(self, start_time: time, duration: float,
                                    unit: str = "min", repeat: bool = False,
                                    days: list[int] | None = None,
@@ -1801,7 +1724,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         later fires from this schedule is deliberately unattributed.
         """
         days = sorted(set(days or []))
-        fire_at = self._compute_next_fire(start_time, repeat, days)
+        fire_at = compute_next_fire(start_time, repeat, days)
         if fire_at is None:
             _LOGGER.warning(f"Simple Timer: [{self._entry_id}] Could not compute schedule fire time")
             return
@@ -1829,7 +1752,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             EVENT_SCHEDULE_SET,
             context=context,
             start_time=fire_at.strftime("%H:%M"),
-            duration=self._format_duration_for_logbook(duration_to_seconds(duration, unit)),
+            duration=self._format_duration_exact(duration_to_seconds(duration, unit)),
             repeat=repeat,
         )
 
@@ -1862,7 +1785,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         await self.async_start_timer(duration, unit, reverse_mode=False, start_method="schedule")
 
         if repeat:
-            next_fire = self._compute_next_fire(start_time, repeat, days)
+            next_fire = compute_next_fire(start_time, repeat, days)
             if next_fire:
                 self._scheduled_fire_at = next_fire
                 self._arm_schedule()
@@ -1948,7 +1871,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         if self._schedule_repeat:
             # Recurring: always recompute the next occurrence from now.
             start_time = fire_at.timetz().replace(tzinfo=None)
-            next_fire = self._compute_next_fire(start_time, True, self._schedule_days, now)
+            next_fire = compute_next_fire(start_time, True, self._schedule_days, now)
             if not next_fire:
                 await self._clear_schedule()
                 return
@@ -2052,7 +1975,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         # Actually _state is safe.
         current_usage = self._state
         notification_entity, show_seconds = await self._get_card_notification_config()
-        formatted_time, label = self._format_time_for_notification(current_usage, show_seconds)
+        formatted_time = format_duration_natural(current_usage, show_seconds)
         
         # FIX: Clear last_on_timestamp BEFORE cleanup to prevent final accumulation update from adding offline time
         self._last_on_timestamp = None
@@ -2094,8 +2017,6 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             # Send notification
             await asyncio.sleep(1)
             notification_msg = f"Timer was turned off - daily usage {formatted_time}"
-            if label:
-                notification_msg += f" {label}"
             await self._send_notification(notification_msg)
 
     async def _ensure_switch_state_with_retries(self, desired_state: str, action_description: str, force: bool = False):
@@ -2343,8 +2264,8 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         # Get current usage for notification
         current_usage = self._state
         notification_entity, show_seconds = await self._get_card_notification_config()
-        formatted_time, label = self._format_time_for_notification(current_usage, show_seconds)
-        formatted_zero, _ = self._format_time_for_notification(0, show_seconds)
+        formatted_time = format_duration_natural(current_usage, show_seconds)
+        formatted_zero = format_duration_natural(0, show_seconds)
         
         # Stop any ongoing accumulation
         await self._stop_realtime_accumulation()
@@ -2376,8 +2297,6 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         
         # Send notification
         notification_msg = f"Daily usage reset from {formatted_time} to {formatted_zero}"
-        if label:
-            notification_msg += f" {label}"
         await self._send_notification(notification_msg)
         
         _LOGGER.info(f"Simple Timer: [{self._entry_id}] Daily usage reset: {old_state}s -> 0s")

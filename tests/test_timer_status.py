@@ -2,13 +2,13 @@
 import unittest
 from ha_harness import load
 
-sensor_module = load("sensor")
 status_module = load("status_sensor")
 const_module = load("const")
+helpers = load("helpers")
 
 derive_timer_status = status_module.derive_timer_status
-duration_to_seconds = sensor_module.duration_to_seconds
-_format_time = sensor_module.TimerRuntimeSensor._format_time_for_notification
+duration_to_seconds = helpers.duration_to_seconds
+_format_time = helpers.format_duration_natural
 
 STATUS_IDLE = const_module.STATUS_IDLE
 STATUS_ACTIVE = const_module.STATUS_ACTIVE
@@ -115,25 +115,41 @@ class TestDurationToSeconds(unittest.TestCase):
 class TestLogbookDurationFormatting(unittest.TestCase):
     """Logbook durations must stay precise regardless of show_seconds.
 
-    Notifications honour show_seconds, which collapses sub-minute values to
-    "0 minutes". That is acceptable when spoken but wrong in a history log,
-    so _format_duration_for_logbook pins show_seconds to True.
+    show_seconds is overridden below a minute, so sub-minute values report
+    seconds whatever the instance setting says. _format_duration_exact
+    additionally pins show_seconds to True, which is what keeps compound
+    durations precise in logbook lines and in the notifications that quote a
+    duration. Only cumulative daily-usage totals still honour the setting.
     """
 
     def test_short_durations_survive(self):
-        """A 10 second timer must never log as "0 minutes"."""
-        self.assertEqual(_format_time(None, 10, show_seconds=True)[0], "10 seconds")
-        # Guards the regression this exists to prevent:
-        self.assertEqual(_format_time(None, 10, show_seconds=False)[0], "0 minutes")
+        """A 10 second timer must never read as "0 minutes", setting be damned."""
+        self.assertEqual(_format_time(10, show_seconds=True), "10 seconds")
+        self.assertEqual(_format_time(10, show_seconds=False), "10 seconds")
+
+    def test_sub_minute_ignores_show_seconds(self):
+        """Every sub-minute value reports seconds; "0 minutes" is unreachable."""
+        for seconds, expected in [(0, "0 seconds"), (1, "1 second"),
+                                  (30, "30 seconds"), (59, "59 seconds")]:
+            with self.subTest(seconds=seconds):
+                self.assertEqual(_format_time(seconds, show_seconds=False), expected)
+                self.assertEqual(_format_time(seconds, show_seconds=True), expected)
+
+    def test_a_minute_and_over_still_honours_show_seconds(self):
+        """The override stops at 60s - coarse durations round as before."""
+        self.assertEqual(_format_time(60, show_seconds=False), "1 minute")
+        self.assertEqual(_format_time(90, show_seconds=False), "1 minute")
+        self.assertEqual(_format_time(90, show_seconds=True), "1 minute 30 seconds")
+        self.assertEqual(_format_time(3661, show_seconds=False), "1 hour 1 minute")
 
     def test_compound_durations(self):
-        self.assertEqual(_format_time(None, 365, show_seconds=True)[0], "6 minutes 5 seconds")
-        self.assertEqual(_format_time(None, 5400, show_seconds=True)[0], "1 hour 30 minutes")
+        self.assertEqual(_format_time(365, show_seconds=True), "6 minutes 5 seconds")
+        self.assertEqual(_format_time(5400, show_seconds=True), "1 hour 30 minutes")
 
     def test_scheduled_ten_second_duration_reads_naturally(self):
         """End to end for the case that prompted this: schedule 10 s."""
         seconds = duration_to_seconds(10, "s")
-        self.assertEqual(_format_time(None, seconds, show_seconds=True)[0], "10 seconds")
+        self.assertEqual(_format_time(seconds, show_seconds=True), "10 seconds")
 
 
 if __name__ == '__main__':
