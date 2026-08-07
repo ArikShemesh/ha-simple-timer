@@ -70,6 +70,7 @@ from .helpers import (
     next_reset_datetime,
     parse_reset_time,
 )
+from .startup import async_wait_until_ready
 from .status_sensor import TimerStatusSensor
 
 _LOGGER = logging.getLogger(__name__)
@@ -1487,31 +1488,12 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         """Wait for HA startup or essential dependencies with defensive checks."""
         try:
             self._log.info("Waiting for HA startup or dependencies...")
-            
+
             # Setup switch entity ID from config early for checks
             self._switch_entity_id = getattr(self._entry, 'data', {}).get('switch_entity_id')
-            
-            max_wait = 60
-            start_time = dt_util.utcnow()
-            check_interval = 1
-            
-            # 1. Wait for Core State Running
-            if self.hass.state != CoreState.running:
-                self._log.info(f"Waiting for HA Core (current: {self.hass.state})...")
-                await self._wait_for_core_state(CoreState.running)
-            
-            # 2. Wait for dependencies even after Core is running
-            # This ensures that even if Core says "running", we give integrations like Z-Wave/Zigbee
-            # a chance to fully initialize their entities.
-            while (dt_util.utcnow() - start_time).total_seconds() < max_wait:
-                if await self._are_dependencies_ready():
-                    self._log.info("Dependencies ready")
-                    break
-                await asyncio.sleep(check_interval)
-            
-            elapsed = (dt_util.utcnow() - start_time).total_seconds()
-            self._log.info(f"Startup wait completed after {elapsed:.1f}s")
-            
+
+            await async_wait_until_ready(self.hass, self._switch_entity_id, self._log)
+
             await self._complete_initialization()
             
         except Exception as e:
@@ -1521,76 +1503,6 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 await self._complete_initialization()
             except Exception as init_error:
                 self._log.error(f"Error during fallback initialization: {init_error}")
-
-    async def _wait_for_core_state(self, target_state: CoreState):
-        """Wait for HA core to reach a specific state."""
-        start = dt_util.utcnow()
-        while self.hass.state != target_state:
-            if (dt_util.utcnow() - start).total_seconds() > 60:
-                self._log.warning(f"Timed out waiting for CoreState.{target_state}")
-                return
-            await asyncio.sleep(1)
-        self._log.debug(f"Reached CoreState.{target_state}")
-
-    async def _are_dependencies_ready(self) -> bool:
-        """Check if all essential dependencies are ready."""
-        # 1. Entity Registry
-        if not await self._safe_check_entity_registry():
-            return False
-            
-        # 2. Service Registry
-        if not await self._safe_check_service_registry():
-            return False
-            
-        # 3. Switch Entity (if configured)
-        if not await self._safe_check_switch_entity():
-            return False
-            
-        return True
-
-    async def _safe_check_entity_registry(self) -> bool:
-        """Safely check if entity registry is ready."""
-        try:
-            from homeassistant.helpers import entity_registry as er
-            entity_registry = er.async_get(self.hass)
-            
-            # Basic availability test
-            return entity_registry is not None
-        except ImportError:
-            # Module not available yet
-            return False
-        except Exception:
-            # Any other error
-            return False
-
-    async def _safe_check_service_registry(self) -> bool:
-        """Safely check if essential services are available."""
-        try:
-            services = self.hass.services.async_services()
-            
-            # Check for homeassistant domain (most critical)
-            ha_services = services.get("homeassistant", {})
-            has_turn_on = "turn_on" in ha_services
-            has_turn_off = "turn_off" in ha_services
-            
-            return has_turn_on and has_turn_off
-        except Exception:
-            return False
-
-    async def _safe_check_switch_entity(self) -> bool:
-        """Safely check if switch entity is available."""
-        if not self._switch_entity_id:
-            return True
-        
-        try:
-            switch_state = self.hass.states.get(self._switch_entity_id)
-            if not switch_state:
-                return False
-            
-            # Accept any state except unavailable/unknown
-            return switch_state.state not in ["unavailable", "unknown"]
-        except Exception:
-            return False
 
     async def _complete_initialization(self):
         """Complete full initialization after HA startup."""
