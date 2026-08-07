@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timedelta, time
-from typing import Any, Dict
+from typing import Any
 
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorStateClass
 from homeassistant.const import (
@@ -15,12 +15,11 @@ from homeassistant.const import (
     UnitOfTime,
     EVENT_HOMEASSISTANT_STOP,
 )
-from homeassistant.core import HomeAssistant, callback, Context, Event, State, CoreState
+from homeassistant.core import HomeAssistant, callback, Context, Event, CoreState
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_time_change,
-    async_call_later,
     async_track_point_in_utc_time,
     async_track_time_interval,
 )
@@ -194,11 +193,14 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._accumulation_task = None
         self._state_listener_disposer = None
         self._stop_event_received = False
-        self._is_finishing_normally = False
 
         self._timer_state = "idle"
         self._timer_finishes_at = None
         self._timer_duration = 0
+        # Sticky by design: cleared only when a new timer starts or a restore
+        # overwrites it. async_cancel_timer reads it *after* _cleanup_timer_state
+        # to decide whether to turn the switch off, so cleanup must not reset it.
+        self._timer_reverse_mode = False
         self._timer_start_moment = None  # Track exact timer start moment
         self._runtime_at_timer_start = 0  # Track runtime when timer started
         self._timer_unsub = None
@@ -413,7 +415,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             ATTR_RESET_TIME: self._reset_time.strftime("%H:%M:%S"),  # Expose current reset time
             ATTR_TIMER_START_METHOD: self._timer_start_method,
             "show_seconds": show_seconds_setting,  # Expose show_seconds from config entry
-            "reverse_mode": getattr(self, '_timer_reverse_mode', False),
+            "reverse_mode": self._timer_reverse_mode,
             
             # Default timer attributes for frontend sync
             "default_timer_enabled": self._default_timer_enabled,
@@ -456,77 +458,6 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         except Exception as e:
             _LOGGER.error(f"Simple Timer: [{self._entry_id}] Error getting notification config: {e}")
             return [], False
-
-    def _search_cards_in_config(self, config: dict) -> tuple[str | None, bool]:
-        """Recursively search for timer cards in lovelace config (LEGACY - for migration warning only)."""
-        if isinstance(config, dict):
-            # Check if this is a timer card for our instance
-            if (config.get('type') == 'custom:timer-card' and 
-                config.get('timer_instance_id') == self._entry_id):
-                notification_entity = config.get('notification_entity')
-                show_seconds = config.get('show_seconds', False)
-                if notification_entity and notification_entity != 'none_selected':
-                    return notification_entity, show_seconds
-            
-            # Search nested structures
-            for value in config.values():
-                if isinstance(value, (dict, list)):
-                    result = self._search_cards_in_config(value)
-                    if result[0]:
-                        return result
-                        
-        elif isinstance(config, list):
-            for item in config:
-                if isinstance(item, (dict, list)):
-                    result = self._search_cards_in_config(item)
-                    if result[0]:
-                        return result
-        
-        return None, False
-
-    async def _get_notification_from_storage(self) -> tuple[str | None, bool]:
-        """Get notification config from storage files using async operations (LEGACY - for migration warning only)."""
-        try:
-            import json
-            import asyncio
-            
-            storage_path = self.hass.config.path('.storage')
-            
-            try:
-                # List files asynchronously
-                loop = asyncio.get_event_loop()
-                import os
-                filenames = await loop.run_in_executor(None, os.listdir, storage_path)
-            except (OSError, FileNotFoundError):
-                return None, False
-                
-            # Search through lovelace storage files
-            for filename in filenames:
-                if filename.startswith('lovelace'):
-                    try:
-                        file_path = os.path.join(storage_path, filename)
-                        content = await loop.run_in_executor(None, self._read_file_sync, file_path)
-                        if content:
-                            data = json.loads(content)
-                            if 'data' in data and 'config' in data['data']:
-                                notification_entity, show_seconds = self._search_cards_in_config(data['data']['config'])
-                                if notification_entity:
-                                    return notification_entity, show_seconds
-                    except (json.JSONDecodeError, KeyError, IOError, UnicodeDecodeError):
-                        continue
-                        
-        except Exception as e:
-            _LOGGER.debug(f"Simple Timer: [{self._entry_id}] Could not read storage files: {e}")
-        
-        return None, False
-
-    def _read_file_sync(self, file_path: str) -> str | None:
-        """Synchronous file reading helper for executor."""
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                return f.read()
-        except (IOError, UnicodeDecodeError):
-            return None
 
     def _format_time_for_notification(self, total_seconds: float, show_seconds: bool = False) -> tuple[str, str]:
         """Format time for voice assistants and notifications in natural text."""
@@ -907,7 +838,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 self._last_on_timestamp = None
 
             # We exclude reverse_mode because the switch is supposed to be off during those.
-            is_reverse_mode = getattr(self, '_timer_reverse_mode', False)
+            is_reverse_mode = self._timer_reverse_mode
 
             if (
                 self._timer_state == "active"
@@ -1104,34 +1035,8 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         """
         
         # Convert duration to minutes for internal storage
-        duration_minutes = duration
-        if unit in ["s", "sec", "seconds"]:
-             duration_minutes = duration / 60.0
-        elif unit in ["h", "hr", "hours"]:
-             duration_minutes = duration * 60
-        elif unit in ["d", "day", "days"]:
-             duration_minutes = duration * 1440
-             
-        # Format for logging and notification
-        unit_display = unit
-        if unit in ["s", "sec", "seconds"]:
-             unit_display = "sec"
-             # Show integer if it's a whole number
-             duration_display = int(duration) if duration.is_integer() else duration
-        elif unit in ["m", "min", "minutes"]:
-             unit_display = "min"
-             duration_display = int(duration)
-        elif unit in ["h", "hr", "hours"]:
-             unit_display = "hr"
-             # Show integer if it's a whole number, otherwise float
-             duration_display = int(duration) if duration.is_integer() else duration
-        elif unit in ["d", "day", "days"]:
-             unit_display = "day"
-             # Show integer if it's a whole number, otherwise float
-             duration_display = int(duration) if duration.is_integer() else duration
-        else:
-             duration_display = duration
-        
+        duration_minutes = duration_to_seconds(duration, unit) / 60.0
+
         _LOGGER.info(f"Simple Timer: [{self._entry_id}] Starting {'reverse' if reverse_mode else 'normal'} timer for {duration} {unit}")
         
         self._timer_start_method = start_method
@@ -1238,20 +1143,8 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             return
 
         # Convert duration to minutes
-        duration_minutes = duration
-        if unit in ["s", "sec", "seconds"]:
-             duration_minutes = duration / 60.0
-        elif unit in ["h", "hr", "hours"]:
-             duration_minutes = duration * 60
-        elif unit in ["d", "day", "days"]:
-             duration_minutes = duration * 1440
-             
-        # Format for notification
-        unit_display = unit
-        duration_display = int(duration) if isinstance(duration, (int, float)) and duration % 1 == 0 else duration
-        if unit in ["s", "sec", "seconds"]: unit_display = "sec"
-        elif unit in ["m", "min", "minutes"]: unit_display = "min"
-        
+        duration_minutes = duration_to_seconds(duration, unit) / 60.0
+
         # Check max limit (9999 days)
         MAX_DURATION_MINUTES = 9999 * 1440
         
@@ -1279,12 +1172,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                  )
                  return
 
-            # Update display values to reflect capped amount
             _LOGGER.info(f"Simple Timer: [{self._entry_id}] Extension capped from {old_duration_minutes} to {duration_minutes} min to stay within limit")
-            duration_display = round(duration_minutes, 1)
-            # Simplify display if it's basically an integer now
-            if duration_display % 1 == 0: duration_display = int(duration_display)
-            unit_display = "min" # Force min unit since we calculated in minutes
 
         # Calculate new duration and finish time
         self._timer_duration += duration_minutes
@@ -1357,7 +1245,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         await self._cleanup_timer_state()
         
         # Handle switch state based on timer mode
-        reverse_mode = getattr(self, '_timer_reverse_mode', False)
+        reverse_mode = self._timer_reverse_mode
         current_switch_state = self.hass.states.get(self._switch_entity_id) if self._switch_entity_id else None
 
         if reverse_mode:
@@ -1409,81 +1297,74 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         if self._timer_state != "active":
             return
             
-        reverse_mode = getattr(self, '_timer_reverse_mode', False)
+        reverse_mode = self._timer_reverse_mode
         
-        try:
-            # Set a flag to prevent the cancellation handler from running its logic
-            self._is_finishing_normally = True
-            
-            if reverse_mode:
-                # REVERSE MODE: Turn switch ON when timer finishes
-                await self._cleanup_timer_state()
-                
-                if self._switch_entity_id:
-                    await self.hass.services.async_call(
-                        "homeassistant", "turn_on", {"entity_id": self._switch_entity_id}, blocking=True
-                    )
-                    await self._ensure_switch_state("on", "Reverse timer completion turn-on", blocking=True)
-                    
-                    # Reset state to not count the timer wait time as usage
-                    # In reverse mode, usage should start from when switch turns ON
-                    self._last_on_timestamp = dt_util.utcnow()
-                    await self._start_realtime_accumulation()
-                
-                await self._send_notification(f"Delayed start timer completed - device turned ON")
+        if reverse_mode:
+            # REVERSE MODE: Turn switch ON when timer finishes
+            await self._cleanup_timer_state()
 
-                # No context: expiry is the integration acting on its own, not
-                # the user who started the timer. Leaving it unattributed keeps
-                # the logbook from claiming they acted hours after the fact.
-                await self._fire_logbook_event(EVENT_TIMER_FINISHED, reverse_mode=True)
-            else:
-                # NORMAL MODE: Original logic - turn switch OFF
-                await self._stop_realtime_accumulation()
-                
-                # FORCE PRECISE ACCUMULATION FOR TIMER DURATION
-                # This ensures that even if accumulation missed a second, we record the exact timer duration
-                if self._runtime_at_timer_start is not None:
-                     # Calculate what the state should be: base + duration
-                     # But we must be careful not to double count if the timer was extended
-                     # Actually, simplest path: Duration is king when limiting.
-                     
-                     # We want total usage = runtime_at_start + total_elapsed_during_timer
-                     # runtime_at_start was the snapshot when timer started.
-                     # duration is in minutes. 
-                     
-                     expected_usage = self._runtime_at_timer_start + (self._timer_duration * 60)
-                     self._state = round(expected_usage)
-                     _LOGGER.info(f"Simple Timer: [{self._entry_id}] Corrected final usage to {self._state}s (Target: {expected_usage}s)")
-
-                self.async_write_ha_state()
-                
-                await asyncio.sleep(0.1)
-                
-                current_usage = self._state
-                notification_entity, show_seconds = await self._get_card_notification_config()
-                formatted_time, label = self._format_time_for_notification(current_usage, show_seconds)
-                
-                await self._cleanup_timer_state()
-                
-                if self._switch_entity_id:
-                    await self._ensure_switch_state("off", "Timer completion turn-off", blocking=True)
-                    
-                notification_msg = f"Timer was turned off - daily usage {formatted_time}"
-                if label:
-                    notification_msg += f" {label}"
-                await self._send_notification(notification_msg)
-
-                # Unattributed on purpose — see the reverse-mode branch above.
-                await self._fire_logbook_event(
-                    EVENT_TIMER_FINISHED,
-                    reverse_mode=False,
-                    usage=self._format_duration_for_logbook(current_usage),
+            if self._switch_entity_id:
+                await self.hass.services.async_call(
+                    "homeassistant", "turn_on", {"entity_id": self._switch_entity_id}, blocking=True
                 )
+                await self._ensure_switch_state("on", "Reverse timer completion turn-on", blocking=True)
+
+                # Reset state to not count the timer wait time as usage
+                # In reverse mode, usage should start from when switch turns ON
+                self._last_on_timestamp = dt_util.utcnow()
+                await self._start_realtime_accumulation()
+
+            await self._send_notification(f"Delayed start timer completed - device turned ON")
+
+            # No context: expiry is the integration acting on its own, not
+            # the user who started the timer. Leaving it unattributed keeps
+            # the logbook from claiming they acted hours after the fact.
+            await self._fire_logbook_event(EVENT_TIMER_FINISHED, reverse_mode=True)
+        else:
+            # NORMAL MODE: Original logic - turn switch OFF
+            await self._stop_realtime_accumulation()
+
+            # FORCE PRECISE ACCUMULATION FOR TIMER DURATION
+            # This ensures that even if accumulation missed a second, we record the exact timer duration
+            if self._runtime_at_timer_start is not None:
+                 # Calculate what the state should be: base + duration
+                 # But we must be careful not to double count if the timer was extended
+                 # Actually, simplest path: Duration is king when limiting.
+
+                 # We want total usage = runtime_at_start + total_elapsed_during_timer
+                 # runtime_at_start was the snapshot when timer started.
+                 # duration is in minutes.
+
+                 expected_usage = self._runtime_at_timer_start + (self._timer_duration * 60)
+                 self._state = round(expected_usage)
+                 _LOGGER.info(f"Simple Timer: [{self._entry_id}] Corrected final usage to {self._state}s (Target: {expected_usage}s)")
 
             self.async_write_ha_state()
-        finally:
-            # Always unset the flag
-            self._is_finishing_normally = False
+
+            await asyncio.sleep(0.1)
+
+            current_usage = self._state
+            notification_entity, show_seconds = await self._get_card_notification_config()
+            formatted_time, label = self._format_time_for_notification(current_usage, show_seconds)
+
+            await self._cleanup_timer_state()
+
+            if self._switch_entity_id:
+                await self._ensure_switch_state("off", "Timer completion turn-off", blocking=True)
+
+            notification_msg = f"Timer was turned off - daily usage {formatted_time}"
+            if label:
+                notification_msg += f" {label}"
+            await self._send_notification(notification_msg)
+
+            # Unattributed on purpose — see the reverse-mode branch above.
+            await self._fire_logbook_event(
+                EVENT_TIMER_FINISHED,
+                reverse_mode=False,
+                usage=self._format_duration_for_logbook(current_usage),
+            )
+
+        self.async_write_ha_state()
 
     async def async_manual_power_toggle(self, action: str, context: Context | None = None) -> None:
         """Handle manual power toggle from frontend.
@@ -2317,9 +2198,6 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         _LOGGER.info(f"Simple Timer: [{self._entry_id}] Handling expired reverse timer")
         
         try:
-            # Set a flag to prevent the cancellation handler from running its logic
-            self._is_finishing_normally = True
-            
             # Add watchdog message before cleanup
             self._watchdog_message = WARNING_MSG_OFFLINE
             
@@ -2379,9 +2257,6 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             _LOGGER.error(f"Simple Timer: [{self._entry_id}] Error handling expired reverse timer: {e}")
             import traceback
             _LOGGER.error(f"Simple Timer: [{self._entry_id}] Error traceback: {traceback.format_exc()}")
-        finally:
-            # Always unset the flag
-            self._is_finishing_normally = False
 
     async def _restore_active_timer(self, now: datetime):
         """Restore an active timer after restart."""
@@ -2413,7 +2288,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 self._watchdog_message = WARNING_MSG_OFFLINE
                 
                 # For reverse mode, we don't add offline time since device was OFF
-                reverse_mode = getattr(self, '_timer_reverse_mode', False)
+                reverse_mode = self._timer_reverse_mode
                 if not reverse_mode:
                     # For normal timers, recalculate total usage from start time if available
                     # This is more accurate than adding offline time to potentially stale state
@@ -2441,7 +2316,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         await self._start_timer_update_task()
         
         # Handle switch state based on timer mode
-        reverse_mode = getattr(self, '_timer_reverse_mode', False)
+        reverse_mode = self._timer_reverse_mode
         if reverse_mode:
             # For reverse mode, ensure switch stays OFF during countdown
             await self._ensure_switch_state("off", "Reverse timer state verification on restart", blocking=True)
@@ -2454,7 +2329,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         # Check if we have an active reverse mode timer
         reverse_mode_active = (
             self._timer_state == "active" and 
-            getattr(self, '_timer_reverse_mode', False)
+            self._timer_reverse_mode
         )
         
         if reverse_mode_active:
