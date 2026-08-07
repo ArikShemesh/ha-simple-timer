@@ -1,0 +1,101 @@
+"""Shared Home Assistant stubs so the integration modules can be imported alone.
+
+These tests run without Home Assistant installed. Importing this module installs
+a mock `homeassistant` package tree plus a **real** `simple_timer` package entry,
+after which `load("sensor")` and friends import normally.
+
+Why a real package and not a MagicMock: importing `simple_timer.helpers` makes
+CPython read `simple_timer.__spec__`, and MagicMock raises AttributeError for
+dunders it was not explicitly given. A MagicMock parent therefore works only for
+modules preloaded by hand into sys.modules, and breaks the moment one module of
+the integration imports a sibling. A ModuleSpec built with is_package=True gives
+a genuine __spec__ and __path__ without executing the integration's __init__.py
+(which would pull in the real Home Assistant).
+
+Installed once at import time, so every test module shares one mock tree and the
+result does not depend on which test file runs first.
+"""
+import importlib
+import importlib.machinery
+import importlib.util
+import os
+import sys
+from unittest.mock import MagicMock
+
+COMPONENT_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "custom_components", "simple_timer")
+)
+
+
+# Separate base classes, to avoid metaclass conflicts and duplicate-base errors
+# when an entity subclasses both.
+class MockSensorEntity:
+    pass
+
+
+class MockRestoreEntity:
+    pass
+
+
+# Submodules the integration imports from. Each is bound to the matching
+# attribute of the mock root, so `ha.helpers.event` and
+# sys.modules["homeassistant.helpers.event"] stay the same object.
+_HA_SUBMODULES = (
+    "components",
+    "components.sensor",
+    "components.persistent_notification",
+    "components.http",
+    "config_entries",
+    "const",
+    "core",
+    "exceptions",
+    "helpers",
+    "helpers.config_validation",
+    "helpers.device_registry",
+    "helpers.dispatcher",
+    "helpers.entity",
+    "helpers.event",
+    "helpers.restore_state",
+    "helpers.storage",
+    "util",
+    "util.dt",
+)
+
+
+def _install_homeassistant() -> MagicMock:
+    """Install the mock homeassistant package tree; return its root."""
+    sys.modules["voluptuous"] = MagicMock()
+
+    ha = MagicMock()
+    sys.modules["homeassistant"] = ha
+    for dotted in _HA_SUBMODULES:
+        obj = ha
+        for part in dotted.split("."):
+            obj = getattr(obj, part)
+        sys.modules[f"homeassistant.{dotted}"] = obj
+
+    ha.components.sensor.SensorEntity = MockSensorEntity
+    ha.helpers.restore_state.RestoreEntity = MockRestoreEntity
+
+    # @callback must stay an identity decorator. Left as a MagicMock it would
+    # replace every decorated method with the same mock object, and tests would
+    # exercise that mock instead of the real code.
+    ha.core.callback = lambda func: func
+
+    return ha
+
+
+def _install_package() -> None:
+    """Register `simple_timer` as a real package rooted at the component dir."""
+    spec = importlib.machinery.ModuleSpec("simple_timer", None, is_package=True)
+    spec.submodule_search_locations = [COMPONENT_DIR]
+    sys.modules["simple_timer"] = importlib.util.module_from_spec(spec)
+
+
+def load(name: str):
+    """Import `simple_timer.<name>`, letting normal machinery resolve siblings."""
+    return importlib.import_module(f"simple_timer.{name}")
+
+
+ha = _install_homeassistant()
+_install_package()

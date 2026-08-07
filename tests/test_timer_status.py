@@ -1,65 +1,12 @@
 """Unit tests for the status sensor's state derivation."""
 import unittest
-import sys
-import os
-import importlib.util
-from unittest.mock import MagicMock
+from ha_harness import load
 
-# Mock voluptuous
-sys.modules['voluptuous'] = MagicMock()
+sensor_module = load("sensor")
+status_module = load("status_sensor")
+const_module = load("const")
 
-# Base classes to avoid metaclass conflict and duplicate base errors
-class MockSensorEntity:
-    pass
-
-class MockRestoreEntity:
-    pass
-
-# Setup hierarchical Home Assistant mocks
-ha = MagicMock()
-sys.modules['homeassistant'] = ha
-sys.modules['homeassistant.components'] = ha.components
-sys.modules['homeassistant.components.sensor'] = ha.components.sensor
-sys.modules['homeassistant.components.persistent_notification'] = ha.components.persistent_notification
-sys.modules['homeassistant.components.http'] = ha.components.http
-sys.modules['homeassistant.config_entries'] = ha.config_entries
-sys.modules['homeassistant.const'] = ha.const
-sys.modules['homeassistant.core'] = ha.core
-sys.modules['homeassistant.exceptions'] = ha.exceptions
-sys.modules['homeassistant.helpers'] = ha.helpers
-sys.modules['homeassistant.helpers.config_validation'] = ha.helpers.config_validation
-sys.modules['homeassistant.helpers.device_registry'] = ha.helpers.device_registry
-sys.modules['homeassistant.helpers.dispatcher'] = ha.helpers.dispatcher
-sys.modules['homeassistant.helpers.entity'] = ha.helpers.entity
-sys.modules['homeassistant.helpers.event'] = ha.helpers.event
-sys.modules['homeassistant.helpers.restore_state'] = ha.helpers.restore_state
-sys.modules['homeassistant.helpers.storage'] = ha.helpers.storage
-sys.modules['homeassistant.util'] = ha.util
-sys.modules['homeassistant.util.dt'] = ha.util.dt
-
-# Assign separate mock classes to base classes used by the sensors
-ha.components.sensor.SensorEntity = MockSensorEntity
-ha.helpers.restore_state.RestoreEntity = MockRestoreEntity
-
-# Create simple_timer package mock and load const.py
-simple_timer_pkg = MagicMock()
-simple_timer_pkg.__path__ = [os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "custom_components", "simple_timer"))]
-sys.modules['simple_timer'] = simple_timer_pkg
-
-const_path = os.path.join(simple_timer_pkg.__path__[0], "const.py")
-spec_const = importlib.util.spec_from_file_location("simple_timer.const", const_path)
-const_module = importlib.util.module_from_spec(spec_const)
-sys.modules["simple_timer.const"] = const_module
-spec_const.loader.exec_module(const_module)
-
-# Load sensor.py as simple_timer.sensor
-sensor_path = os.path.join(simple_timer_pkg.__path__[0], "sensor.py")
-spec_sensor = importlib.util.spec_from_file_location("simple_timer.sensor", sensor_path)
-sensor_module = importlib.util.module_from_spec(spec_sensor)
-sys.modules["simple_timer.sensor"] = sensor_module
-spec_sensor.loader.exec_module(sensor_module)
-
-derive_timer_status = sensor_module.derive_timer_status
+derive_timer_status = status_module.derive_timer_status
 duration_to_seconds = sensor_module.duration_to_seconds
 _format_time = sensor_module.TimerRuntimeSensor._format_time_for_notification
 
