@@ -6,6 +6,7 @@ entity state, so it can be unit tested without standing up an entity.
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime, time, timedelta
 
 from homeassistant.core import HomeAssistant
@@ -15,6 +16,24 @@ from homeassistant.util import dt as dt_util
 
 # Fallback when a config entry carries no usable reset time.
 DEFAULT_RESET_TIME = time(0, 0, 0)
+
+
+class _InstanceLogger(logging.LoggerAdapter):
+    """Prefixes every record with the integration name and config entry id."""
+
+    def process(self, msg, kwargs):
+        return f"Simple Timer: [{self.extra['entry_id']}] {msg}", kwargs
+
+
+def instance_logger(logger: logging.Logger, entry_id: str) -> logging.LoggerAdapter:
+    """Return a logger that tags each line with `entry_id`.
+
+    Every line this integration writes is prefixed so multi-instance setups can
+    be told apart in the log. Doing it in an adapter rather than at each call
+    site keeps the prefix out of ~130 f-strings, and lets each module keep its
+    own `getLogger(__name__)` so records stay attributable to the module.
+    """
+    return _InstanceLogger(logger, {"entry_id": entry_id})
 
 
 def device_info_for_switch(hass: HomeAssistant, switch_entity_id: str | None) -> DeviceInfo | None:
