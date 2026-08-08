@@ -150,10 +150,37 @@ class FailurePathTestCase(unittest.IsolatedAsyncioTestCase):
         await s._send_notification("hi")        # must not raise
         s._log.error.assert_called()
 
-    # Deliberately NOT tested: "notify.mobile_app.extra" is currently truncated
-    # to notify.mobile_app, silently calling a DIFFERENT service than the one
-    # configured; "notify." and ".service" pass validation too. Asserting that
-    # would pin the bug. Recorded in TODO.md - it needs a fix, not a test.
+    async def test_malformed_targets_are_rejected_not_truncated(self):
+        """A target must be exactly `domain.service`, both parts non-empty.
+
+        The dangerous case is the third one: it used to be truncated to
+        `notify.mobile_app` and sent, silently invoking a DIFFERENT service
+        than the one configured. Refusing and warning is diagnosable; guessing
+        is not.
+        """
+        for bad in ["notify.mobile_app.extra", "notify.", ".service", "..",
+                    "notify", "", "a.b.c.d"]:
+            with self.subTest(target=bad):
+                s = make_sensor(entities=[bad])
+                await s._send_notification("hi")
+                self.assertEqual(calls_of(s), [])
+                s._log.warning.assert_called()
+
+    async def test_wellformed_targets_still_go_through(self):
+        """The validation must not reject anything that worked before."""
+        for good, expected in [("notify.phone", ("notify", "phone")),
+                               ("switch.flag", ("switch", "turn_on")),
+                               ("input_button.ping", ("input_button", "press")),
+                               ("notify.mobile_app_pixel_7", ("notify", "mobile_app_pixel_7"))]:
+            with self.subTest(target=good):
+                s = make_sensor(entities=[good])
+                await s._send_notification("hi")
+                self.assertEqual(calls_of(s)[0][:2], expected)
+
+    async def test_a_malformed_target_does_not_block_a_valid_one(self):
+        s = make_sensor(entities=["notify.a.b", "notify.phone"])
+        await s._send_notification("hi")
+        self.assertEqual([c[1] for c in calls_of(s)], ["phone"])
 
 
 class LiveConfigTestCase(unittest.IsolatedAsyncioTestCase):

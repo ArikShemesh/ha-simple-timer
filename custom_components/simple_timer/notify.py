@@ -82,12 +82,16 @@ class Notifier:
     async def _async_send_one(self, target: str, message: str, title: str) -> None:
         """Deliver to a single target, absorbing its failure."""
         try:
+            # Exactly `domain.service`, both parts non-empty. Accepting a
+            # longer string and using its first two parts would silently call
+            # a different service than the one configured - "notify.a.b" was
+            # dispatched as notify.a. Refusing is diagnosable; guessing is not.
             parts = target.split(".")
-            if len(parts) < 2:
+            if len(parts) != 2 or not all(parts):
                 self._log.warning(f"Invalid notification entity format: {target}")
                 return
 
-            domain, service = parts[0], parts[1]
+            domain, service = parts
 
             if domain in _TURN_ON_DOMAINS:
                 self._log.debug(f"Turning on configured notification entity: {target}")
