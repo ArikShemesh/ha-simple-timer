@@ -71,6 +71,7 @@ from .helpers import (
 from .notify import Notifier
 from .schedule import ScheduleManager
 from .startup import async_wait_until_ready
+from .switch_control import SwitchController
 from .timer_store import TimerStore
 from .status_sensor import TimerStatusSensor
 
@@ -168,6 +169,16 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         # Storage setup
         self._store = TimerStore(hass, self._entry_id, self._log)
         self._notifier = Notifier(hass, entry, self._log)
+
+        # Switch commanding. Handed a notify callback and a predicate rather
+        # than the sensor, so the dependency runs one way.
+        self._switch = SwitchController(
+            hass,
+            lambda: self._switch_entity_id,
+            notify=self._send_notification,
+            is_timer_active=lambda: self._timer_state == "active",
+            log=self._log,
+        )
 
         # Scheduled-start (future absolute clock time). Built after the store,
         # which it needs, and handed the sensor callbacks it reaches back
@@ -383,60 +394,6 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             self._last_reset_was_catchup = False
 
         return attrs
-
-    async def _ensure_switch_state(self, desired_state: str, action_description: str, blocking: bool = True, force: bool = False, context: Context | None = None) -> None:
-        """Ensure switch is in desired state, attempt to correct if not, and warn on failure.
-
-        `context` is the originating service call's context, passed only on
-        user-initiated paths so the logbook names the user who acted. Paths with
-        no user behind them (timer expiry, restart recovery) omit it deliberately.
-        """
-        if not self._switch_entity_id:
-            return
-            
-        current_state = self.hass.states.get(self._switch_entity_id)
-
-        if not current_state:
-            return
-            
-        # If state is already correct and NOT forcing, do nothing
-        if current_state.state == desired_state and not force:
-            return
-            
-        # State mismatch - attempt to correct
-        try:
-            action = "turn_on" if desired_state == "on" else "turn_off"
-            await self.hass.services.async_call(
-                "homeassistant", action, {"entity_id": self._switch_entity_id}, blocking=blocking,
-                context=context
-            )
-            
-            # Wait a moment for state change to propagate
-            # Retry a few times to account for slow state updates from integrations
-            max_retries = 3
-            wait_time = 1.0
-            
-            for attempt in range(max_retries):
-                await asyncio.sleep(wait_time)
-                
-                updated_state = self.hass.states.get(self._switch_entity_id)
-                if updated_state and updated_state.state == desired_state:
-                    return
-                
-                # If checking failed, wait a bit longer next time
-                wait_time += 1.0
-            
-            # Verify correction worked
-            updated_state = self.hass.states.get(self._switch_entity_id)
-            if updated_state and updated_state.state != desired_state:
-                warning_msg = f"Warning: {action_description} - switch should be '{desired_state}' but remains '{updated_state.state}'. Check switch connectivity."
-                self._log.warning(f"{warning_msg}")
-                await self._send_notification(warning_msg)
-                
-        except Exception as e:
-            warning_msg = f"Warning: {action_description} - failed to set switch to '{desired_state}': {e}"
-            self._log.warning(f"{warning_msg}")
-            await self._send_notification(warning_msg)
 
     async def _send_notification(self, message: str) -> None:
         """Send a notification to the instance's configured targets.
@@ -707,13 +664,6 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         await self._cleanup_timer_state()
         self.async_write_ha_state()
         
-    def _is_switch_on(self) -> bool:
-        """Check if the monitored switch is currently on."""
-        if self._switch_entity_id:
-            switch_state = self.hass.states.get(self._switch_entity_id)
-            return switch_state is not None and switch_state.state == STATE_ON
-        return False
-
     async def _start_realtime_accumulation(self) -> None:
         """Start real-time accumulation task."""
         if self._stop_event_received:
@@ -888,10 +838,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             # NORMAL MODE: Convenience turn ON, but don't wait for it
             current_switch_state = self.hass.states.get(self._switch_entity_id) if self._switch_entity_id else None
             if not current_switch_state or current_switch_state.state != STATE_ON:
-                await self.hass.services.async_call(
-                   "homeassistant", "turn_on", {"entity_id": self._switch_entity_id}, blocking=False,
-                   context=context
-                )
+                await self._switch.async_command("on", blocking=False, context=context)
                 # DECOUPLED: Do NOT wait for state change. Start timer immediately.
                 # User can turn switch on/off manually during timer.
         
@@ -904,7 +851,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._timer_reverse_mode = reverse_mode
         
         # Set last_on_timestamp only for normal mode
-        if not reverse_mode and self._is_switch_on() and not self._last_on_timestamp:
+        if not reverse_mode and self._switch.is_on() and not self._last_on_timestamp:
             self._last_on_timestamp = timer_start_moment
         
         # Save timer state to storage
@@ -921,7 +868,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         await self._async_setup_switch_listener()
         
         # Start accumulation only in normal mode when switch is ON
-        if not reverse_mode and self._is_switch_on():
+        if not reverse_mode and self._switch.is_on():
             await self._start_realtime_accumulation()
         
         # Set up timer completion callback
@@ -1065,11 +1012,8 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 # COUPLED: Turn switch OFF.
                 if self._switch_entity_id:
                     try:
-                        await self.hass.services.async_call(
-                            "homeassistant", "turn_off", {"entity_id": self._switch_entity_id}, blocking=True,
-                            context=context
-                        )
-                        await self._ensure_switch_state("off", "Timer cancellation turn-off", context=context)
+                        await self._switch.async_command("off", context=context)
+                        await self._switch.async_ensure("off", "Timer cancellation turn-off", context=context)
                         await self._stop_realtime_accumulation()
                     except Exception as e:
                         self._log.warning(f"Could not turn off switch: {e}")
@@ -1109,10 +1053,8 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             await self._cleanup_timer_state()
 
             if self._switch_entity_id:
-                await self.hass.services.async_call(
-                    "homeassistant", "turn_on", {"entity_id": self._switch_entity_id}, blocking=True
-                )
-                await self._ensure_switch_state("on", "Reverse timer completion turn-on", blocking=True)
+                await self._switch.async_command("on")
+                await self._switch.async_ensure("on", "Reverse timer completion turn-on", blocking=True)
 
                 # Reset state to not count the timer wait time as usage
                 # In reverse mode, usage should start from when switch turns ON
@@ -1155,7 +1097,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             await self._cleanup_timer_state()
 
             if self._switch_entity_id:
-                await self._ensure_switch_state("off", "Timer completion turn-off", blocking=True)
+                await self._switch.async_ensure("off", "Timer completion turn-off", blocking=True)
 
             notification_msg = f"Timer was turned off - daily usage {formatted_time}"
             await self._send_notification(notification_msg)
@@ -1176,14 +1118,14 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         attributes the switch change to the user who pressed the power button.
         """
         if action == "turn_on":
-            await self._ensure_switch_state("on", "Manual turn-on", context=context)
+            await self._switch.async_ensure("on", "Manual turn-on", context=context)
             await self._send_notification("Timer started")
         elif action == "turn_off":
             current_usage = self._state
             notification_entity, show_seconds = await self._notifier.async_config()
             formatted_time = format_duration_natural(current_usage, show_seconds)
             
-            await self._ensure_switch_state("off", "Manual turn-off", context=context)
+            await self._switch.async_ensure("off", "Manual turn-off", context=context)
             notification_msg = f"Timer was turned off - daily usage {formatted_time}"
             await self._send_notification(notification_msg)
 
@@ -1601,7 +1543,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             if self._switch_entity_id:
                 try:
                     # Use robust retry logic
-                    await self._ensure_switch_state_with_retries("on", "Expired reverse timer turn-on")
+                    await self._switch.async_ensure_with_retries("on", "Expired reverse timer turn-on")
                     
                     # Start accumulation since device is now ON (or will be soon)
                     self._last_on_timestamp = dt_util.utcnow()
@@ -1618,7 +1560,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             if self._switch_entity_id:
                 try:
                     # Use robust retry logic
-                    await self._ensure_switch_state_with_retries("off", "Expired timer turn-off", force=True)
+                    await self._switch.async_ensure_with_retries("off", "Expired timer turn-off", force=True)
                 except Exception as e:
                     self._log.warning(f"Could not turn off switch: {e}")
             
@@ -1626,67 +1568,6 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             await asyncio.sleep(1)
             notification_msg = f"Timer was turned off - daily usage {formatted_time}"
             await self._send_notification(notification_msg)
-
-    async def _ensure_switch_state_with_retries(self, desired_state: str, action_description: str, force: bool = False):
-        """Ensure switch state with retries to handle startup unavailability."""
-        if not self._switch_entity_id:
-            return
-
-        # First attempt (blocking to try and get it right immediately)
-        # We wrap this in try/except to ensure we proceed to scheduling retry even if first attempt fails
-        try:
-             await self._ensure_switch_state(desired_state, action_description, blocking=True, force=force)
-        except Exception as e:
-             self._log.warning(f"Initial switch attempt failed: {e}")
-
-        # Schedule background verification
-        self.hass.async_create_task(self._verify_and_retry_switch_state(desired_state, self._switch_entity_id, force=force))
-
-    async def _verify_and_retry_switch_state(self, desired_state: str, entity_id: str, attempt: int = 1, force: bool = False):
-        """Background task to verify switch state and retry if needed."""
-        # Wait before checking (exponential-ish backoff: 2s, 5s, 10s, 20s)
-        delays = [2, 5, 10, 20]
-        if attempt > len(delays):
-            return
-            
-        await asyncio.sleep(delays[attempt-1])
-        
-        # Safety Check: If we are trying to turn OFF, but a new timer has started and is active, ABORT.
-        # This prevents the retry logic from fighting a user who just started a new timer.
-        if desired_state == "off" and self._timer_state == "active":
-             self._log.debug("Aborting switch retry (off) because timer is now active")
-             return
-             
-        current_state_obj = self.hass.states.get(entity_id)
-        if not current_state_obj:
-             # Entity missing, definitely retry
-             self._log.debug(f"Switch entity missing during verify, scheduling retry {attempt+1}")
-             self.hass.async_create_task(self._verify_and_retry_switch_state(desired_state, entity_id, attempt + 1, force=force))
-             return
-             
-        actual = current_state_obj.state
-        
-        # Check if state matches
-        # If forcing (on first retry attempt), we ignore the match check to deal with stale HA state
-        state_match = (actual == desired_state)
-        should_skip_check = (force and attempt == 1)
-        
-        if state_match and not should_skip_check:
-             return
-             
-        # If unavailable/unknown, we retry
-        # If definitive mismatch (e.g. ON when should be OFF), we retry
-        
-        self._log.warning(f"Switch state mismatch detected (Expected {desired_state}, got {actual}). Retrying attempt {attempt}...")
-        
-        action = "turn_on" if desired_state == "on" else "turn_off"
-        try:
-            await self.hass.services.async_call("homeassistant", action, {"entity_id": entity_id}, blocking=True)
-        except Exception as e:
-            self._log.warning(f"Retry attempt {attempt} failed: {e}")
-        
-        # Schedule next check
-        self.hass.async_create_task(self._verify_and_retry_switch_state(desired_state, entity_id, attempt + 1, force=force))
 
     async def _handle_expired_reverse_timer(self):
         """Handle reverse mode timer that expired while HA was offline."""
@@ -1707,9 +1588,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                     self._log.error("Switch entity not found in hass.states!")
                 
                 try:
-                    await self.hass.services.async_call(
-                        "homeassistant", "turn_on", {"entity_id": self._switch_entity_id}, blocking=False
-                    )
+                    await self._switch.async_command("on", blocking=False)
                     
                     # Wait and check if it worked
                     await asyncio.sleep(2)
@@ -1719,7 +1598,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                     else:
                         self._log.error("Could not get updated switch state!")
                     
-                    await self._ensure_switch_state("on", "Expired reverse timer completion turn-on", blocking=False, force=True)
+                    await self._switch.async_ensure("on", "Expired reverse timer completion turn-on", blocking=False, force=True)
                     
                 except Exception as switch_error:
                     self._log.error(f"ERROR turning switch ON: {switch_error}")
@@ -1816,10 +1695,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         reverse_mode = self._timer_reverse_mode
         if reverse_mode:
             # For reverse mode, ensure switch stays OFF during countdown
-            await self._ensure_switch_state("off", "Reverse timer state verification on restart", blocking=True)
+            await self._switch.async_ensure("off", "Reverse timer state verification on restart", blocking=True)
         else:
             # For normal mode, ensure switch is ON
-            await self._ensure_switch_state("on", "Active timer state verification on restart", blocking=True)
+            await self._switch.async_ensure("on", "Active timer state verification on restart", blocking=True)
 
     async def _start_accumulation_if_needed(self):
         """Start accumulation if switch is on."""
@@ -1837,9 +1716,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                     # Switch should be OFF during reverse timer countdown
                     self._log.info("Ensuring switch stays OFF during reverse timer countdown")
                     try:
-                        await self.hass.services.async_call(
-                            "homeassistant", "turn_off", {"entity_id": self._switch_entity_id}, blocking=True
-                        )
+                        await self._switch.async_command("off")
                     except Exception as e:
                         self._log.error(f"Failed to turn off switch during reverse timer: {e}")
             
@@ -1847,16 +1724,16 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             return
         
         # Normal behavior for non-reverse timers
-        if self._is_switch_on() and not self._last_on_timestamp:
+        if self._switch.is_on() and not self._last_on_timestamp:
             self._last_on_timestamp = dt_util.utcnow()
             await self._start_realtime_accumulation()
-        elif self._is_switch_on() and self._last_on_timestamp:
+        elif self._switch.is_on() and self._last_on_timestamp:
             await self._delayed_start_accumulation()
 
     async def _delayed_start_accumulation(self):
         """Start accumulation with a delay."""
         await asyncio.sleep(0.5)
-        if self._is_switch_on() and self._last_on_timestamp and not self._stop_event_received:
+        if self._switch.is_on() and self._last_on_timestamp and not self._stop_event_received:
             await self._start_realtime_accumulation()
         
     def _calculate_timer_elapsed_since_start(self) -> int:

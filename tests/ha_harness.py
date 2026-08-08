@@ -77,6 +77,15 @@ def _install_homeassistant() -> MagicMock:
     ha.components.sensor.SensorEntity = MockSensorEntity
     ha.helpers.restore_state.RestoreEntity = MockRestoreEntity
 
+    # Real values, not auto-mocked attributes. The integration compares entity
+    # states against these by equality, and a MagicMock never equals the string
+    # "on", so leaving them mocked silently makes every such comparison False.
+    ha.const.STATE_ON = "on"
+    ha.const.STATE_OFF = "off"
+    ha.const.STATE_UNAVAILABLE = "unavailable"
+    ha.const.STATE_UNKNOWN = "unknown"
+    ha.const.EVENT_HOMEASSISTANT_STOP = "homeassistant_stop"
+
     # @callback must stay an identity decorator. Left as a MagicMock it would
     # replace every decorated method with the same mock object, and tests would
     # exercise that mock instead of the real code.

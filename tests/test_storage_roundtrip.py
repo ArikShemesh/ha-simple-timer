@@ -89,7 +89,11 @@ def make_sensor(stored=None):
         write_state=s.async_write_ha_state, fire_logbook=s._fire_logbook_event,
         log=s._log,
     )
-    s._is_switch_on = MagicMock(return_value=True)
+    s._switch = MagicMock()
+    s._switch.is_on = MagicMock(return_value=True)
+    s._switch.async_ensure = AsyncMock()
+    s._switch.async_command = AsyncMock()
+    s._switch.async_ensure_with_retries = AsyncMock()
     s.hass.services.async_call = AsyncMock()
     return s
 
@@ -287,13 +291,12 @@ class MalformedPayloadTestCase(unittest.IsolatedAsyncioTestCase):
         """
         s = make_sensor(stored={"reverse_mode": "yes", "duration": 10})
         s._cleanup_timer_state = AsyncMock()
-        s._ensure_switch_state_with_retries = AsyncMock()
         sensor_module.asyncio.sleep = AsyncMock()
 
         await s._handle_expired_timer()
 
         self.assertFalse(s._timer_reverse_mode)
-        desired_states = [c.args[0] for c in s._ensure_switch_state_with_retries.call_args_list]
+        desired_states = [c.args[0] for c in s._switch.async_ensure_with_retries.call_args_list]
         self.assertIn("off", desired_states)
         self.assertNotIn("on", desired_states)
 

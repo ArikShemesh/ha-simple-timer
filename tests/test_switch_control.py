@@ -1,0 +1,434 @@
+"""Characterization tests for switch commanding.
+
+Written BEFORE extracting SwitchController, to pin current behaviour.
+
+This is the code that actually moves the user's boiler, and it is the least
+obvious in the project: a blocking attempt with a poll loop, then a detached
+background chain that re-checks on a backoff and re-commands. Two rules in
+there are load-bearing and easy to lose in a refactor:
+
+* the retry chain aborts a pending turn-OFF if a new timer has started, so it
+  cannot fight a user who just pressed start;
+* `force` makes the FIRST retry re-command even when HA already reports the
+  desired state, which is what recovers from a stale state after a restart.
+
+Weighted to those and to the failure paths rather than the happy path.
+"""
+import unittest
+from unittest.mock import AsyncMock, MagicMock
+
+from ha_harness import load
+
+sensor_module = load("sensor")
+switch_module = load("switch_control")
+TimerRuntimeSensor = sensor_module.TimerRuntimeSensor
+
+
+def make_sensor(switch_state="off", entity="switch.boiler"):
+    s = object.__new__(TimerRuntimeSensor)
+    s.hass = MagicMock()
+    s.hass.services.async_call = AsyncMock()
+    s._log = MagicMock()
+    s._switch_entity_id = entity
+    s._timer_state = "idle"
+    s._send_notification = AsyncMock()
+
+    s._states = {}
+    if switch_state is not None and entity:
+        st = MagicMock()
+        st.state = switch_state
+        s._states[entity] = st
+    s.hass.states.get = lambda eid: s._states.get(eid)
+
+    # Detached retries are captured rather than run, so a test drives them
+    # deliberately instead of a background chain running away.
+    s._spawned = []
+    s.hass.async_create_task = lambda coro: s._spawned.append(coro) or coro
+
+    s._switch = switch_module.SwitchController(
+        s.hass, lambda: s._switch_entity_id,
+        notify=s._send_notification,
+        is_timer_active=lambda: s._timer_state == "active",
+        log=s._log,
+    )
+    return s
+
+
+def set_state(s, value, entity="switch.boiler"):
+    st = MagicMock()
+    st.state = value
+    s._states[entity] = st
+
+
+def calls_of(s):
+    """(domain, service, data) per call. Use full_calls_of for blocking/context."""
+    return [(c.args[0], c.args[1], c.args[2]) for c in s.hass.services.async_call.call_args_list]
+
+
+def full_calls_of(s):
+    """(domain, service, data, blocking, context) - kwargs included.
+
+    calls_of() drops kwargs, so on its own it cannot see a changed `blocking`
+    or a dropped `context`.
+    """
+    return [(c.args[0], c.args[1], c.args[2],
+             c.kwargs.get("blocking"), c.kwargs.get("context"))
+            for c in s.hass.services.async_call.call_args_list]
+
+
+def drop_spawned(s):
+    """Close captured coroutines so Python does not warn about them."""
+    for coro in s._spawned:
+        coro.close()
+    s._spawned.clear()
+
+
+class EnsureStateTestCase(unittest.IsolatedAsyncioTestCase):
+
+    def setUp(self):
+        self.slept = []
+
+        async def fake_sleep(seconds):
+            self.slept.append(seconds)
+
+        # Restore it: asyncio is a shared module object, so leaving the patch
+        # in place makes later unrelated tests skip their real waits.
+        original = switch_module.asyncio.sleep
+        self.addCleanup(lambda: setattr(switch_module.asyncio, "sleep", original))
+        switch_module.asyncio.sleep = fake_sleep
+
+    async def test_no_switch_configured_does_nothing(self):
+        s = make_sensor(entity=None)
+        await s._switch.async_ensure("on", "test")
+        self.assertEqual(calls_of(s), [])
+
+    async def test_unknown_entity_does_nothing(self):
+        """Current behaviour, and a KNOWN DEFECT - see TODO.md W1.
+
+        A configured entity with no state object is skipped silently: no
+        command, no warning, no notification. A timer expiring during an
+        integration reload can therefore report "turned off" while the boiler
+        stays on. Pinned here to describe what happens today, not to endorse
+        it; the earlier docstring called this "bail rather than command
+        blindly", which read as approval.
+        """
+        s = make_sensor(switch_state=None)
+        await s._switch.async_ensure("on", "test")
+        self.assertEqual(calls_of(s), [])
+        s._send_notification.assert_not_awaited()   # the part that is wrong
+
+    async def test_already_correct_is_left_alone(self):
+        s = make_sensor(switch_state="on")
+        await s._switch.async_ensure("on", "test")
+        self.assertEqual(calls_of(s), [])
+
+    async def test_force_commands_even_when_already_correct(self):
+        """Recovers from a stale HA state after a restart."""
+        s = make_sensor(switch_state="on")
+        await s._switch.async_ensure("on", "test", force=True)
+        self.assertEqual(calls_of(s)[0][:2], ("homeassistant", "turn_on"))
+
+    async def test_mismatch_commands_the_switch(self):
+        s = make_sensor(switch_state="off")
+        await s._switch.async_ensure("on", "test")
+        self.assertEqual(calls_of(s),
+                         [("homeassistant", "turn_on", {"entity_id": "switch.boiler"})])
+
+    async def test_desired_off_maps_to_turn_off(self):
+        s = make_sensor(switch_state="on")
+        await s._switch.async_ensure("off", "test")
+        self.assertEqual(calls_of(s)[0][1], "turn_off")
+
+    async def test_context_is_forwarded_for_attribution(self):
+        """The logbook names the acting user from this."""
+        s = make_sensor(switch_state="off")
+        ctx = object()
+        await s._switch.async_ensure("on", "test", context=ctx)
+        self.assertIs(s.hass.services.async_call.call_args.kwargs["context"], ctx)
+
+    async def test_polls_with_growing_waits_until_the_state_lands(self):
+        s = make_sensor(switch_state="off")
+
+        async def slow(seconds):
+            self.slept.append(seconds)
+            if len(self.slept) == 2:        # arrives on the second poll
+                set_state(s, "on")
+
+        switch_module.asyncio.sleep = slow
+        await s._switch.async_ensure("on", "test")
+
+        self.assertEqual(self.slept, [1.0, 2.0])
+        s._send_notification.assert_not_awaited()
+
+    async def test_a_switch_that_never_lands_warns_and_notifies(self):
+        s = make_sensor(switch_state="off")
+        await s._switch.async_ensure("on", "test")
+
+        self.assertEqual(self.slept, [1.0, 2.0, 3.0])
+        s._log.warning.assert_called()
+        s._send_notification.assert_awaited_once()
+        self.assertIn("Check switch connectivity", s._send_notification.await_args.args[0])
+
+    async def test_a_failing_service_call_warns_and_never_raises(self):
+        s = make_sensor(switch_state="off")
+        s.hass.services.async_call = AsyncMock(side_effect=RuntimeError("unavailable"))
+
+        await s._switch.async_ensure("on", "test")     # must not raise
+
+        s._log.warning.assert_called()
+        s._send_notification.assert_awaited_once()
+
+
+class RetryChainTestCase(unittest.IsolatedAsyncioTestCase):
+    """The detached background chain - where a bug keeps commanding a device."""
+
+    def setUp(self):
+        self.slept = []
+
+        async def fake_sleep(seconds):
+            self.slept.append(seconds)
+
+        # Restore it: asyncio is a shared module object, so leaving the patch
+        # in place makes later unrelated tests skip their real waits.
+        original = switch_module.asyncio.sleep
+        self.addCleanup(lambda: setattr(switch_module.asyncio, "sleep", original))
+        switch_module.asyncio.sleep = fake_sleep
+
+    async def test_with_retries_makes_a_blocking_attempt_then_spawns_one(self):
+        s = make_sensor(switch_state="off")
+        await s._switch.async_ensure_with_retries("on", "test")
+
+        self.assertEqual(calls_of(s)[0][1], "turn_on")
+        self.assertEqual(len(s._spawned), 1)
+        drop_spawned(s)
+
+    async def test_with_retries_still_spawns_when_the_first_attempt_raises(self):
+        """The background chain is the recovery path; it must not be skipped."""
+        s = make_sensor(switch_state="off")
+        s._switch.async_ensure = AsyncMock(side_effect=RuntimeError("boom"))
+
+        await s._switch.async_ensure_with_retries("on", "test")
+
+        self.assertEqual(len(s._spawned), 1)
+        s._log.warning.assert_called()
+        drop_spawned(s)
+
+    async def test_no_switch_configured_spawns_nothing(self):
+        s = make_sensor(entity=None)
+        await s._switch.async_ensure_with_retries("on", "test")
+        self.assertEqual(s._spawned, [])
+
+    async def test_backoff_schedule(self):
+        s = make_sensor(switch_state="on")
+        for attempt, expected in [(1, 2), (2, 5), (3, 10), (4, 20)]:
+            with self.subTest(attempt=attempt):
+                self.slept.clear()
+                await s._switch._async_verify_and_retry("on", "switch.boiler", attempt=attempt)
+                self.assertEqual(self.slept, [expected])
+        drop_spawned(s)
+
+    async def test_the_chain_stops_after_the_last_delay(self):
+        s = make_sensor(switch_state="off")
+        await s._switch._async_verify_and_retry("on", "switch.boiler", attempt=5)
+        self.assertEqual(self.slept, [])
+        self.assertEqual(calls_of(s), [])
+        self.assertEqual(s._spawned, [])
+
+    async def test_a_pending_turn_off_aborts_once_a_timer_is_running(self):
+        """The timer must be able to start DURING the backoff wait.
+
+        An earlier version set _timer_state before invoking, which proved
+        nothing about ordering - moving the abort check above the sleep would
+        have passed it, reopening exactly the race this rule exists to close.
+        """
+        s = make_sensor(switch_state="on")
+
+        async def timer_starts_while_we_wait(seconds):
+            self.slept.append(seconds)
+            s._timer_state = "active"
+
+        switch_module.asyncio.sleep = timer_starts_while_we_wait
+
+        await s._switch._async_verify_and_retry("off", "switch.boiler")
+
+        self.assertEqual(self.slept, [2])        # it really did wait first
+        self.assertEqual(calls_of(s), [])
+        self.assertEqual(s._spawned, [])
+
+    async def test_a_pending_turn_on_is_not_aborted_by_a_running_timer(self):
+        """The abort is deliberately one-directional."""
+        s = make_sensor(switch_state="off")
+        s._timer_state = "active"
+
+        await s._switch._async_verify_and_retry("on", "switch.boiler")
+
+        self.assertEqual(calls_of(s)[0][1], "turn_on")
+        drop_spawned(s)
+
+    async def test_matching_state_ends_the_chain(self):
+        s = make_sensor(switch_state="on")
+        await s._switch._async_verify_and_retry("on", "switch.boiler")
+
+        self.assertEqual(calls_of(s), [])
+        self.assertEqual(s._spawned, [])
+
+    async def test_force_recommands_on_the_first_retry_despite_a_match(self):
+        s = make_sensor(switch_state="on")
+        await s._switch._async_verify_and_retry("on", "switch.boiler", attempt=1, force=True)
+
+        self.assertEqual(calls_of(s)[0][1], "turn_on")
+        drop_spawned(s)
+
+    async def test_force_stops_overriding_after_the_first_retry(self):
+        s = make_sensor(switch_state="on")
+        await s._switch._async_verify_and_retry("on", "switch.boiler", attempt=2, force=True)
+
+        self.assertEqual(calls_of(s), [])
+        self.assertEqual(s._spawned, [])
+
+    async def test_a_missing_entity_retries_without_commanding(self):
+        s = make_sensor(switch_state=None)
+        await s._switch._async_verify_and_retry("on", "switch.boiler")
+
+        self.assertEqual(calls_of(s), [])
+        self.assertEqual(len(s._spawned), 1)
+        drop_spawned(s)
+
+    async def test_a_mismatch_recommands_and_chains(self):
+        s = make_sensor(switch_state="off")
+        await s._switch._async_verify_and_retry("on", "switch.boiler")
+
+        self.assertEqual(calls_of(s)[0][1], "turn_on")
+        self.assertEqual(len(s._spawned), 1)
+        s._log.warning.assert_called()
+        drop_spawned(s)
+
+    async def test_a_failing_retry_still_chains(self):
+        s = make_sensor(switch_state="off")
+        s.hass.services.async_call = AsyncMock(side_effect=RuntimeError("nope"))
+
+        await s._switch._async_verify_and_retry("on", "switch.boiler")
+
+        self.assertEqual(len(s._spawned), 1)
+        drop_spawned(s)
+
+
+class CallSiteContractTestCase(unittest.IsolatedAsyncioTestCase):
+    """The sensor's own call sites, end to end through a real controller.
+
+    The controller tests all call async_command directly, so a wrong `blocking`
+    or a dropped `context` at a sensor call site would survive every one of
+    them. `context` is what the logbook uses to name the acting user, and
+    `blocking=False` on start is deliberate - the timer must not wait on a slow
+    switch integration.
+    """
+
+    def setUp(self):
+        async def instant(seconds):
+            pass
+
+        original = switch_module.asyncio.sleep
+        self.addCleanup(lambda: setattr(switch_module.asyncio, "sleep", original))
+        switch_module.asyncio.sleep = instant
+        sensor_module.dt_util.utcnow = lambda: __import__("datetime").datetime(2026, 3, 1, 8, 0)
+        sensor_module.async_track_point_in_utc_time = MagicMock(return_value=MagicMock())
+
+    def _timer_sensor(self):
+        s = make_sensor(switch_state="off")
+        s._entry = MagicMock()
+        s._entry.data = {}
+        s._log = MagicMock()
+        s._timer_finishes_at = None
+        s._timer_duration = 0
+        s._timer_start_moment = None
+        s._timer_reverse_mode = False
+        s._timer_unsub = None
+        s._runtime_at_timer_start = 0
+        s._timer_start_method = None
+        s._watchdog_message = None
+        s._state = 0.0
+        s._last_on_timestamp = None
+        s._store = MagicMock()
+        s._store.async_save_timer = AsyncMock()
+        s._store.async_clear_timer = AsyncMock()
+        s._notifier = MagicMock()
+        s._notifier.async_config = AsyncMock(return_value=([], False))
+        s.async_write_ha_state = MagicMock()
+        s._stop_timer_update_task = AsyncMock()
+        s._start_timer_update_task = AsyncMock()
+        s._async_setup_switch_listener = AsyncMock()
+        s._start_realtime_accumulation = AsyncMock()
+        s._stop_realtime_accumulation = AsyncMock()
+        s._fire_logbook_event = AsyncMock()
+        return s
+
+    async def test_start_timer_turns_on_without_blocking_and_forwards_context(self):
+        s = self._timer_sensor()
+        ctx = object()
+
+        await s.async_start_timer(30, "min", context=ctx)
+
+        domain, service, data, blocking, context = full_calls_of(s)[0]
+        self.assertEqual((domain, service), ("homeassistant", "turn_on"))
+        self.assertEqual(data, {"entity_id": "switch.boiler"})
+        self.assertFalse(blocking)          # must not wait on a slow switch
+        self.assertIs(context, ctx)         # logbook attribution
+
+    async def test_cancel_turns_off_blocking_and_forwards_context(self):
+        s = self._timer_sensor()
+        s._timer_state = "active"
+        s._timer_start_moment = sensor_module.dt_util.utcnow()
+        ctx = object()
+
+        await s.async_cancel_timer(context=ctx)
+
+        domain, service, data, blocking, context = full_calls_of(s)[0]
+        self.assertEqual((domain, service), ("homeassistant", "turn_off"))
+        self.assertTrue(blocking)
+        self.assertIs(context, ctx)
+
+
+class EntityIdSyncTestCase(unittest.IsolatedAsyncioTestCase):
+    """One source of truth: the controller reads the sensor's id, never a copy.
+
+    Guards a regression where the sensor updated _switch_entity_id in three
+    places but only one of them mirrored it onto the controller, leaving the
+    controller commanding the OLD switch.
+    """
+
+    def test_controller_follows_every_reassignment(self):
+        s = make_sensor()
+        for new_id in ["switch.b", "switch.c", None]:
+            with self.subTest(new_id=new_id):
+                s._switch_entity_id = new_id
+                self.assertEqual(s._switch.entity_id, new_id)
+
+    async def test_commands_target_the_current_switch(self):
+        s = make_sensor(switch_state="off")
+        s._switch_entity_id = "switch.other"
+        await s._switch.async_command("on")
+        self.assertEqual(calls_of(s)[0][2], {"entity_id": "switch.other"})
+
+    async def test_command_with_no_entity_still_reaches_ha(self):
+        """Fail loud. A silent no-op would let a timer start believing the
+        device was switched on."""
+        s = make_sensor(entity=None)
+        await s._switch.async_command("on")
+        self.assertEqual(len(calls_of(s)), 1)
+
+
+class IsSwitchOnTestCase(unittest.TestCase):
+
+    def test_reports_on_only_for_the_on_state(self):
+        for state, expected in [("on", True), ("off", False),
+                                ("unavailable", False), ("unknown", False)]:
+            with self.subTest(state=state):
+                self.assertEqual(make_sensor(switch_state=state)._switch.is_on(), expected)
+
+    def test_no_entity_or_no_state_is_not_on(self):
+        self.assertFalse(make_sensor(entity=None)._switch.is_on())
+        self.assertFalse(make_sensor(switch_state=None)._switch.is_on())
+
+
+if __name__ == "__main__":
+    unittest.main()
