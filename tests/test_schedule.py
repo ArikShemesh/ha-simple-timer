@@ -232,7 +232,7 @@ class CancelTestCase(ScheduleTestBase):
 
 
 class RestoreTestCase(ScheduleTestBase):
-    """Restart behaviour - the part with no dev-HA coverage."""
+    """Restart behaviour: what is re-armed, recomputed, or discarded."""
 
     async def test_no_stored_schedule_is_left_alone(self):
         """Deliberately does NOT clear: there is nothing to tear down."""
