@@ -157,3 +157,27 @@ def compute_next_fire(start_time: time, repeat: bool, days: list[int],
         else:
             return None  # No valid weekday (shouldn't happen with non-empty days)
     return candidate
+
+
+def instance_title(entry) -> str:
+    """Display name for a timer instance.
+
+    Prefers the config entry's editable title, falling back to the name it was
+    created with. Shared so the two sensors and the notifier cannot drift.
+    """
+    if entry.title:
+        return entry.title
+    return entry.data.get("name") or "Timer"
+
+
+def format_duration_exact(total_seconds: float) -> str:
+    """Format a duration the user chose, never dropping the seconds.
+
+    Used for logbook lines and for notifications quoting a timer's duration or
+    remaining time. `show_seconds` deliberately does not apply: it truncates, so
+    a 108 second timer would report as "1 minute". Echoing a value back to the
+    person who just entered it must not round it away, and a history record must
+    not lie. Cumulative daily-usage totals are the other case and DO honour
+    `show_seconds` - there the seconds are noise, not the point.
+    """
+    return format_duration_natural(total_seconds, show_seconds=True)

@@ -9,6 +9,7 @@ helpers = load("helpers")
 derive_timer_status = status_module.derive_timer_status
 duration_to_seconds = helpers.duration_to_seconds
 _format_time = helpers.format_duration_natural
+format_duration_exact = helpers.format_duration_exact
 
 STATUS_IDLE = const_module.STATUS_IDLE
 STATUS_ACTIVE = const_module.STATUS_ACTIVE
@@ -116,7 +117,7 @@ class TestLogbookDurationFormatting(unittest.TestCase):
     """Logbook durations must stay precise regardless of show_seconds.
 
     show_seconds is overridden below a minute, so sub-minute values report
-    seconds whatever the instance setting says. _format_duration_exact
+    seconds whatever the instance setting says. format_duration_exact
     additionally pins show_seconds to True, which is what keeps compound
     durations precise in logbook lines and in the notifications that quote a
     duration. Only cumulative daily-usage totals still honour the setting.
@@ -145,6 +146,17 @@ class TestLogbookDurationFormatting(unittest.TestCase):
     def test_compound_durations(self):
         self.assertEqual(_format_time(365, show_seconds=True), "6 minutes 5 seconds")
         self.assertEqual(_format_time(5400, show_seconds=True), "1 hour 30 minutes")
+
+    def test_format_duration_exact_always_includes_seconds(self):
+        """The wrapper the logbook and duration notifications actually call.
+
+        Tested directly: the other cases here drive format_duration_natural, so
+        a wrapper that forgot to pin show_seconds=True would still pass them.
+        """
+        self.assertEqual(format_duration_exact(108), "1 minute 48 seconds")
+        self.assertEqual(format_duration_exact(3661), "1 hour 1 minute 1 second")
+        self.assertEqual(format_duration_exact(10), "10 seconds")
+        self.assertEqual(format_duration_exact(60), "1 minute")
 
     def test_scheduled_ten_second_duration_reads_naturally(self):
         """End to end for the case that prompted this: schedule 10 s."""

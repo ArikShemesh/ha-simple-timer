@@ -86,6 +86,8 @@ def make_sensor(stored=None):
     s._start_realtime_accumulation = AsyncMock()
     s._stop_realtime_accumulation = AsyncMock()
     s._send_notification = AsyncMock()
+    s._notifier = MagicMock()
+    s._notifier.async_config = AsyncMock(return_value=([], False))
     s._fire_logbook_event = AsyncMock()
     s._is_switch_on = MagicMock(return_value=True)
     s.hass.services.async_call = AsyncMock()
@@ -286,7 +288,6 @@ class MalformedPayloadTestCase(unittest.IsolatedAsyncioTestCase):
         s = make_sensor(stored={"reverse_mode": "yes", "duration": 10})
         s._cleanup_timer_state = AsyncMock()
         s._ensure_switch_state_with_retries = AsyncMock()
-        s._get_card_notification_config = AsyncMock(return_value=([], False))
         sensor_module.asyncio.sleep = AsyncMock()
 
         await s._handle_expired_timer()

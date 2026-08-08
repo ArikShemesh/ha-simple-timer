@@ -61,7 +61,9 @@ from .const import (
 )
 from .helpers import (
     DEFAULT_RESET_TIME,
+    format_duration_exact,
     instance_logger,
+    instance_title,
     compute_next_fire,
     device_info_for_switch,
     duration_to_seconds,
@@ -69,6 +71,7 @@ from .helpers import (
     next_reset_datetime,
     parse_reset_time,
 )
+from .notify import Notifier
 from .startup import async_wait_until_ready
 from .timer_store import TimerStore
 from .status_sensor import TimerStatusSensor
@@ -174,6 +177,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
         # Storage setup
         self._store = TimerStore(hass, self._entry_id, self._log)
+        self._notifier = Notifier(hass, entry, self._log)
 
     @property
     def device_info(self) -> DeviceInfo | None:
@@ -221,11 +225,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
     @property
     def instance_title(self) -> str:
         """Get the current instance title."""
-        # Prefer the editable title from the config entry
-        if self._entry.title:
-            return self._entry.title
-        # Fallback to data name
-        return self._entry.data.get("name") or "Timer"
+        return instance_title(self._entry)
 
     @property
     def name(self) -> str:
@@ -310,20 +310,6 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
         self.hass.bus.async_fire(event_type, event_data, context=context)
 
-    def _format_duration_exact(self, total_seconds: float) -> str:
-        """Format a duration the user chose, never dropping the seconds.
-
-        Used for logbook lines and for the notifications that quote a timer's
-        duration or remaining time. `show_seconds` deliberately does not apply:
-        it truncates, so a 108 second timer would report as "1 minute" and a 10
-        second one as "0 minutes". Echoing a value back to the person who just
-        entered it must not round it away, and a history record must not lie.
-
-        Cumulative daily-usage totals are the other case and DO honour
-        `show_seconds` - there the seconds are noise, not the point.
-        """
-        return format_duration_natural(total_seconds, show_seconds=True)
-
     async def _resolve_user_name(self, context: Context | None) -> str | None:
         """Return the display name of the user behind `context`, if any."""
         if not context or not context.user_id:
@@ -396,25 +382,6 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
         return attrs
 
-    async def _get_card_notification_config(self) -> tuple[list[str], bool]:
-        """Get notification entities and show_seconds setting from config entry ONLY."""
-        try:
-            # ALWAYS use config entry data - never fall back to old card configs
-            notification_entities = self._entry.data.get("notification_entities", [])
-            show_seconds = self._entry.data.get("show_seconds", False)
-            
-            if notification_entities:
-                self._log.debug(f"Using notification entities from config: {notification_entities}")
-                return notification_entities, show_seconds
-            
-            # No notifications configured in backend
-            self._log.debug("No notification entities configured in backend")
-            return [], show_seconds
-                                
-        except Exception as e:
-            self._log.error(f"Error getting notification config: {e}")
-            return [], False
-
     async def _ensure_switch_state(self, desired_state: str, action_description: str, blocking: bool = True, force: bool = False, context: Context | None = None) -> None:
         """Ensure switch is in desired state, attempt to correct if not, and warn on failure.
 
@@ -470,61 +437,12 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             await self._send_notification(warning_msg)
 
     async def _send_notification(self, message: str) -> None:
-        """Send notification using configured notification entities."""
-        try:
-            notification_entities, show_seconds = await self._get_card_notification_config()
-            
-            if not notification_entities:
-                self._log.debug("No notification entities configured - staying silent")
-                return
-            
-            # Use instance title but sanitized to prevent Markdown errors in Telegram
-            # (Replace underscores with spaces)
-            raw_title = self.instance_title or "Timer"
-            title = raw_title.replace("_", " ")
-            
-            # Send to all configured notification services
-            for notification_entity in notification_entities:
-                try:
-                    # Parse the service call format
-                    service_parts = notification_entity.split('.')
-                    if len(service_parts) < 2:
-                        self._log.warning(f"Invalid notification entity format: {notification_entity}")
-                        continue
-                        
-                    domain = service_parts[0]
-                    service = service_parts[1]
-                    
-                    # Special handling for boolean/switch/button entities used as notifications
-                    if domain in ["input_boolean", "switch", "light"]:
-                        self._log.debug(f"Turning on configured notification entity: {notification_entity}")
-                        await self.hass.services.async_call(
-                            domain, "turn_on", {"entity_id": notification_entity}
-                        )
-                    elif domain == "input_button":
-                         self._log.debug(f"Pressing configured notification button: {notification_entity}")
-                         await self.hass.services.async_call(
-                            domain, "press", {"entity_id": notification_entity}
-                        )
-                    else:
-                        # Standard notification service (e.g., notify.mobile_app_x)
-                        # We assume the second part is the service name
-                        self._log.info(f"Sending notification to {domain}.{service}: '{message}'")
-                        
-                        await self.hass.services.async_call(
-                            domain, service, {"message": message, "title": title}
-                        )
-                    
-                except Exception as e:
-                    self._log.error(f"Failed to send notification to {notification_entity}: {e}")
+        """Send a notification to the instance's configured targets.
 
-        except Exception as e:
-            self._log.error(f"Failed to send notifications: {e}")
-            
-    async def async_test_notification(self) -> None:
-        """Test notification functionality."""
-        self._log.info("Testing notification system...")
-        await self._send_notification("Test notification from Simple Timer")
+        Kept as a delegate because the `test_notification` service handler
+        in __init__.py reaches for it on the sensor.
+        """
+        await self._notifier.async_send(message)
 
     async def _save_next_reset_date(self):
         """Save the next reset date to storage."""
@@ -1011,7 +929,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             )
         
         # Send notification
-        formatted_duration = self._format_duration_exact(duration_minutes * 60.0)
+        formatted_duration = format_duration_exact(duration_minutes * 60.0)
         mode_text = "Delayed timer started for" if reverse_mode else "Timer was started for"
         notification_msg = f"{mode_text} {formatted_duration}"
         await self._send_notification(notification_msg)
@@ -1019,7 +937,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         await self._fire_logbook_event(
             EVENT_TIMER_STARTED,
             context=context,
-            duration=self._format_duration_exact(duration_minutes * 60.0),
+            duration=format_duration_exact(duration_minutes * 60.0),
             reverse_mode=reverse_mode,
         )
 
@@ -1087,8 +1005,8 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         
         # Send notification
         remaining_seconds = max(0, int((self._timer_finishes_at - dt_util.utcnow()).total_seconds()))
-        formatted_rest = self._format_duration_exact(remaining_seconds)
-        formatted_added = self._format_duration_exact(duration_minutes * 60.0)
+        formatted_rest = format_duration_exact(remaining_seconds)
+        formatted_added = format_duration_exact(duration_minutes * 60.0)
         
         notification_msg = f"Timer extended by {formatted_added}. New remaining: {formatted_rest}"
         await self._send_notification(notification_msg)
@@ -1096,8 +1014,8 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         await self._fire_logbook_event(
             EVENT_TIMER_EXTENDED,
             context=context,
-            added=self._format_duration_exact(duration_minutes * 60.0),
-            remaining=self._format_duration_exact(remaining_seconds),
+            added=format_duration_exact(duration_minutes * 60.0),
+            remaining=format_duration_exact(remaining_seconds),
         )
 
         self.async_write_ha_state()
@@ -1125,7 +1043,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         
         # Get current usage for notification
         current_usage = self._state
-        notification_entity, show_seconds = await self._get_card_notification_config()
+        notification_entity, show_seconds = await self._notifier.async_config()
         formatted_time = format_duration_natural(current_usage, show_seconds)
         
         # Clean up timer
@@ -1164,7 +1082,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         await self._fire_logbook_event(
             EVENT_TIMER_CANCELLED,
             context=context,
-            usage=self._format_duration_exact(current_usage),
+            usage=format_duration_exact(current_usage),
         )
 
         self.async_write_ha_state()
@@ -1229,7 +1147,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             await asyncio.sleep(0.1)
 
             current_usage = self._state
-            notification_entity, show_seconds = await self._get_card_notification_config()
+            notification_entity, show_seconds = await self._notifier.async_config()
             formatted_time = format_duration_natural(current_usage, show_seconds)
 
             await self._cleanup_timer_state()
@@ -1244,7 +1162,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             await self._fire_logbook_event(
                 EVENT_TIMER_FINISHED,
                 reverse_mode=False,
-                usage=self._format_duration_exact(current_usage),
+                usage=format_duration_exact(current_usage),
             )
 
         self.async_write_ha_state()
@@ -1260,7 +1178,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             await self._send_notification("Timer started")
         elif action == "turn_off":
             current_usage = self._state
-            notification_entity, show_seconds = await self._get_card_notification_config()
+            notification_entity, show_seconds = await self._notifier.async_config()
             formatted_time = format_duration_natural(current_usage, show_seconds)
             
             await self._ensure_switch_state("off", "Manual turn-off", context=context)
@@ -1610,7 +1528,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             EVENT_SCHEDULE_SET,
             context=context,
             start_time=fire_at.strftime("%H:%M"),
-            duration=self._format_duration_exact(duration_to_seconds(duration, unit)),
+            duration=format_duration_exact(duration_to_seconds(duration, unit)),
             repeat=repeat,
         )
 
@@ -1815,7 +1733,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         # Get usage for notification BEFORE cleaning up (as cleanup might affect state access?)
         # Actually _state is safe.
         current_usage = self._state
-        notification_entity, show_seconds = await self._get_card_notification_config()
+        notification_entity, show_seconds = await self._notifier.async_config()
         formatted_time = format_duration_natural(current_usage, show_seconds)
         
         # FIX: Clear last_on_timestamp BEFORE cleanup to prevent final accumulation update from adding offline time
@@ -2106,7 +2024,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         
         # Get current usage for notification
         current_usage = self._state
-        notification_entity, show_seconds = await self._get_card_notification_config()
+        notification_entity, show_seconds = await self._notifier.async_config()
         formatted_time = format_duration_natural(current_usage, show_seconds)
         formatted_zero = format_duration_natural(0, show_seconds)
         

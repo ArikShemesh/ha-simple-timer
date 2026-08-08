@@ -22,7 +22,7 @@ from .const import (
     STATUS_SCHEDULED,
     STATUS_OPTIONS,
 )
-from .helpers import device_info_for_switch
+from .helpers import device_info_for_switch, instance_title
 
 if TYPE_CHECKING:
     # Import-time cycle otherwise: sensor.py imports TimerStatusSensor from here.
@@ -87,9 +87,7 @@ class TimerStatusSensor(SensorEntity):
     @property
     def instance_title(self) -> str:
         """Current instance title, mirroring the runtime sensor."""
-        if self._entry.title:
-            return self._entry.title
-        return self._entry.data.get("name") or "Timer"
+        return instance_title(self._entry)
 
     @property
     def name(self) -> str:
