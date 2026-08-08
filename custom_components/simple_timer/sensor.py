@@ -56,15 +56,12 @@ from .const import (
     EVENT_TIMER_EXTENDED,
     EVENT_TIMER_CANCELLED,
     EVENT_TIMER_FINISHED,
-    EVENT_SCHEDULE_SET,
-    EVENT_SCHEDULE_CANCELLED,
 )
 from .helpers import (
     DEFAULT_RESET_TIME,
     format_duration_exact,
     instance_logger,
     instance_title,
-    compute_next_fire,
     device_info_for_switch,
     duration_to_seconds,
     format_duration_natural,
@@ -72,6 +69,7 @@ from .helpers import (
     parse_reset_time,
 )
 from .notify import Notifier
+from .schedule import ScheduleManager
 from .startup import async_wait_until_ready
 from .timer_store import TimerStore
 from .status_sensor import TimerStatusSensor
@@ -160,14 +158,6 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._last_reset_was_catchup = False
         self._catchup_reset_info = None
 
-        # Scheduled-start (future absolute clock time)
-        self._schedule_unsub = None
-        self._scheduled_fire_at = None      # datetime | None (next fire, local tz aware)
-        self._scheduled_duration = 0.0
-        self._scheduled_unit = "min"
-        self._schedule_repeat = False
-        self._schedule_days = []            # list[int] weekday Mon=0; empty = every day
-
         # Default timer config
         # Default timer config from entry data
         self._default_timer_duration = entry.data.get("default_timer_duration", 0.0)
@@ -178,6 +168,18 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         # Storage setup
         self._store = TimerStore(hass, self._entry_id, self._log)
         self._notifier = Notifier(hass, entry, self._log)
+
+        # Scheduled-start (future absolute clock time). Built after the store,
+        # which it needs, and handed the sensor callbacks it reaches back
+        # through - so the dependency runs one way, sensor -> schedule.
+        self._schedule = ScheduleManager(
+            hass,
+            store=self._store,
+            start_timer=self.async_start_timer,
+            write_state=self.async_write_ha_state,
+            fire_logbook=self._fire_logbook_event,
+            log=self._log,
+        )
 
     @property
     def device_info(self) -> DeviceInfo | None:
@@ -266,7 +268,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
     @property
     def has_armed_schedule(self) -> bool:
         """Whether a scheduled start is currently armed."""
-        return self._scheduled_fire_at is not None
+        return self._schedule.is_armed
 
     @property
     def status_entity_id(self) -> str | None:
@@ -366,12 +368,12 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             "default_timer_reverse_mode": self._default_timer_reverse_mode,
 
             # Scheduled-start attributes for frontend sync
-            ATTR_SCHEDULE_STATE: "armed" if self._scheduled_fire_at else "idle",
-            ATTR_SCHEDULED_START: self._scheduled_fire_at.isoformat() if self._scheduled_fire_at else None,
-            ATTR_SCHEDULED_DURATION: self._scheduled_duration,
-            ATTR_SCHEDULED_UNIT: self._scheduled_unit,
-            ATTR_SCHEDULE_REPEAT: self._schedule_repeat,
-            ATTR_SCHEDULE_DAYS: self._schedule_days,
+            ATTR_SCHEDULE_STATE: "armed" if self._schedule.is_armed else "idle",
+            ATTR_SCHEDULED_START: self._schedule.fire_at.isoformat() if self._schedule.is_armed else None,
+            ATTR_SCHEDULED_DURATION: self._schedule.duration,
+            ATTR_SCHEDULED_UNIT: self._schedule.unit,
+            ATTR_SCHEDULE_REPEAT: self._schedule.repeat,
+            ATTR_SCHEDULE_DAYS: self._schedule.days,
         }
 
         if self._last_reset_was_catchup:
@@ -1239,10 +1241,9 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             self._reset_time_tracker()
             self._reset_time_tracker = None
 
-        # Clean up schedule tracker
-        if self._schedule_unsub:
-            self._schedule_unsub()
-            self._schedule_unsub = None
+        # Drop the pending schedule callback, keeping its stored payload so
+        # the schedule survives to be restored.
+        self._schedule.async_shutdown()
 
         # Clean up domain data
         if (DOMAIN in self.hass.data and
@@ -1437,7 +1438,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 self._log.info("No timer data in storage")
 
             # Restore any armed scheduled-start
-            await self._restore_schedule(storage_data)
+            await self._schedule.async_restore(storage_data)
 
             # Start accumulation if needed
             await self._start_accumulation_if_needed()
@@ -1486,172 +1487,20 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         )
 
     # ------------------------------------------------------------------
-    # Scheduled-start (fire async_start_timer at a future absolute clock time)
+    # Scheduled-start - delegated to ScheduleManager. Both entry points
+    # stay on the sensor because __init__.py's service handlers call them.
     # ------------------------------------------------------------------
 
     async def async_schedule_timer(self, start_time: time, duration: float,
                                    unit: str = "min", repeat: bool = False,
                                    days: list[int] | None = None,
                                    context: Context | None = None) -> None:
-        """Arm a scheduled start: at start_time run a bounded timer for duration.
-
-        `context` is the originating service call's context, so the logbook
-        attributes arming the schedule to the user who set it. The timer that
-        later fires from this schedule is deliberately unattributed.
-        """
-        days = sorted(set(days or []))
-        fire_at = compute_next_fire(start_time, repeat, days)
-        if fire_at is None:
-            self._log.warning("Could not compute schedule fire time")
-            return
-
-        # Clear any previous schedule before arming the new one.
-        if self._schedule_unsub:
-            self._schedule_unsub()
-            self._schedule_unsub = None
-
-        self._scheduled_fire_at = fire_at
-        self._scheduled_duration = duration
-        self._scheduled_unit = unit
-        self._schedule_repeat = repeat
-        self._schedule_days = days
-
-        self._arm_schedule()
-        await self._save_schedule()
-
-        self._log.info(
-            f"Scheduled start at {fire_at.isoformat()} "
-            f"for {duration} {unit} (repeat={repeat}, days={days})"
-        )
-
-        await self._fire_logbook_event(
-            EVENT_SCHEDULE_SET,
-            context=context,
-            start_time=fire_at.strftime("%H:%M"),
-            duration=format_duration_exact(duration_to_seconds(duration, unit)),
-            repeat=repeat,
-        )
-
-        self.async_write_ha_state()
-
-    def _arm_schedule(self) -> None:
-        """Register the point-in-time callback for the current _scheduled_fire_at."""
-        if not self._scheduled_fire_at:
-            return
-        fire_at_utc = dt_util.as_utc(self._scheduled_fire_at)
-        self._schedule_unsub = async_track_point_in_utc_time(
-            self.hass, self._schedule_fired, fire_at_utc
-        )
-
-    @callback
-    def _schedule_fired(self, now) -> None:
-        """Point-in-time callback - fire on the event loop."""
-        self.hass.async_create_task(self._async_schedule_fired())
-
-    async def _async_schedule_fired(self) -> None:
-        """Run the scheduled timer, then re-arm (recurring) or clear (one-shot)."""
-        self._schedule_unsub = None
-        duration, unit = self._scheduled_duration, self._scheduled_unit
-        repeat, days = self._schedule_repeat, self._schedule_days
-        start_time = (self._scheduled_fire_at or dt_util.now()).timetz().replace(tzinfo=None)
-
-        self._log.info("Schedule fired - starting bounded timer")
-
-        # Reverse is always overridden for scheduled runs (bounded auto-off).
-        await self.async_start_timer(duration, unit, reverse_mode=False, start_method="schedule")
-
-        if repeat:
-            next_fire = compute_next_fire(start_time, repeat, days)
-            if next_fire:
-                self._scheduled_fire_at = next_fire
-                self._arm_schedule()
-                await self._save_schedule()
-                self.async_write_ha_state()
-                return
-
-        # One-shot (or no valid recurrence) - clear the schedule.
-        await self._clear_schedule(write_state=True)
+        """Arm a scheduled start: at start_time run a bounded timer."""
+        await self._schedule.async_arm(start_time, duration, unit, repeat, days, context)
 
     async def async_cancel_schedule(self, context: Context | None = None) -> None:
-        """Cancel an armed scheduled-start.
-
-        `context` is the originating service call's context, so the logbook
-        attributes the cancellation to the user who requested it.
-        """
-        self._log.info("Cancelling schedule")
-
-        # Fire before clearing, while there is still a schedule to describe.
-        was_armed = bool(self._scheduled_fire_at)
-        if was_armed:
-            await self._fire_logbook_event(EVENT_SCHEDULE_CANCELLED, context=context)
-
-        await self._clear_schedule(write_state=True)
-
-    async def _clear_schedule(self, write_state: bool = False) -> None:
-        """Tear down schedule state + storage."""
-        if self._schedule_unsub:
-            self._schedule_unsub()
-            self._schedule_unsub = None
-        self._scheduled_fire_at = None
-        self._scheduled_duration = 0.0
-        self._scheduled_unit = "min"
-        self._schedule_repeat = False
-        self._schedule_days = []
-
-        await self._store.async_clear_schedule()
-
-        if write_state:
-            self.async_write_ha_state()
-
-    async def _save_schedule(self) -> None:
-        """Persist the current schedule to storage."""
-        await self._store.async_save_schedule(
-            fire_at=self._scheduled_fire_at,
-            duration=self._scheduled_duration,
-            unit=self._scheduled_unit,
-            repeat=self._schedule_repeat,
-            days=self._schedule_days,
-        )
-
-    async def _restore_schedule(self, storage_data: dict) -> None:
-        """Re-arm a stored schedule on startup; discard missed one-shots."""
-        sched = storage_data.get("schedule")
-        if not sched or not sched.get("fire_at"):
-            return
-
-        try:
-            fire_at = datetime.fromisoformat(sched["fire_at"])
-        except (ValueError, TypeError) as e:
-            self._log.warning(f"Bad stored schedule fire_at: {e}")
-            await self._clear_schedule()
-            return
-
-        self._scheduled_duration = sched.get("duration", 0.0)
-        self._scheduled_unit = sched.get("unit", "min")
-        self._schedule_repeat = sched.get("repeat", False)
-        self._schedule_days = sched.get("days", []) or []
-        now = dt_util.now()
-
-        if self._schedule_repeat:
-            # Recurring: always recompute the next occurrence from now.
-            start_time = fire_at.timetz().replace(tzinfo=None)
-            next_fire = compute_next_fire(start_time, True, self._schedule_days, now)
-            if not next_fire:
-                await self._clear_schedule()
-                return
-            self._scheduled_fire_at = next_fire
-            self._arm_schedule()
-            await self._save_schedule()
-            self._log.info(f"Restored recurring schedule -> {next_fire.isoformat()}")
-        elif fire_at > now:
-            # One-shot still in the future: re-arm as stored.
-            self._scheduled_fire_at = fire_at
-            self._arm_schedule()
-            self._log.info(f"Restored one-shot schedule -> {fire_at.isoformat()}")
-        else:
-            # One-shot missed while offline: discard (a late bounded run is wrong).
-            self._log.warning(f"Discarding missed one-shot schedule ({fire_at.isoformat()})")
-            await self._clear_schedule()
+        """Cancel an armed scheduled start."""
+        await self._schedule.async_cancel(context)
 
     async def _setup_listeners_and_handlers(self):
         """Set up event listeners and handlers."""

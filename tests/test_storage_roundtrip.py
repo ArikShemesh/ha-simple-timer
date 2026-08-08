@@ -15,6 +15,7 @@ from ha_harness import load
 
 sensor_module = load("sensor")
 timer_store_module = load("timer_store")
+schedule_module = load("schedule")
 TimerRuntimeSensor = sensor_module.TimerRuntimeSensor
 
 NOW = datetime(2026, 3, 1, 8, 0, 0)
@@ -71,12 +72,6 @@ def make_sensor(stored=None):
     s._state = 0.0
     s._last_on_timestamp = None
     s._next_reset_date = None
-    s._scheduled_fire_at = None
-    s._scheduled_duration = 0.0
-    s._scheduled_unit = "min"
-    s._schedule_repeat = False
-    s._schedule_days = []
-    s._schedule_unsub = None
 
     # Everything the timer paths call that is not storage.
     s.async_write_ha_state = MagicMock()
@@ -89,6 +84,11 @@ def make_sensor(stored=None):
     s._notifier = MagicMock()
     s._notifier.async_config = AsyncMock(return_value=([], False))
     s._fire_logbook_event = AsyncMock()
+    s._schedule = schedule_module.ScheduleManager(
+        s.hass, store=s._store, start_timer=AsyncMock(),
+        write_state=s.async_write_ha_state, fire_logbook=s._fire_logbook_event,
+        log=s._log,
+    )
     s._is_switch_on = MagicMock(return_value=True)
     s.hass.services.async_call = AsyncMock()
     return s
@@ -156,13 +156,13 @@ class StorageKeysTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_save_schedule_shape(self):
         s = make_sensor()
-        s._scheduled_fire_at = NOW + timedelta(hours=3)
-        s._scheduled_duration = 45.0
-        s._scheduled_unit = "min"
-        s._schedule_repeat = True
-        s._schedule_days = [0, 2, 4]
+        s._schedule._fire_at = NOW + timedelta(hours=3)
+        s._schedule._duration = 45.0
+        s._schedule._unit = "min"
+        s._schedule._repeat = True
+        s._schedule._days = [0, 2, 4]
 
-        await s._save_schedule()
+        await s._schedule._async_save()
 
         self.assertEqual(s.fake.data["schedule"], {
             "fire_at": (NOW + timedelta(hours=3)).isoformat(),
@@ -174,7 +174,7 @@ class StorageKeysTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_clear_schedule_removes_only_schedule(self):
         s = make_sensor(stored={"schedule": {"fire_at": "x"}, "next_reset_date": "keep"})
-        await s._clear_schedule()
+        await s._schedule.async_clear()
 
         self.assertNotIn("schedule", s.fake.data)
         self.assertEqual(s.fake.data["next_reset_date"], "keep")
@@ -182,7 +182,7 @@ class StorageKeysTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_clear_schedule_skips_the_write_when_nothing_armed(self):
         """Avoids a pointless .storage write on every idle teardown."""
         s = make_sensor(stored={"next_reset_date": "keep"})
-        await s._clear_schedule()
+        await s._schedule.async_clear()
         self.assertEqual(s.fake.saves, [])
 
     async def test_save_next_reset_date(self):
@@ -200,8 +200,8 @@ class StorageKeysTestCase(unittest.IsolatedAsyncioTestCase):
         await s.async_start_timer(30, "min")
         s._next_reset_date = NOW + timedelta(days=1)
         await s._save_next_reset_date()
-        s._scheduled_fire_at = NOW + timedelta(hours=2)
-        await s._save_schedule()
+        s._schedule._fire_at = NOW + timedelta(hours=2)
+        await s._schedule._async_save()
 
         json.dumps(s.fake.data)  # raises if any value is not JSON-native
 
@@ -227,11 +227,11 @@ class StorageErrorPolicyTestCase(unittest.IsolatedAsyncioTestCase):
         s._log.warning.assert_called()
 
     async def test_save_and_clear_schedule_swallow(self):
-        for method in ("_save_schedule", "_clear_schedule"):
+        for method in ("_async_save", "async_clear"):
             with self.subTest(method=method):
                 s = make_sensor()
                 s.fake.load_error = OSError("disk gone")
-                await getattr(s, method)()       # must not raise
+                await getattr(s._schedule, method)()   # must not raise
                 s._log.warning.assert_called()
 
     async def test_start_timer_does_NOT_swallow(self):
@@ -304,9 +304,9 @@ class MalformedPayloadTestCase(unittest.IsolatedAsyncioTestCase):
         s = make_sensor(stored={"schedule": "bad"})
         storage_data = await s._store.async_read()
 
-        await s._restore_schedule(storage_data)     # must not raise
+        await s._schedule.async_restore(storage_data)     # must not raise
 
-        self.assertIsNone(s._scheduled_fire_at)
+        self.assertIsNone(s._schedule.fire_at)
 
 
 class SanitizerTestCase(unittest.IsolatedAsyncioTestCase):
