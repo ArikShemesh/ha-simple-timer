@@ -109,11 +109,13 @@ class SwitchController:
         if not self.entity_id:
             return
 
+        # A configured switch with no state object is NOT a reason to skip the
+        # command. It usually means the switch's integration is reloading, and
+        # that is exactly when a pending turn-off matters most - returning here
+        # used to let a timer report "turned off" with the device still on.
+        # Only a state that positively matches lets us skip the work.
         current_state = self._hass.states.get(self.entity_id)
-        if not current_state:
-            return
-
-        if current_state.state == desired_state and not force:
+        if current_state and current_state.state == desired_state and not force:
             return
 
         try:
@@ -126,11 +128,15 @@ class SwitchController:
                 if updated and updated.state == desired_state:
                     return
 
+            # A switch that reports nothing back is as much a failure as one
+            # reporting the wrong state - staying silent about it is what let
+            # "Timer was turned off" go out with the device still on.
             updated = self._hass.states.get(self.entity_id)
-            if updated and updated.state != desired_state:
+            if not updated or updated.state != desired_state:
+                actual = updated.state if updated else "no state"
                 warning_msg = (
                     f"Warning: {action_description} - switch should be "
-                    f"'{desired_state}' but remains '{updated.state}'. "
+                    f"'{desired_state}' but remains '{actual}'. "
                     f"Check switch connectivity."
                 )
                 self._log.warning(warning_msg)

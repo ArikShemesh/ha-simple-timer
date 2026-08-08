@@ -102,20 +102,33 @@ class EnsureStateTestCase(unittest.IsolatedAsyncioTestCase):
         await s._switch.async_ensure("on", "test")
         self.assertEqual(calls_of(s), [])
 
-    async def test_unknown_entity_does_nothing(self):
-        """Current behaviour, and a KNOWN DEFECT - see TODO.md W1.
+    async def test_a_configured_entity_with_no_state_is_still_commanded(self):
+        """A configured switch that HA has no state for is still commanded.
 
-        A configured entity with no state object is skipped silently: no
-        command, no warning, no notification. A timer expiring during an
-        integration reload can therefore report "turned off" while the boiler
-        stays on. Pinned here to describe what happens today, not to endorse
-        it; the earlier docstring called this "bail rather than command
-        blindly", which read as approval.
+        It used to return silently - no command, no warning, no notification -
+        so a timer expiring while the switch's integration was reloading would
+        report "Timer was turned off" with the boiler still on. Absent state is
+        exactly when a command matters most; the old behaviour optimised for
+        the wrong case.
         """
         s = make_sensor(switch_state=None)
-        await s._switch.async_ensure("on", "test")
+        await s._switch.async_ensure("off", "Timer completion turn-off")
+
+        self.assertEqual(calls_of(s)[0][:2], ("homeassistant", "turn_off"))
+
+    async def test_a_switch_with_no_state_that_never_reports_back_warns(self):
+        """Commanding blind is not enough - the user must hear if it failed."""
+        s = make_sensor(switch_state=None)
+        await s._switch.async_ensure("off", "Timer completion turn-off")
+
+        s._log.warning.assert_called()
+        s._send_notification.assert_awaited_once()
+
+    async def test_no_switch_configured_is_still_a_no_op(self):
+        """Nothing configured is a different case from configured-but-absent."""
+        s = make_sensor(entity=None)
+        await s._switch.async_ensure("off", "test")
         self.assertEqual(calls_of(s), [])
-        s._send_notification.assert_not_awaited()   # the part that is wrong
 
     async def test_already_correct_is_left_alone(self):
         s = make_sensor(switch_state="on")
