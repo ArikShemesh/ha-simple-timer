@@ -275,11 +275,88 @@ class MalformedPayloadTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(s._runtime_at_timer_start, 120)
         self.assertEqual(s._timer_duration, 30)
 
-    # Deliberately NOT tested here: a malformed reverse_mode such as the string
-    # "yes". It is truthy, so _handle_expired_timer takes the reverse branch and
-    # turns the switch ON. A "does not raise" assertion would pin that as
-    # acceptable. Recorded as a defect in TODO.md instead - it needs a fix, not
-    # a test blessing it.
+    async def test_malformed_reverse_mode_cannot_turn_the_switch_on(self):
+        """The whole point of the sanitizer.
+
+        "yes" is truthy. Before validation it sent the expired-timer path down
+        the reverse branch, which calls turn_on - a corrupt storage file could
+        switch the device on during startup. It must now fall back to a normal
+        expired timer, which turns the switch OFF.
+        """
+        s = make_sensor(stored={"reverse_mode": "yes", "duration": 10})
+        s._cleanup_timer_state = AsyncMock()
+        s._ensure_switch_state_with_retries = AsyncMock()
+        s._get_card_notification_config = AsyncMock(return_value=([], False))
+        sensor_module.asyncio.sleep = AsyncMock()
+
+        await s._handle_expired_timer()
+
+        self.assertFalse(s._timer_reverse_mode)
+        desired_states = [c.args[0] for c in s._ensure_switch_state_with_retries.call_args_list]
+        self.assertIn("off", desired_states)
+        self.assertNotIn("on", desired_states)
+
+    async def test_malformed_schedule_does_not_abort_initialization(self):
+        """A truthy non-dict schedule used to raise AttributeError out of
+        _restore_schedule, skipping accumulation start and the final state
+        write, and repeating on every restart."""
+        s = make_sensor(stored={"schedule": "bad"})
+        storage_data = await s._store.async_read()
+
+        await s._restore_schedule(storage_data)     # must not raise
+
+        self.assertIsNone(s._scheduled_fire_at)
+
+
+class SanitizerTestCase(unittest.IsolatedAsyncioTestCase):
+    """Type validation on read. Malformed values are dropped, not trusted."""
+
+    async def _read(self, stored):
+        return await make_sensor(stored=stored)._store.async_read()
+
+    async def test_malformed_values_are_dropped(self):
+        for key, bad in [("reverse_mode", "yes"), ("reverse_mode", 1),
+                         ("duration", "30"), ("runtime_at_start", "nonsense"),
+                         ("finishes_at", 12345), ("timer_start", []),
+                         ("next_reset_date", 7), ("schedule", "bad")]:
+            with self.subTest(key=key, bad=bad):
+                self.assertNotIn(key, await self._read({key: bad}))
+
+    async def test_wellformed_values_survive_untouched(self):
+        good = {
+            "finishes_at": "2026-03-01T09:00:00",
+            "timer_start": "2026-03-01T08:00:00",
+            "next_reset_date": "2026-03-02T00:00:00",
+            "duration": 30.5,
+            "runtime_at_start": 120,
+            "reverse_mode": True,
+            "schedule": {"fire_at": None, "duration": 5},
+        }
+        self.assertEqual(await self._read(good), good)
+
+    async def test_reverse_mode_false_survives(self):
+        """False is well-formed; it must not be mistaken for a missing key."""
+        self.assertEqual(await self._read({"reverse_mode": False}), {"reverse_mode": False})
+
+    async def test_none_always_survives(self):
+        """None means unset. The v1 migration writes next_reset_date: None."""
+        for key in ["finishes_at", "duration", "reverse_mode", "schedule", "next_reset_date"]:
+            with self.subTest(key=key):
+                self.assertEqual(await self._read({key: None}), {key: None})
+
+    async def test_booleans_are_not_accepted_as_numbers(self):
+        """bool subclasses int, so a naive isinstance check would let True through."""
+        self.assertNotIn("duration", await self._read({"duration": True}))
+        self.assertNotIn("runtime_at_start", await self._read({"runtime_at_start": False}))
+
+    async def test_unknown_keys_pass_through(self):
+        """A newer version's data must survive being read by an older one."""
+        self.assertEqual(await self._read({"future_key": {"x": 1}}), {"future_key": {"x": 1}})
+
+    async def test_dropping_a_value_is_logged(self):
+        s = make_sensor(stored={"reverse_mode": "yes"})
+        await s._store.async_read()
+        self.assertTrue(any("reverse_mode" in str(c) for c in s._log.warning.call_args_list))
 
 class StorageWiringTestCase(unittest.IsolatedAsyncioTestCase):
     """The other tests bypass __init__, so nothing else checks the real wiring."""

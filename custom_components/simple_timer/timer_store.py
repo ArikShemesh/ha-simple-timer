@@ -53,6 +53,48 @@ STORAGE_KEY_FORMAT = f"{DOMAIN}_{{}}"
 _TIMER_KEYS = ("finishes_at", "duration", "timer_start", "runtime_at_start")
 
 
+def _is_number(value) -> bool:
+    """True for a real number. bool is an int subclass, so exclude it."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+# Expected type per key. A stored value failing its check is dropped on read,
+# so callers fall back to their own defaults instead of acting on nonsense.
+#
+# This matters more than ordinary input validation: these values drive device
+# actions during restore. `reverse_mode` is the sharp one - anything truthy,
+# `"yes"` included, used to send the switch a turn_on during startup.
+_VALIDATORS = {
+    "finishes_at": lambda v: isinstance(v, str),
+    "timer_start": lambda v: isinstance(v, str),
+    "next_reset_date": lambda v: isinstance(v, str),
+    "duration": _is_number,
+    "runtime_at_start": _is_number,
+    "reverse_mode": lambda v: isinstance(v, bool),
+    "schedule": lambda v: isinstance(v, dict),
+}
+
+
+def _sanitize(data: dict, log) -> dict:
+    """Drop stored values whose type does not match the wire format.
+
+    None always survives: it means "unset", every reader already guards for it,
+    and the v1 migration writes `next_reset_date: None` deliberately. Unknown
+    keys pass through untouched so a future version's data is not destroyed by
+    an older one reading it.
+    """
+    clean = {}
+    for key, value in data.items():
+        validator = _VALIDATORS.get(key)
+        if validator is None or value is None or validator(value):
+            clean[key] = value
+        else:
+            log.warning(
+                f"Ignoring malformed stored {key!r}: {value!r} ({type(value).__name__})"
+            )
+    return clean
+
+
 class TimerStore:
     """Owns the config entry's `.storage` file and the lock guarding it."""
 
@@ -68,10 +110,10 @@ class TimerStore:
     # ------------------------------------------------------------------
 
     async def async_read(self) -> dict:
-        """Current contents, or {} if unreadable. Never raises."""
+        """Current contents, sanitized; {} if unreadable. Never raises."""
         async with self._lock:
             try:
-                return await self._store.async_load() or {}
+                return _sanitize(await self._store.async_load() or {}, self._log)
             except Exception as e:
                 self._log.warning(f"Could not read storage: {e}")
                 return {}
@@ -85,7 +127,7 @@ class TimerStore:
         """
         async with self._lock:
             try:
-                return await self._store.async_load() or {}
+                return _sanitize(await self._store.async_load() or {}, self._log)
             except NotImplementedError:
                 self._log.info("Migrating storage format")
                 try:
@@ -95,7 +137,7 @@ class TimerStore:
                         new_data = old_data.copy()
                         new_data["next_reset_date"] = None
                         await self._store.async_save(new_data)
-                        return new_data
+                        return _sanitize(new_data, self._log)
                 except Exception as migration_error:
                     self._log.error(f"Storage migration failed: {migration_error}")
             except Exception as e:
