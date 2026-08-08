@@ -8,13 +8,14 @@ repeat re-arms to, and which paths deliberately do NOT clear the schedule.
 Weighted accordingly - the happy path is the least interesting thing here.
 """
 import unittest
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 from ha_harness import load
 
 sensor_module = load("sensor")
 schedule_module = load("schedule")
+timer_store_module = load("timer_store")
 TimerRuntimeSensor = sensor_module.TimerRuntimeSensor
 
 # A Wednesday, so weekday filtering is observable (Mon=0 ... Wed=2).
@@ -61,6 +62,10 @@ class ScheduleTestBase(unittest.IsolatedAsyncioTestCase):
         self.now = NOW
         schedule_module.dt_util.now = lambda: self.now
         schedule_module.dt_util.as_utc = lambda d: d
+        # Identity, so this suite's naive clock stays internally consistent.
+        # The aware/naive path has its own test; real DST behaviour is a known
+        # gap recorded in TODO.md.
+        schedule_module.dt_util.as_local = lambda d: d
         self.unsub = MagicMock()
         schedule_module.async_track_point_in_utc_time = MagicMock(return_value=self.unsub)
 
@@ -68,6 +73,17 @@ class ScheduleTestBase(unittest.IsolatedAsyncioTestCase):
         """Advance the clock to the armed moment, then run the callback."""
         self.now = s._schedule.fire_at
         await s._schedule._async_fired()
+
+    async def restore(self, s, payload):
+        """Restore the way production does - through TimerStore's sanitizer.
+
+        `_complete_initialization` passes the result of `TimerStore.async_load`,
+        which type-checks the payload. Feeding async_restore a raw dict would
+        test a path that never happens and would demand the manager re-validate
+        what the store already guarantees.
+        """
+        clean = timer_store_module._sanitize(payload, s._log)
+        await s._schedule.async_restore(clean)
 
 
 class ArmingTestCase(ScheduleTestBase):
@@ -221,18 +237,18 @@ class RestoreTestCase(ScheduleTestBase):
     async def test_no_stored_schedule_is_left_alone(self):
         """Deliberately does NOT clear: there is nothing to tear down."""
         s = make_sensor()
-        await s._schedule.async_restore({})
+        await self.restore(s, {})
         s._store.async_clear_schedule.assert_not_awaited()
 
     async def test_schedule_without_fire_at_is_left_alone(self):
         s = make_sensor()
-        await s._schedule.async_restore({"schedule": {"duration": 5}})
+        await self.restore(s, {"schedule": {"duration": 5}})
         s._store.async_clear_schedule.assert_not_awaited()
 
     async def test_future_one_shot_is_rearmed_as_stored(self):
         s = make_sensor()
         fire_at = NOW + timedelta(hours=3)
-        await s._schedule.async_restore({"schedule": {
+        await self.restore(s, {"schedule": {
             "fire_at": fire_at.isoformat(), "duration": 15, "unit": "min"}})
 
         self.assertEqual(s._schedule.fire_at, fire_at)
@@ -243,7 +259,7 @@ class RestoreTestCase(ScheduleTestBase):
     async def test_missed_one_shot_is_discarded(self):
         """A bounded run hours late is wrong - drop it rather than fire it."""
         s = make_sensor()
-        await s._schedule.async_restore({"schedule": {
+        await self.restore(s, {"schedule": {
             "fire_at": (NOW - timedelta(hours=2)).isoformat(), "duration": 15}})
 
         self.assertIsNone(s._schedule.fire_at)
@@ -253,7 +269,7 @@ class RestoreTestCase(ScheduleTestBase):
     async def test_recurring_is_recomputed_from_now_not_replayed(self):
         """A repeat armed days ago must jump forward, not fire immediately."""
         s = make_sensor()
-        await s._schedule.async_restore({"schedule": {
+        await self.restore(s, {"schedule": {
             "fire_at": (NOW - timedelta(days=3)).replace(hour=7, minute=0).isoformat(),
             "duration": 15, "unit": "min", "repeat": True, "days": []}})
 
@@ -263,16 +279,59 @@ class RestoreTestCase(ScheduleTestBase):
 
     async def test_malformed_fire_at_is_discarded(self):
         s = make_sensor()
-        await s._schedule.async_restore({"schedule": {"fire_at": "not-a-date"}})
+        await self.restore(s, {"schedule": {"fire_at": "not-a-date"}})
 
         self.assertIsNone(s._schedule.fire_at)
         s._store.async_clear_schedule.assert_awaited()
         s._log.warning.assert_called()
 
+    async def test_malformed_days_does_not_raise(self):
+        """`"days": "MWF"` reaches `candidate.weekday() in days` and raises
+        TypeError, which is caught outside the manager - so restoration AND the
+        rest of _complete_initialization are skipped, every restart."""
+        s = make_sensor()
+        await self.restore(s, {"schedule": {
+            "fire_at": (NOW + timedelta(hours=2)).isoformat(),
+            "duration": 15, "repeat": True, "days": "MWF"}})
+
+        self.assertIsNone(s._schedule.fire_at)
+
+    async def test_a_truthy_string_does_not_promote_a_one_shot_to_recurring(self):
+        """`"repeat": "false"` is truthy - it used to silently make the
+        schedule repeat forever."""
+        s = make_sensor()
+        await self.restore(s, {"schedule": {
+            "fire_at": (NOW + timedelta(hours=2)).isoformat(),
+            "duration": 15, "repeat": "false"}})
+
+        self.assertFalse(s._schedule.repeat)
+
+    async def test_a_non_numeric_duration_is_not_armed(self):
+        """It would arm happily and then fail when the timer starts."""
+        s = make_sensor()
+        await self.restore(s, {"schedule": {
+            "fire_at": (NOW + timedelta(hours=2)).isoformat(), "duration": "5"}})
+
+        self.assertIsNone(s._schedule.fire_at)
+
+    async def test_a_timezone_naive_fire_at_does_not_raise(self):
+        """Comparing a naive datetime against HA's aware now() raises
+        TypeError. Only reachable from hand-edited storage, but it lands
+        outside the parse guard."""
+        s = make_sensor()
+        aware_now = datetime(2026, 3, 4, 8, 0, tzinfo=timezone.utc)
+        schedule_module.dt_util.now = lambda: aware_now
+        schedule_module.dt_util.as_local = lambda d: d.replace(tzinfo=timezone.utc)
+
+        await self.restore(s, {"schedule": {
+            "fire_at": "2026-03-04T10:00:00", "duration": 15}})   # no offset
+
+        self.assertIsNotNone(s._schedule.fire_at)
+
     async def test_null_days_survives_as_empty_list(self):
         """`days: None` must not become a None the weekday filter indexes."""
         s = make_sensor()
-        await s._schedule.async_restore({"schedule": {
+        await self.restore(s, {"schedule": {
             "fire_at": (NOW + timedelta(hours=2)).isoformat(),
             "repeat": True, "days": None}})
         self.assertEqual(s._schedule.days, [])

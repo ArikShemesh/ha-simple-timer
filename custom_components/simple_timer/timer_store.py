@@ -64,6 +64,36 @@ def _is_number(value) -> bool:
 # This matters more than ordinary input validation: these values drive device
 # actions during restore. `reverse_mode` is the sharp one - anything truthy,
 # `"yes"` included, used to send the switch a turn_on during startup.
+def _is_weekday_list(value) -> bool:
+    """A list of real weekday numbers. `"MWF"` is iterable but not this."""
+    return isinstance(value, list) and all(
+        isinstance(d, int) and not isinstance(d, bool) and 0 <= d <= 6 for d in value
+    )
+
+
+# The nested `schedule` payload. Checked as a unit: a schedule missing or
+# corrupt in any known field cannot be executed faithfully, and guessing at a
+# duration or a weekday set means acting on the device at the wrong time.
+_SCHEDULE_VALIDATORS = {
+    "fire_at": lambda v: isinstance(v, str),
+    "duration": _is_number,
+    "unit": lambda v: isinstance(v, str),
+    "repeat": lambda v: isinstance(v, bool),
+    "days": _is_weekday_list,
+}
+
+
+def _is_valid_schedule(value) -> bool:
+    """True when every known field of the schedule dict is well formed."""
+    if not isinstance(value, dict):
+        return False
+    return all(
+        v is None or _SCHEDULE_VALIDATORS[k](v)
+        for k, v in value.items()
+        if k in _SCHEDULE_VALIDATORS
+    )
+
+
 _VALIDATORS = {
     "finishes_at": lambda v: isinstance(v, str),
     "timer_start": lambda v: isinstance(v, str),
@@ -71,7 +101,7 @@ _VALIDATORS = {
     "duration": _is_number,
     "runtime_at_start": _is_number,
     "reverse_mode": lambda v: isinstance(v, bool),
-    "schedule": lambda v: isinstance(v, dict),
+    "schedule": _is_valid_schedule,
 }
 
 

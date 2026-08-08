@@ -232,6 +232,11 @@ class ScheduleManager:
 
         try:
             fire_at = datetime.fromisoformat(sched["fire_at"])
+            if fire_at.tzinfo is None:
+                # Everything we write carries an offset; a naive value means
+                # hand-edited storage. Assume local rather than blow up later
+                # comparing it against HA's aware now().
+                fire_at = dt_util.as_local(fire_at)
         except (ValueError, TypeError) as e:
             self._log.warning(f"Bad stored schedule fire_at: {e}")
             await self.async_clear()
