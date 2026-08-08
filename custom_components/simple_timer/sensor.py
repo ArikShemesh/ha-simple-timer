@@ -25,7 +25,6 @@ from homeassistant.helpers.event import (
 )
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.restore_state import RestoreEntity
-from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from homeassistant.helpers import entity_registry as er
@@ -71,6 +70,7 @@ from .helpers import (
     parse_reset_time,
 )
 from .startup import async_wait_until_ready
+from .timer_store import TimerStore
 from .status_sensor import TimerStatusSensor
 
 _LOGGER = logging.getLogger(__name__)
@@ -102,9 +102,6 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
     _attr_should_poll = False
 
     # icon, unit and state_class are set in __init__.
-
-    STORAGE_VERSION = 2
-    STORAGE_KEY_FORMAT = f"{DOMAIN}_{{}}"
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry):
         """Initialize the sensor."""
@@ -176,8 +173,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._default_timer_reverse_mode = False # Config flow currently doesn't support reverse mode default
 
         # Storage setup
-        self._storage_lock = asyncio.Lock()
-        self._store = Store(hass, self.STORAGE_VERSION, self.STORAGE_KEY_FORMAT.format(self._entry_id))
+        self._store = TimerStore(hass, self._entry_id, self._log)
 
     @property
     def device_info(self) -> DeviceInfo | None:
@@ -532,13 +528,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
     async def _save_next_reset_date(self):
         """Save the next reset date to storage."""
-        async with self._storage_lock:
-            try:
-                data = await self._store.async_load() or {}
-                data["next_reset_date"] = self._next_reset_date.isoformat()
-                await self._store.async_save(data)
-            except Exception as e:
-                self._log.error(f"Failed to save next reset date: {e}")
+        await self._store.async_save_next_reset_date(self._next_reset_date)
 
     async def _check_missed_reset(self):
         """Check if we missed a reset while HA was offline."""
@@ -585,14 +575,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                 # PERSISTENCE FIX: Save the adjusted runtime_at_start to storage immediately.
                 # Otherwise, if HA restarts, it will load the old (positive) runtime_at_start
                 # and ignore this daily reset, leading to incorrect usage calculation.
-                async with self._storage_lock:
-                    try:
-                        data = await self._store.async_load() or {}
-                        data["runtime_at_start"] = self._runtime_at_timer_start
-                        await self._store.async_save(data)
-                        self._log.debug(f"Persisted adjusted runtime_at_start: {self._runtime_at_timer_start}s")
-                    except Exception as e:
-                        self._log.error(f"Failed to persist adjusted runtime_at_start: {e}")
+                await self._store.async_save_runtime_at_start(self._runtime_at_timer_start)
 
             self._state = 0.0
             self._last_on_timestamp = None
@@ -792,17 +775,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._runtime_at_timer_start = 0
         self._timer_start_method = None
         
-        # Clean storage
-        async with self._storage_lock:
-            try:
-                data = await self._store.async_load() or {}
-                data.pop("finishes_at", None)
-                data.pop("duration", None)
-                data.pop("timer_start", None)
-                data.pop("runtime_at_start", None)
-                await self._store.async_save(data)
-            except Exception as e:
-                self._log.warning(f"Could not clean timer storage: {e}")
+        await self._store.async_clear_timer()
 
     async def _auto_cancel_timer_on_external_off(self):
         """Auto-cancel timer when switch is turned off externally."""
@@ -1015,16 +988,13 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             self._last_on_timestamp = timer_start_moment
         
         # Save timer state to storage
-        async with self._storage_lock:
-            data = await self._store.async_load() or {}
-            data.update({
-               "finishes_at": self._timer_finishes_at.isoformat(),
-               "duration": duration_minutes,
-               "timer_start": timer_start_moment.isoformat(),  # Store exact start time
-               "runtime_at_start": self._runtime_at_timer_start,  # Store runtime when timer started
-               "reverse_mode": reverse_mode
-            })
-            await self._store.async_save(data)
+        await self._store.async_save_timer(
+            finishes_at=self._timer_finishes_at,
+            duration=duration_minutes,
+            timer_start=timer_start_moment,
+            runtime_at_start=self._runtime_at_timer_start,
+            reverse_mode=reverse_mode,
+        )
         
         # Start timer tasks
         await self._start_timer_update_task()
@@ -1102,13 +1072,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._timer_finishes_at += timedelta(minutes=duration_minutes)
         
         # Update storage
-        async with self._storage_lock:
-            data = await self._store.async_load() or {}
-            data.update({
-               "finishes_at": self._timer_finishes_at.isoformat(),
-               "duration": self._timer_duration,
-            })
-            await self._store.async_save(data)
+        await self._store.async_extend_timer(
+            finishes_at=self._timer_finishes_at,
+            duration=self._timer_duration,
+        )
             
         # Update timer completion callback
         if self._timer_unsub:
@@ -1460,19 +1427,15 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                     
                     # Restore runtime_at_timer_start from storage if timer was active
                     if self._timer_state == "active":
-                        async with self._storage_lock:
-                            try:
-                                storage_data = await self._store.async_load()
-                                if storage_data and "runtime_at_start" in storage_data:
-                                    self._runtime_at_timer_start = storage_data["runtime_at_start"]
-                                    self._log.info(f"Restored runtime_at_timer_start: {self._runtime_at_timer_start}s")
-                                    
-                                # Also restore reverse mode from storage if available (takes precedence)
-                                if "reverse_mode" in storage_data:
-                                    self._timer_reverse_mode = storage_data["reverse_mode"]
-                                    self._log.info(f"Restored reverse mode from storage: {self._timer_reverse_mode}")
-                            except Exception as e:
-                                self._log.warning(f"Could not restore runtime_at_start or reverse_mode: {e}")
+                        storage_data = await self._store.async_read()
+                        if "runtime_at_start" in storage_data:
+                            self._runtime_at_timer_start = storage_data["runtime_at_start"]
+                            self._log.info(f"Restored runtime_at_timer_start: {self._runtime_at_timer_start}s")
+
+                        # Also restore reverse mode from storage if available (takes precedence)
+                        if "reverse_mode" in storage_data:
+                            self._timer_reverse_mode = storage_data["reverse_mode"]
+                            self._log.info(f"Restored reverse mode from storage: {self._timer_reverse_mode}")
                         
                 except (ValueError, TypeError) as e:
                     self._log.warning(f"Could not restore state: {e}")
@@ -1570,27 +1533,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
     async def _load_storage_data(self) -> dict:
         """Load storage data with migration support."""
-        storage_data = None
-        async with self._storage_lock:
-            try:
-                storage_data = await self._store.async_load()
-            except NotImplementedError:
-                # Handle storage migration
-                self._log.info("Migrating storage format")
-                try:
-                    v1_store = Store(self.hass, 1, self.STORAGE_KEY_FORMAT.format(self._entry_id))
-                    old_data = await v1_store.async_load()
-                    if old_data:
-                        new_data = old_data.copy()
-                        new_data["next_reset_date"] = None
-                        await self._store.async_save(new_data)
-                        storage_data = new_data
-                except Exception as migration_error:
-                    self._log.error(f"Storage migration failed: {migration_error}")
-            except Exception as e:
-                self._log.error(f"Error loading storage: {e}")
-        
-        return storage_data or {}
+        return await self._store.async_load()
 
     async def _setup_reset_scheduling(self, storage_data: dict):
         """Set up daily reset scheduling with configurable reset time."""
@@ -1737,32 +1680,20 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._schedule_repeat = False
         self._schedule_days = []
 
-        async with self._storage_lock:
-            try:
-                data = await self._store.async_load() or {}
-                if data.pop("schedule", None) is not None:
-                    await self._store.async_save(data)
-            except Exception as e:
-                self._log.warning(f"Could not clear schedule storage: {e}")
+        await self._store.async_clear_schedule()
 
         if write_state:
             self.async_write_ha_state()
 
     async def _save_schedule(self) -> None:
         """Persist the current schedule to storage."""
-        async with self._storage_lock:
-            try:
-                data = await self._store.async_load() or {}
-                data["schedule"] = {
-                    "fire_at": self._scheduled_fire_at.isoformat() if self._scheduled_fire_at else None,
-                    "duration": self._scheduled_duration,
-                    "unit": self._scheduled_unit,
-                    "repeat": self._schedule_repeat,
-                    "days": self._schedule_days,
-                }
-                await self._store.async_save(data)
-            except Exception as e:
-                self._log.warning(f"Could not save schedule: {e}")
+        await self._store.async_save_schedule(
+            fire_at=self._scheduled_fire_at,
+            duration=self._scheduled_duration,
+            unit=self._scheduled_unit,
+            repeat=self._schedule_repeat,
+            days=self._schedule_days,
+        )
 
     async def _restore_schedule(self, storage_data: dict) -> None:
         """Re-arm a stored schedule on startup; discard missed one-shots."""
@@ -1857,19 +1788,14 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         
         # Load timer data from storage including reverse mode
         reverse_mode = False
-        async with self._storage_lock:
-            try:
-                data = await self._store.async_load()
-                if data:
-                    if "runtime_at_start" in data:
-                        self._runtime_at_timer_start = data["runtime_at_start"]
-                        self._log.info(f"Restored runtime_at_start for expired timer: {self._runtime_at_timer_start}s")
-                    if "reverse_mode" in data:
-                        reverse_mode = data["reverse_mode"]
-                        self._timer_reverse_mode = reverse_mode
-                        self._log.info(f"Restored reverse mode for expired timer: {reverse_mode}")
-            except Exception as e:
-                self._log.warning(f"Could not load timer data: {e}")
+        data = await self._store.async_read()
+        if "runtime_at_start" in data:
+            self._runtime_at_timer_start = data["runtime_at_start"]
+            self._log.info(f"Restored runtime_at_start for expired timer: {self._runtime_at_timer_start}s")
+        if "reverse_mode" in data:
+            reverse_mode = data["reverse_mode"]
+            self._timer_reverse_mode = reverse_mode
+            self._log.info(f"Restored reverse mode for expired timer: {reverse_mode}")
         
         # Handle runtime calculation based on timer mode
         if reverse_mode:
@@ -2065,22 +1991,24 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         await asyncio.sleep(1)  # Safety delay
         
         # Load timer data from storage including runtime_at_start
-        async with self._storage_lock:
+        data = await self._store.async_read()
+        self._timer_duration = data.get("duration", self._timer_duration)
+        if data.get("timer_start"):
+            # Guarded: a malformed stored value must not escape here. This runs
+            # before the completion callback is armed, so an exception would
+            # leave the timer active with nothing scheduled to finish it.
             try:
-                data = await self._store.async_load()
-                if data:
-                    self._timer_duration = data.get("duration", self._timer_duration)
-                    if data.get("timer_start"):
-                        self._timer_start_moment = datetime.fromisoformat(data["timer_start"])
-                    if "runtime_at_start" in data:
-                        self._runtime_at_timer_start = data["runtime_at_start"]
-                        self._log.info(f"Restored runtime_at_start from storage: {self._runtime_at_timer_start}s")
-                    # Ensure reverse mode is restored from storage
-                    if "reverse_mode" in data:
-                        self._timer_reverse_mode = data["reverse_mode"]
-                        self._log.info(f"Restored reverse mode from storage: {self._timer_reverse_mode}")
-            except Exception as e:
-                self._log.warning(f"Could not load timer data: {e}")
+                self._timer_start_moment = datetime.fromisoformat(data["timer_start"])
+            except (ValueError, TypeError):
+                self._timer_start_moment = None
+                self._log.warning("Failed to restore timer_start_moment")
+        if "runtime_at_start" in data:
+            self._runtime_at_timer_start = data["runtime_at_start"]
+            self._log.info(f"Restored runtime_at_start from storage: {self._runtime_at_timer_start}s")
+        # Ensure reverse mode is restored from storage
+        if "reverse_mode" in data:
+            self._timer_reverse_mode = data["reverse_mode"]
+            self._log.info(f"Restored reverse mode from storage: {self._timer_reverse_mode}")
         
         # Add offline time and set watchdog message
         last_state = await self.async_get_last_state()
