@@ -639,6 +639,25 @@ class TimerCard extends LitElement {
     const switchId = this._effectiveSwitchEntity;
     console.log(`Timer-card: Toggling independent power for ${switchId}`);
 
+    // Climate devices go through the integration, because "on" for them means
+    // a specific hvac mode that only the config entry knows. Everything else
+    // keeps the direct toggle it always used - byte-identical for existing
+    // users, and it does not need the integration to be reachable.
+    if (switchId.split('.')[0] === 'climate') {
+      const entryId = this._getEntryId();
+      if (!entryId) {
+        console.error("Timer-card: Cannot toggle power without an entry_id.");
+        return;
+      }
+      const sensor = this.hass.states[this._effectiveSensorEntity!];
+      const active = sensor?.attributes?.device_active === true;
+      this.hass.callService("simple_timer", "manual_power_toggle", {
+        entry_id: entryId,
+        action: active ? "turn_off" : "turn_on",
+      }).catch(err => console.error("Timer-card: Error toggling power:", err));
+      return;
+    }
+
     this.hass.callService("homeassistant", "toggle", { entity_id: switchId })
       .catch(err => console.error("Timer-card: Error toggling power:", err));
   }
@@ -1284,7 +1303,7 @@ class TimerCard extends LitElement {
           message = `Timer instance '${this._config.timer_instance_id}' not found. It may have been removed, or the Simple Timer integration is not loaded yet. Check Settings → Devices & Services, or pick another instance in the card editor.`;
           isWarning = true;
         } else if (typeof configuredSensorState.attributes.switch_entity_id !== 'string' || !(configuredSensorState.attributes.switch_entity_id && this.hass.states[configuredSensorState.attributes.switch_entity_id])) {
-          message = `Timer Control Instance '${this._config.timer_instance_id}' linked to missing or invalid switch '${configuredSensorState.attributes.switch_entity_id}'. Please check instance configuration.`;
+          message = `Timer Control Instance '${this._config.timer_instance_id}' linked to missing or invalid device '${configuredSensorState.attributes.switch_entity_id}'. Please check instance configuration.`;
           isWarning = true;
         } else {
           message = "Loading Timer Control Card. Please wait...";
@@ -1296,7 +1315,7 @@ class TimerCard extends LitElement {
           message = `Configured Timer Control Sensor '${this._config.sensor_entity}' not found. Please select a valid instance in the card editor.`;
           isWarning = true;
         } else if (typeof configuredSensorState.attributes.switch_entity_id !== 'string' || !(configuredSensorState.attributes.switch_entity_id && this.hass.states[configuredSensorState.attributes.switch_entity_id])) {
-          message = `Configured Timer Control Sensor '${this._config.sensor_entity}' is invalid or its linked switch '${configuredSensorState.attributes.switch_entity_id}' is missing. Please select a valid instance.`;
+          message = `Configured Timer Control Sensor '${this._config.sensor_entity}' is invalid or its linked device '${configuredSensorState.attributes.switch_entity_id}' is missing. Please select a valid instance.`;
           isWarning = true;
         } else {
           message = "Loading Timer Control Card. Please wait...";
@@ -1314,7 +1333,13 @@ class TimerCard extends LitElement {
     const timerSwitch = this.hass!.states[this._effectiveSwitchEntity!];
     const sensor = this.hass!.states[this._effectiveSensorEntity!];
 
-    const isOn = timerSwitch.state === 'on';
+    // The backend resolves this now, because "running" is not the same string
+    // in every domain - a climate entity's state is its hvac mode. The
+    // fallback keeps this card working against an older backend that does not
+    // publish the attribute yet.
+    const isOn = typeof sensor.attributes.device_active === 'boolean'
+      ? sensor.attributes.device_active
+      : timerSwitch.state === 'on';
     const isTimerActive = sensor.attributes.timer_state === 'active';
     const timerDurationInMinutes = sensor.attributes.timer_duration || 0;
     const isManualOn = isOn && !isTimerActive;
