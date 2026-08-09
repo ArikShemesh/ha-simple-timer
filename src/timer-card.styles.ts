@@ -92,6 +92,86 @@ export const cardStyles = css`
     color: #f2ba5a;
   }
 
+  /* Block-style progress bar under the countdown */
+  .block-progress-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    width: 100%;
+    max-width: 280px;
+    box-sizing: border-box;
+    padding: 0 8px;
+    margin: 2px auto 0;
+  }
+
+  /* Progress-bar-only mode: the countdown's min-height is gone, so reserve the
+     vertical room the absolutely positioned power button still needs. */
+  .block-progress-bar.solo {
+    min-height: 3.5rem;
+    /* Reserved height sits above the bar, not split around it, so the gap to
+       the daily usage line stays tight. */
+    align-items: flex-end;
+  }
+
+  /* .daily-usage-display carries a negative top margin to hug the countdown.
+     When the progress bar sits between them, cancel it so they don't overlap. */
+  .block-progress-bar + .daily-usage-display {
+    margin-top: 6px;
+  }
+
+  .progress-block {
+    position: relative; /* lets the lead block's glow sit above its neighbours */
+    flex: 1 1 0;
+    min-width: 0;
+    height: 18px;
+    border-radius: 4px;
+    background-color: var(--divider-color, rgba(160, 160, 160, 0.25));
+    opacity: 0.55;
+    transition: background-color 0.4s linear, opacity 0.4s linear;
+  }
+
+  .progress-block.active {
+    background-color: var(--primary-color);
+    opacity: 1;
+  }
+
+  .block-progress-bar.reverse .progress-block.active {
+    background-color: #f2ba5a;
+  }
+
+  /* Same glow recipe as .entity-state-button.on: a single translucent shadow
+     whose radius and alpha pulse together. Opaque stacked shadows saturate and
+     the pulse becomes invisible. */
+  .progress-block.lead {
+    z-index: 1;
+    box-shadow: 0 0 15px rgba(var(--rgb-primary-color), 0.6);
+    animation: pulse-lead 2s infinite;
+  }
+
+  .block-progress-bar.reverse .progress-block.lead {
+    box-shadow: 0 0 15px rgba(242, 186, 90, 0.6);
+    animation: pulse-lead-reverse 2s infinite;
+  }
+
+  @keyframes pulse-lead {
+    0%, 100% { box-shadow: 0 0 3px rgba(var(--rgb-primary-color), 0.25); }
+    50% {
+      box-shadow:
+        0 0 12px rgba(var(--rgb-primary-color), 1),
+        0 0 28px rgba(var(--rgb-primary-color), 0.55);
+    }
+  }
+
+  @keyframes pulse-lead-reverse {
+    0%, 100% { box-shadow: 0 0 3px rgba(242, 186, 90, 0.25); }
+    50% {
+      box-shadow:
+        0 0 12px rgba(242, 186, 90, 1),
+        0 0 28px rgba(242, 186, 90, 0.55);
+    }
+  }
+
   .daily-usage-display {
     font-size: 1rem;
     color: var(--secondary-text-color);

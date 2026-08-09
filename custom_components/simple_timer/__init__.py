@@ -231,12 +231,15 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
             call.data.get("unit", "min"),
             call.data.get("reverse_mode", False),
             call.data.get("start_method", "button"),
+            context=call.context,
         )
 
     async def add_timer(call: ServiceCall):
         """Handle the service call to add time to an active timer."""
         sensor = _get_sensor(*_resolve_entry_id(call))
-        await sensor.async_add_timer(call.data["duration"], call.data.get("unit", "min"))
+        await sensor.async_add_timer(
+            call.data["duration"], call.data.get("unit", "min"), context=call.context
+        )
 
     async def schedule_timer(call: ServiceCall):
         """Handle the service call to arm a scheduled start."""
@@ -248,17 +251,20 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
             call.data.get("unit", "min"),
             call.data.get("repeat", False),
             days,
+            context=call.context,
         )
 
     async def cancel_schedule(call: ServiceCall):
         """Handle the service call to cancel an armed schedule."""
         sensor = _get_sensor(*_resolve_entry_id(call))
-        await sensor.async_cancel_schedule()
+        await sensor.async_cancel_schedule(context=call.context)
 
     async def cancel_timer(call: ServiceCall):
         """Handle the service call to cancel the device timer."""
         sensor = _get_sensor(*_resolve_entry_id(call))
-        await sensor.async_cancel_timer(call.data.get("turn_off_entity", True))
+        await sensor.async_cancel_timer(
+            call.data.get("turn_off_entity", True), context=call.context
+        )
 
     async def update_switch_entity(call: ServiceCall):
         """Handle the service call to update the switch entity for the sensor."""
@@ -286,7 +292,7 @@ async def async_setup(hass: HomeAssistant, _: dict) -> bool:
     async def manual_power_toggle(call: ServiceCall):
         """Handle manual power toggle from frontend card."""
         sensor = _get_sensor(*_resolve_entry_id(call))
-        await sensor.async_manual_power_toggle(call.data["action"])
+        await sensor.async_manual_power_toggle(call.data["action"], context=call.context)
 
     async def reset_daily_usage(call: ServiceCall):
         """Handle manual daily usage reset."""

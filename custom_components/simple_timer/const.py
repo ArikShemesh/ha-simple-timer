@@ -11,3 +11,55 @@ CARD_URL = "/simple_timer/timer-card.js"
 LEGACY_CARD_URL = "/local/simple-timer/timer-card.js"
 
 WARNING_MSG_OFFLINE = "Warning: Home assistant was offline or reloaded during a running timer! Usage time may be unsynchronized."
+
+# Dispatcher signal fired whenever the runtime sensor writes state. Formatted
+# with the config entry_id so each timer instance has its own channel. The
+# status sensor listens on this instead of us having to touch every one of the
+# ~30 async_write_ha_state() call sites in TimerRuntimeSensor.
+SIGNAL_STATE_UPDATED = f"{DOMAIN}_state_updated_{{}}"
+
+# Status sensor states. Non-numeric on purpose: the runtime sensor carries a
+# unit_of_measurement, so HA's logbook filters it out and it can never appear
+# in a device's Activity feed. These states are what make the timer loggable.
+STATUS_IDLE = "idle"
+STATUS_ACTIVE = "active"
+STATUS_DELAYED_START = "delayed_start"
+STATUS_SCHEDULED = "scheduled"
+
+STATUS_OPTIONS = [
+    STATUS_IDLE,
+    STATUS_ACTIVE,
+    STATUS_DELAYED_START,
+    STATUS_SCHEDULED,
+]
+
+# Runtime sensor state attributes. These are the card's public API - the card
+# reads them by name, and shipped bundles will not be rebuilt. Do not rename.
+ATTR_TIMER_STATE = "timer_state"
+ATTR_TIMER_FINISHES_AT = "timer_finishes_at"
+ATTR_TIMER_DURATION = "timer_duration"
+ATTR_TIMER_REMAINING = "timer_remaining"
+ATTR_WATCHDOG_MESSAGE = "watchdog_message"
+ATTR_SWITCH_ENTITY_ID = "switch_entity_id"
+ATTR_STATUS_ENTITY_ID = "status_entity_id"
+ATTR_LAST_ON_TIMESTAMP = "last_on_timestamp"
+ATTR_INSTANCE_TITLE = "instance_title"
+ATTR_NEXT_RESET_DATE = "next_reset_date"
+ATTR_RESET_TIME = "reset_time"
+ATTR_TIMER_START_METHOD = "timer_start_method"
+
+# Scheduled-start attributes
+ATTR_SCHEDULE_STATE = "schedule_state"
+ATTR_SCHEDULED_START = "scheduled_start"
+ATTR_SCHEDULED_DURATION = "scheduled_duration"
+ATTR_SCHEDULED_UNIT = "scheduled_unit"
+ATTR_SCHEDULE_REPEAT = "schedule_repeat"
+ATTR_SCHEDULE_DAYS = "schedule_days"
+
+# Bus events described by logbook.py for human-readable Activity lines.
+EVENT_TIMER_STARTED = f"{DOMAIN}_started"
+EVENT_TIMER_EXTENDED = f"{DOMAIN}_extended"
+EVENT_TIMER_CANCELLED = f"{DOMAIN}_cancelled"
+EVENT_TIMER_FINISHED = f"{DOMAIN}_finished"
+EVENT_SCHEDULE_SET = f"{DOMAIN}_scheduled"
+EVENT_SCHEDULE_CANCELLED = f"{DOMAIN}_schedule_cancelled"
