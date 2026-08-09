@@ -173,7 +173,12 @@ class ReverseCompletionTestCase(CompletionTestBase):
         self.assertNotIn(TURNED_ON, self.notified(s))
 
     async def test_completion_warns_the_user_that_the_switch_failed(self):
-        """The failure must not be silent - today nothing reaches the user."""
+        """The failure must not be silent - it once reached nobody.
+
+        Pinned on what the user is told rather than on the internal action
+        description, which belongs in the log and no longer ships in the
+        notification text.
+        """
         s = make_sensor()
         s.hass.services.async_call = AsyncMock(
             side_effect=RuntimeError("switch integration unavailable")
@@ -181,8 +186,8 @@ class ReverseCompletionTestCase(CompletionTestBase):
 
         await s._async_timer_finished()
 
-        self.assertTrue(
-            any("Reverse timer completion turn-on" in m for m in self.notified(s)),
+        self.assertIn(
+            "Warning: failed to turn the device ON. Please check the switch.",
             self.notified(s),
         )
 
@@ -349,3 +354,22 @@ class StartFailLoudTestCase(CompletionTestBase):
 
         self.assertEqual(s._timer_state, "idle")
         s._store.async_save_timer.assert_not_awaited()
+
+
+class CancelNotificationTestCase(unittest.IsolatedAsyncioTestCase):
+    """What a cancelled timer tells the user.
+
+    Cancelling sent "Timer finished", which is the one thing that did not
+    happen. It matters most when a voice assistant reads the message out.
+    """
+
+    async def test_cancelling_says_cancelled_not_finished(self):
+        s = make_sensor(reverse=True)
+        s._state = 5400
+
+        await s.async_cancel_timer()
+
+        self.assertEqual(
+            s._send_notification.await_args.args[0],
+            "Timer cancelled – daily usage 1 hour 30 minutes",
+        )

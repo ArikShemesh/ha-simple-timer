@@ -30,10 +30,24 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from homeassistant.const import STATE_ON
+from homeassistant.const import STATE_OFF, STATE_ON
 from homeassistant.core import Context, HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _spoken_state(value: str) -> str:
+    """A switch state as a notification should say it.
+
+    Anything that is not plainly on or off - unavailable, unknown, missing -
+    passes through as itself. Flattening those to "OFF" would tell the user
+    the device is off when all we know is that it stopped answering.
+    """
+    if value == STATE_ON:
+        return "ON"
+    if value == STATE_OFF:
+        return "OFF"
+    return value
 
 # Foreground poll waits after commanding, in seconds.
 _SETTLE_WAITS = (1.0, 2.0, 3.0)
@@ -141,18 +155,34 @@ class SwitchController:
             updated = self._hass.states.get(self.entity_id)
             if not updated or updated.state != desired_state:
                 actual = updated.state if updated else "no state"
-                warning_msg = (
+                # The log keeps the internal wording; the notification is read
+                # by a person, and often spoken by a voice assistant, so it
+                # talks about the device rather than about entity states.
+                self._log.warning(
                     f"Warning: {action_description} - switch should be "
                     f"'{desired_state}' but remains '{actual}'. "
                     f"Check switch connectivity."
                 )
-                self._log.warning(warning_msg)
-                await self._notify(warning_msg)
+                spoken_actual = _spoken_state(actual)
+                still_or_reporting = (
+                    f"it is still {spoken_actual}"
+                    if spoken_actual in ("ON", "OFF")
+                    else f"it is reporting {spoken_actual}"
+                )
+                await self._notify(
+                    f"Warning: tried to turn the device "
+                    f"{_spoken_state(desired_state)} but {still_or_reporting}. "
+                    f"Please check the switch connectivity."
+                )
         except Exception as e:
-            warning_msg = (f"Warning: {action_description} - failed to set switch "
-                           f"to '{desired_state}': {e}")
-            self._log.warning(warning_msg)
-            await self._notify(warning_msg)
+            # The exception text stays in the log: a notification carrying a
+            # Python error is noise to the user and gibberish when spoken.
+            self._log.warning(f"Warning: {action_description} - failed to set switch "
+                              f"to '{desired_state}': {e}")
+            await self._notify(
+                f"Warning: failed to turn the device "
+                f"{_spoken_state(desired_state)}. Please check the switch."
+            )
 
     async def async_ensure_with_retries(self, desired_state: str, action_description: str,
                                         force: bool = False) -> None:

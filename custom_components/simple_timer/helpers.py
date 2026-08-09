@@ -83,6 +83,9 @@ def format_duration_natural(total_seconds: float, show_seconds: bool = False) ->
     e.g. "1 hour 30 minutes" rather than a clock-style "01:30", so a speaking
     assistant reads it correctly.
 
+    Days are a unit the start service accepts, so they get their own place
+    rather than piling up as "48 hours".
+
     `show_seconds` mirrors the instance setting, but is overridden below a
     minute: the coarse form can only ever say "0 minutes" there, which is a
     plain lie about a 30 second timer. Durations of a minute or more round as
@@ -91,14 +94,19 @@ def format_duration_natural(total_seconds: float, show_seconds: bool = False) ->
     total_seconds_int = max(0, int(total_seconds))
     if total_seconds_int < 60:
         show_seconds = True
-    hours = total_seconds_int // 3600
+    days = total_seconds_int // 86400
+    hours = (total_seconds_int % 86400) // 3600
     minutes = (total_seconds_int % 3600) // 60
     seconds = total_seconds_int % 60 if show_seconds else 0
 
     parts = []
+    if days > 0:
+        parts.append(f"{days} day" if days == 1 else f"{days} days")
     if hours > 0:
         parts.append(f"{hours} hour" if hours == 1 else f"{hours} hours")
-    if minutes > 0 or (hours == 0 and not show_seconds and seconds == 0):
+    # The coarse form needs SOMETHING to say when nothing bigger landed, hence
+    # the "0 minutes" fallback - but only when no larger part was emitted.
+    if minutes > 0 or (not parts and not show_seconds and seconds == 0):
         parts.append(f"{minutes} minute" if minutes == 1 else f"{minutes} minutes")
     if show_seconds and (seconds > 0 or not parts):
         parts.append(f"{seconds} second" if seconds == 1 else f"{seconds} seconds")

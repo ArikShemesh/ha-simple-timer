@@ -212,18 +212,41 @@ class EnsureStateTestCase(unittest.IsolatedAsyncioTestCase):
         await s._switch.async_ensure("on", "test")
 
         self.assertEqual(self.slept, [1.0, 2.0, 3.0])
-        s._log.warning.assert_called()
+        # The log keeps the internal detail; the notification is read by a
+        # person, and often spoken aloud by a voice assistant.
+        self.assertIn("Check switch connectivity", s._log.warning.call_args.args[0])
         s._send_notification.assert_awaited_once()
-        self.assertIn("Check switch connectivity", s._send_notification.await_args.args[0])
+        self.assertEqual(
+            s._send_notification.await_args.args[0],
+            "Warning: tried to turn the device ON but it is still OFF. "
+            "Please check the switch connectivity.",
+        )
+
+    async def test_an_unreachable_switch_is_reported_by_its_real_state(self):
+        """Saying "still OFF" about an unavailable switch would be a guess."""
+        s = make_sensor(switch_state="unavailable")
+        await s._switch.async_ensure("on", "test")
+
+        self.assertEqual(
+            s._send_notification.await_args.args[0],
+            "Warning: tried to turn the device ON but it is reporting "
+            "unavailable. Please check the switch connectivity.",
+        )
 
     async def test_a_failing_service_call_warns_and_never_raises(self):
         s = make_sensor(switch_state="off")
-        s.hass.services.async_call = AsyncMock(side_effect=RuntimeError("unavailable"))
+        s.hass.services.async_call = AsyncMock(side_effect=RuntimeError("boom"))
 
         await s._switch.async_ensure("on", "test")     # must not raise
 
-        s._log.warning.assert_called()
+        # The exception text is for the log. A notification carrying a Python
+        # error is noise to the user and gibberish to an assistant reading it.
+        self.assertIn("boom", s._log.warning.call_args.args[0])
         s._send_notification.assert_awaited_once()
+        self.assertEqual(
+            s._send_notification.await_args.args[0],
+            "Warning: failed to turn the device ON. Please check the switch.",
+        )
 
 
 class RetryChainTestCase(unittest.IsolatedAsyncioTestCase):

@@ -59,6 +59,20 @@ class TestNotificationFormat(unittest.TestCase):
         formatted = format_duration_natural(3661, show_seconds=True)
         self.assertEqual(formatted, "1 hour 1 minute 1 second")
 
+    def test_format_exactly_one_day(self):
+        """A day reads as a day; "24 hours" is how a clock format would say it."""
+        formatted = format_duration_natural(86400, show_seconds=False)
+        self.assertEqual(formatted, "1 day")
+
+    def test_format_days_and_hours(self):
+        """Days are a real duration here - the service accepts a "days" unit."""
+        formatted = format_duration_natural(90000, show_seconds=False)
+        self.assertEqual(formatted, "1 day 1 hour")
+
+    def test_format_multiple_days(self):
+        formatted = format_duration_natural(180000, show_seconds=False)
+        self.assertEqual(formatted, "2 days 2 hours")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1042,8 +1042,9 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                  # DECOUPLED: Do nothing
                  pass
         
-        # Send notification
-        notification_msg = f"Timer finished – daily usage {formatted_time}"
+        # Send notification. Says cancelled, not finished: the timer was cut
+        # short, and a user hearing "finished" would think it ran its course.
+        notification_msg = f"Timer cancelled – daily usage {formatted_time}"
         await self._send_notification(notification_msg)
 
         await self._fire_logbook_event(
