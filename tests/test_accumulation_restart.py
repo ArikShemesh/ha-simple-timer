@@ -40,7 +40,10 @@ class AccumulationRestartTestCase(unittest.TestCase):
 
         # The switch the sensor watches, reported as on.
         self.switch_state = MagicMock()
-        self.switch_state.state = sensor_module.STATE_ON
+        # The literal, not sensor_module.STATE_ON: sensor.py no longer imports
+        # the state constants now that the domain descriptors own that
+        # comparison.
+        self.switch_state.state = "on"
 
     def _make_sensor(self, state: float, last_on_timestamp: datetime, show_seconds: bool = False):
         """Build a TimerRuntimeSensor with only what accumulation touches.
@@ -164,7 +167,10 @@ class RuntimeWriteThrottleTestCase(unittest.TestCase):
         sensor_module.dt_util.utcnow = self.clock
 
         self.switch_state = MagicMock()
-        self.switch_state.state = sensor_module.STATE_ON
+        # The literal, not sensor_module.STATE_ON: sensor.py no longer imports
+        # the state constants now that the domain descriptors own that
+        # comparison.
+        self.switch_state.state = "on"
 
     _make_sensor = AccumulationRestartTestCase._make_sensor
     _run_ticks = AccumulationRestartTestCase._run_ticks

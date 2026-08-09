@@ -8,14 +8,13 @@ from typing import Any
 
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorStateClass
 from homeassistant.const import (
-    STATE_ON,
-    STATE_OFF,
     STATE_UNAVAILABLE,
     STATE_UNKNOWN,
     UnitOfTime,
     EVENT_HOMEASSISTANT_STOP,
 )
 from homeassistant.core import HomeAssistant, callback, Context, Event, CoreState
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.event import (
     async_track_state_change_event,
@@ -41,6 +40,7 @@ from .const import (
     ATTR_TIMER_REMAINING,
     ATTR_WATCHDOG_MESSAGE,
     ATTR_SWITCH_ENTITY_ID,
+    ATTR_DEVICE_ACTIVE,
     ATTR_STATUS_ENTITY_ID,
     ATTR_LAST_ON_TIMESTAMP,
     ATTR_INSTANCE_TITLE,
@@ -69,6 +69,7 @@ from .helpers import (
     next_reset_datetime,
     parse_reset_time,
 )
+from .domains import descriptor_for, needs_turn_on_option
 from .notify import Notifier
 from .schedule import ScheduleManager
 from .startup import async_wait_until_ready
@@ -202,6 +203,28 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
     def device_info(self) -> DeviceInfo | None:
         """Link this entity to the device of the switch it monitors."""
         return device_info_for_switch(self.hass, self._switch_entity_id)
+
+    @property
+    def _monitored_descriptor(self):
+        """Domain rules for the device this timer watches.
+
+        A property rather than an attribute set in __init__, deliberately: the
+        monitored entity is re-pointed at runtime, and the test fixtures build
+        sensors through object.__new__ and set only what the path under test
+        touches. Derived on read, so neither can go stale.
+        """
+        return descriptor_for(self._switch_entity_id)
+
+    def _device_active(self) -> bool:
+        """Is the monitored device running right now?
+
+        "on" for a switch, any non-off hvac mode for climate. Published as an
+        attribute so the card does not have to know the difference.
+        """
+        if not self._switch_entity_id:
+            return False
+        state = self.hass.states.get(self._switch_entity_id)
+        return state is not None and self._monitored_descriptor.is_active(state.state)
 
     def _parse_reset_time(self, time_str: str) -> time:
         """Parse a configured reset time, warning and falling back if unusable."""
@@ -366,6 +389,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             ATTR_WATCHDOG_MESSAGE: self._watchdog_message,
             "entry_id": self._entry_id,
             ATTR_SWITCH_ENTITY_ID: self._switch_entity_id,
+            # Additive: the card used to compare the device state against "on"
+            # itself, which is wrong for climate. Old bundles keep their own
+            # fallback, so this must never be renamed or removed.
+            ATTR_DEVICE_ACTIVE: self._device_active(),
             # Lets the card open more-info on the status sensor without having
             # to scan for it. Safe to add here: the card's instance lookup keys
             # off entry_id + switch_entity_id, both of which stay on this entity.
@@ -465,10 +492,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             
             if self._switch_entity_id:
                 current_switch_state = self.hass.states.get(self._switch_entity_id)
-                if current_switch_state and current_switch_state.state == STATE_ON:
+                if current_switch_state and self._monitored_descriptor.is_active(current_switch_state.state):
                     self._last_on_timestamp = dt_util.utcnow()
                     await self._start_realtime_accumulation()
-            
+
             self.async_write_ha_state()
         finally:
             self._is_performing_reset = False
@@ -548,14 +575,28 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
     async def async_update_switch_entity(self, switch_entity_id: str):
         """Update the monitored switch entity."""
         self._log.info(f"Updating switch entity to: {switch_entity_id}")
-        
+
+        # Refuse a device we would not know how to turn on. The alternative is
+        # accepting it and failing at 2am when the timer fires, with the user
+        # asleep and the boiler cold.
+        if switch_entity_id:
+            new_state = self.hass.states.get(switch_entity_id)
+            if needs_turn_on_option(switch_entity_id,
+                                    self._entry.data.get(CONF_TURN_ON_OPTION),
+                                    new_state.attributes if new_state else None):
+                raise ServiceValidationError(
+                    f"Cannot monitor {switch_entity_id}: this device needs a "
+                    f"turn-on mode, and none is configured for it. Change the "
+                    f"device through the integration's options instead."
+                )
+
         if self._switch_entity_id != switch_entity_id:
             self._switch_entity_id = switch_entity_id
             await self._async_setup_switch_listener()
-        
+
         # Update accumulation based on current switch state
         current_switch_state = self.hass.states.get(self._switch_entity_id) if self._switch_entity_id else None
-        if current_switch_state and current_switch_state.state == STATE_ON:
+        if current_switch_state and self._monitored_descriptor.is_active(current_switch_state.state):
             if not self._last_on_timestamp:
                 self._last_on_timestamp = dt_util.utcnow()
             await self._start_realtime_accumulation()
@@ -606,8 +647,13 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         if not to_state:
             return
 
-        # Switch turned on
-        if to_state.state == STATE_ON and (not from_state or from_state.state != STATE_ON):
+        # Device started running. For climate the edge is off/unavailable ->
+        # any mode; cool -> heat is NOT an edge, so a user changing the mode
+        # mid-timer does not re-seed the meter or auto-start a second timer.
+        descriptor = self._monitored_descriptor
+        if descriptor.is_active(to_state.state) and (
+            not from_state or not descriptor.is_active(from_state.state)
+        ):
             if self._watchdog_message:
                 self._watchdog_message = None
             self._last_on_timestamp = now
@@ -621,9 +667,12 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                     self.async_start_timer(self._default_timer_duration, self._default_timer_unit, reverse_mode=self._default_timer_reverse_mode)
                 )
 
-        # Switch transitioned to a non-ON state
-        elif to_state.state != STATE_ON:
-            is_definitive_off = to_state.state == STATE_OFF
+        # Device stopped running, or stopped answering
+        elif not descriptor.is_active(to_state.state):
+            # Only a positive off cancels a coupled timer. An entity that went
+            # unavailable has told us nothing, and cancelling a running timer
+            # on a dropped radio message is the failure this weights against.
+            is_definitive_off = descriptor.is_definitive_off(to_state.state)
 
             if is_definitive_off:
                 self.hass.async_create_task(self._stop_realtime_accumulation())
@@ -681,8 +730,8 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             
         current_switch_state = self.hass.states.get(self._switch_entity_id) if self._switch_entity_id else None
         
-        # Only start if switch is ON (or we are in a permissive state)
-        if current_switch_state and current_switch_state.state == STATE_ON:
+        # Only start if the device is running (or we are in a permissive state)
+        if current_switch_state and self._monitored_descriptor.is_active(current_switch_state.state):
             if not self._last_on_timestamp:
                 self._last_on_timestamp = dt_util.utcnow()
         else:
@@ -756,12 +805,14 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
         current_switch_state = self.hass.states.get(self._switch_entity_id)
         
-        # Accumulate ONLY if switch is ON
+        # Accumulate ONLY if the device is running. An entity that stopped
+        # answering keeps accumulating, unchanged: it was on a moment ago and
+        # nothing has said otherwise.
         should_accumulate = (
-            current_switch_state 
+            current_switch_state
             and self._last_on_timestamp
             and (
-                current_switch_state.state == STATE_ON 
+                self._monitored_descriptor.is_active(current_switch_state.state)
                 or current_switch_state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN)
             )
         )
@@ -857,7 +908,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         else:
             # NORMAL MODE: Convenience turn ON, but don't wait for it
             current_switch_state = self.hass.states.get(self._switch_entity_id) if self._switch_entity_id else None
-            if not current_switch_state or current_switch_state.state != STATE_ON:
+            if not current_switch_state or not self._monitored_descriptor.is_active(current_switch_state.state):
                 await self._switch.async_command("on", blocking=False, context=context)
                 # DECOUPLED: Do NOT wait for state change. Start timer immediately.
                 # User can turn switch on/off manually during timer.
@@ -1857,10 +1908,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._state = 0.0
         self._last_on_timestamp = None
         
-        # If switch is currently on, restart accumulation from zero
+        # If the device is currently running, restart accumulation from zero
         if self._switch_entity_id:
             current_switch_state = self.hass.states.get(self._switch_entity_id)
-            if current_switch_state and current_switch_state.state == STATE_ON:
+            if current_switch_state and self._monitored_descriptor.is_active(current_switch_state.state):
                 self._last_on_timestamp = dt_util.utcnow()
                 await self._start_realtime_accumulation()
         

@@ -17,6 +17,8 @@ import asyncio
 from homeassistant.core import CoreState, HomeAssistant
 from homeassistant.util import dt as dt_util
 
+from .domains import descriptor_for
+
 # Longest we will wait for core + dependencies before giving up and initializing
 # anyway. Deliberately bounds the *total* wait, not each phase.
 MAX_WAIT_SECONDS = 60
@@ -67,7 +69,7 @@ async def async_dependencies_ready(hass: HomeAssistant, switch_entity_id: str | 
     """True when every dependency the sensor needs is answering."""
     return (
         await async_entity_registry_ready(hass)
-        and await async_service_registry_ready(hass)
+        and await async_service_registry_ready(hass, switch_entity_id)
         and await async_switch_entity_ready(hass, switch_entity_id)
     )
 
@@ -87,15 +89,21 @@ async def async_entity_registry_ready(hass: HomeAssistant) -> bool:
         return False
 
 
-async def async_service_registry_ready(hass: HomeAssistant) -> bool:
-    """True once homeassistant.turn_on/turn_off are registered.
+async def async_service_registry_ready(hass: HomeAssistant,
+                                       switch_entity_id: str | None = None) -> bool:
+    """True once the services this device is commanded through are registered.
 
-    Those two are what every switch command in this integration goes through,
-    so their absence means we cannot act on the switch yet.
+    Which services those are depends on the monitored entity's domain — a
+    switch goes through homeassistant.turn_on/turn_off, a climate entity
+    through climate.set_hvac_mode. No entity configured keeps the switch-like
+    requirement, which is what this always waited for.
     """
     try:
-        ha_services = hass.services.async_services().get("homeassistant", {})
-        return "turn_on" in ha_services and "turn_off" in ha_services
+        services = hass.services.async_services()
+        return all(
+            service in services.get(domain, {})
+            for domain, service in descriptor_for(switch_entity_id).required_services
+        )
     except Exception:
         return False
 
