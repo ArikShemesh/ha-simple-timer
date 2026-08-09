@@ -40,6 +40,18 @@ class MockRestoreEntity:
         return None
 
 
+class MockFlowBase:
+    """Base for ConfigFlow / OptionsFlow.
+
+    Real classes, not MagicMocks: `class X(Base, domain=DOMAIN)` needs a base
+    that is genuinely a class, and the keyword goes to __init_subclass__, which
+    plain object rejects.
+    """
+
+    def __init_subclass__(cls, **kwargs):
+        return None
+
+
 # Submodules the integration imports from. Each is bound to the matching
 # attribute of the mock root, so `ha.helpers.event` and
 # sys.modules["homeassistant.helpers.event"] stay the same object.
@@ -59,6 +71,7 @@ _HA_SUBMODULES = (
     "helpers.entity",
     "helpers.event",
     "helpers.restore_state",
+    "helpers.selector",
     "helpers.storage",
     "util",
     "util.dt",
@@ -79,6 +92,8 @@ def _install_homeassistant() -> MagicMock:
 
     ha.components.sensor.SensorEntity = MockSensorEntity
     ha.helpers.restore_state.RestoreEntity = MockRestoreEntity
+    ha.config_entries.ConfigFlow = MockFlowBase
+    ha.config_entries.OptionsFlow = MockFlowBase
 
     # Real values, not auto-mocked attributes. The integration compares entity
     # states against these by equality, and a MagicMock never equals the string
