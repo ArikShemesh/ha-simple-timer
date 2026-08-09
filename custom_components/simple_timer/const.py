@@ -10,6 +10,11 @@ PLATFORMS = ["sensor"]
 CARD_URL = "/simple_timer/timer-card.js"
 LEGACY_CARD_URL = "/local/simple-timer/timer-card.js"
 
+# Config entry key holding what "on" means for domains where that is a choice
+# rather than a fixed service call - climate stores the hvac_mode to apply.
+# Stored once on the entry, never per timer.
+CONF_TURN_ON_OPTION = "turn_on_option"
+
 WARNING_MSG_OFFLINE = "Warning: Home assistant was offline or reloaded during a running timer! Usage time may be unsynchronized."
 
 # Dispatcher signal fired whenever the runtime sensor writes state. Formatted
@@ -47,6 +52,11 @@ ATTR_INSTANCE_TITLE = "instance_title"
 ATTR_NEXT_RESET_DATE = "next_reset_date"
 ATTR_RESET_TIME = "reset_time"
 ATTR_TIMER_START_METHOD = "timer_start_method"
+
+# Whether the monitored device is currently running, already resolved for the
+# card. Additive: older bundles fall back to comparing the device state against
+# "on", which is wrong for climate, where running means any non-off hvac mode.
+ATTR_DEVICE_ACTIVE = "device_active"
 
 # Scheduled-start attributes
 ATTR_SCHEDULE_STATE = "schedule_state"

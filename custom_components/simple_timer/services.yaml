@@ -236,7 +236,12 @@ update_switch_entity:
       required: true
       selector:
         entity:
-          domain: switch
+          domain:
+            - switch
+            - input_boolean
+            - light
+            - fan
+            - climate
 
 force_name_sync:
   name: Force Name Sync
