@@ -337,6 +337,75 @@ class RestoreTestCase(ScheduleTestBase):
         self.assertEqual(s._schedule.days, [])
 
 
+class FiringFailureTestCase(ScheduleTestBase):
+    """What happens to the SCHEDULE when the timer it fires refuses to start.
+
+    Deliberately not about the timer: a start that raised part-way can still
+    leave the timer half-committed, which is persistence defect #4 and is not
+    fixed here.
+    """
+
+    async def test_recurring_rearms_when_the_timer_fails_to_start(self):
+        """CURRENT BEHAVIOUR IS A DEFECT (S2).
+
+        The exception escapes _async_fired after _unsub was already cleared,
+        so fire_at survives with no callback registered - the card reads
+        'armed' and it never fires again. A transient start failure must not
+        kill a daily schedule. Asserts the WANTED behaviour; fails today.
+        """
+        s = make_sensor()
+        await s.async_schedule_timer(time(7, 0), 30, "min", repeat=True)
+        s.async_start_timer.side_effect = RuntimeError("storage unavailable")
+
+        await self.fire(s)
+
+        self.assertEqual(s._schedule.fire_at, datetime(2026, 3, 6, 7, 0))
+        self.assertIs(s._schedule._unsub, self.unsub)
+        s._store.async_save_schedule.assert_awaited()
+
+    async def test_one_shot_clears_when_the_timer_fails_to_start(self):
+        """Same defect (S2), one-shot half. The schedule is spent either way -
+        it fired. Today the clear is skipped and fire_at survives."""
+        s = make_sensor()
+        await s.async_schedule_timer(time(7, 0), 30, "min")
+        s.async_start_timer.side_effect = RuntimeError("storage unavailable")
+
+        await self.fire(s)
+
+        self.assertIsNone(s._schedule.fire_at)
+        s._store.async_clear_schedule.assert_awaited()
+
+    async def test_the_start_failure_is_logged(self):
+        """Swallowing is only acceptable because it is recorded - nothing
+        upstack handles this; _async_fired runs as a detached task."""
+        s = make_sensor()
+        await s.async_schedule_timer(time(7, 0), 30, "min")
+        s.async_start_timer.side_effect = RuntimeError("storage unavailable")
+
+        await self.fire(s)
+
+        s._log.error.assert_called()
+
+
+class ScheduleShutdownTestCase(ScheduleTestBase):
+
+    async def test_a_firing_queued_before_shutdown_does_not_start_a_timer(self):
+        """CURRENT BEHAVIOUR IS A DEFECT (S4).
+
+        _fired() only enqueues; async_shutdown() disposes the tracker but
+        cannot recall work already on the loop. So _async_fired can land after
+        the entity was removed and command the switch on a dead sensor.
+        Asserts the WANTED behaviour; fails today.
+        """
+        s = make_sensor()
+        await s.async_schedule_timer(time(7, 0), 30, "min")
+
+        s._schedule.async_shutdown()
+        await self.fire(s)
+
+        s.async_start_timer.assert_not_awaited()
+
+
 class ConstructorWiringTestCase(unittest.TestCase):
     """Nothing else proves the real __init__ builds a manager over the store."""
 

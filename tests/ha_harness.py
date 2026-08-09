@@ -30,11 +30,14 @@ COMPONENT_DIR = os.path.abspath(
 # Separate base classes, to avoid metaclass conflicts and duplicate-base errors
 # when an entity subclasses both.
 class MockSensorEntity:
-    pass
+    async def async_will_remove_from_hass(self):
+        """Real SensorEntity has this; the removal tests call through super()."""
+        return None
 
 
 class MockRestoreEntity:
-    pass
+    async def async_will_remove_from_hass(self):
+        return None
 
 
 # Submodules the integration imports from. Each is bound to the matching

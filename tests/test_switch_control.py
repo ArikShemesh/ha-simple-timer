@@ -24,6 +24,33 @@ switch_module = load("switch_control")
 TimerRuntimeSensor = sensor_module.TimerRuntimeSensor
 
 
+class FakeTask:
+    """Stands in for the asyncio.Task hass.async_create_task returns.
+
+    The controller retains its retry tasks so removal can cancel them, so the
+    fake has to expose the task API. `_spawned` still collects the raw
+    coroutines, so every existing test drives the chain exactly as before.
+
+    Two known divergences from a real asyncio.Task, neither of which any
+    assertion here depends on: done callbacks fire synchronously inside
+    cancel() rather than after cancellation completes, and a task never
+    reaches "done", so _tasks only ever drains via async_shutdown's clear().
+    """
+
+    def __init__(self, coro):
+        self.coro = coro
+        self.cancelled = False
+        self._done_callbacks = []
+
+    def add_done_callback(self, cb):
+        self._done_callbacks.append(cb)
+
+    def cancel(self):
+        self.cancelled = True
+        for cb in self._done_callbacks:
+            cb(self)
+
+
 def make_sensor(switch_state="off", entity="switch.boiler"):
     s = object.__new__(TimerRuntimeSensor)
     s.hass = MagicMock()
@@ -31,6 +58,8 @@ def make_sensor(switch_state="off", entity="switch.boiler"):
     s._log = MagicMock()
     s._switch_entity_id = entity
     s._timer_state = "idle"
+    # Real __init__ always sets this; async_start_timer's removal guard reads it.
+    s._stop_event_received = False
     s._send_notification = AsyncMock()
 
     s._states = {}
@@ -43,7 +72,12 @@ def make_sensor(switch_state="off", entity="switch.boiler"):
     # Detached retries are captured rather than run, so a test drives them
     # deliberately instead of a background chain running away.
     s._spawned = []
-    s.hass.async_create_task = lambda coro: s._spawned.append(coro) or coro
+
+    def _create_task(coro):
+        s._spawned.append(coro)
+        return FakeTask(coro)
+
+    s.hass.async_create_task = _create_task
 
     s._switch = switch_module.SwitchController(
         s.hass, lambda: s._switch_entity_id,
@@ -441,6 +475,107 @@ class IsSwitchOnTestCase(unittest.TestCase):
     def test_no_entity_or_no_state_is_not_on(self):
         self.assertFalse(make_sensor(entity=None)._switch.is_on())
         self.assertFalse(make_sensor(switch_state=None)._switch.is_on())
+
+
+class ControllerShutdownTestCase(unittest.IsolatedAsyncioTestCase):
+    """CURRENT BEHAVIOUR IS A DEFECT (W2): retry chains outlive the entity."""
+
+    def setUp(self):
+        self._real_sleep = switch_module.asyncio.sleep
+
+        async def fake_sleep(seconds):
+            return None
+
+        switch_module.asyncio.sleep = fake_sleep
+
+    def tearDown(self):
+        switch_module.asyncio.sleep = self._real_sleep
+
+    async def test_a_retry_does_not_command_after_shutdown(self):
+        """The one that matters: reload the config entry during the 2/5/10/20s
+        backoff and today the old chain still turns the boiler on."""
+        s = make_sensor(switch_state="off")
+        await s._switch.async_ensure_with_retries("on", "Expired reverse timer turn-on")
+        calls_before = len(calls_of(s))
+
+        s._switch.async_shutdown()
+        # Drive the queued link the cancel may not have reached.
+        await s._spawned[-1]
+
+        self.assertEqual(len(calls_of(s)), calls_before)
+        drop_spawned(s)
+
+    async def test_shutdown_cancels_the_retained_chain(self):
+        """Asserts the task was CANCELLED, not merely forgotten.
+
+        async_shutdown clears _tasks unconditionally, so checking the set is
+        empty proves only that clear() ran - deleting task.cancel() outright
+        left this green until the cancelled flag was asserted.
+        """
+        s = make_sensor(switch_state="off")
+        await s._switch.async_ensure_with_retries("on", "Expired reverse timer turn-on")
+        self.assertEqual(len(s._switch._tasks), 1)
+        task = next(iter(s._switch._tasks))
+
+        s._switch.async_shutdown()
+
+        self.assertTrue(task.cancelled)
+        self.assertEqual(s._switch._tasks, set())
+        drop_spawned(s)
+
+    async def test_a_chain_spawned_after_shutdown_does_not_even_wait(self):
+        """Pins the guard BEFORE the sleep.
+
+        The post-sleep check would stop this one too, but only after burning
+        the whole backoff - a removed entity should not hold a coroutine alive
+        for 2s to decide to do nothing. Asserting "no command" cannot tell the
+        two guards apart, so this asserts the wait itself never happened.
+        """
+        s = make_sensor(switch_state="off")
+        s._switch.async_shutdown()
+        slept = []
+
+        async def record_sleep(seconds):
+            slept.append(seconds)
+
+        switch_module.asyncio.sleep = record_sleep
+        await s._switch._async_verify_and_retry("on", "switch.boiler")
+
+        self.assertEqual(slept, [])
+
+    async def test_shutdown_during_the_backoff_aborts_the_retry(self):
+        """Pins the guard AFTER the sleep, which the opening guard hides.
+
+        The captured coroutine has not started when the other tests call
+        async_shutdown, so the opening check catches those and the post-sleep
+        check is never reached - it passed for the wrong reason until this
+        test existed. The real W2 window is a chain already parked in its
+        backoff, so shutdown is fired from inside the wait.
+        """
+        s = make_sensor(switch_state="off")
+        await s._switch.async_ensure_with_retries("on", "Expired reverse timer turn-on")
+        calls_before = len(calls_of(s))
+
+        async def shutdown_mid_wait(seconds):
+            s._switch.async_shutdown()
+
+        switch_module.asyncio.sleep = shutdown_mid_wait
+        await s._spawned[-1]
+
+        self.assertEqual(len(calls_of(s)), calls_before)
+        drop_spawned(s)
+
+    async def test_shutdown_stops_a_chain_from_extending_itself(self):
+        """Cancelling one link is not enough if the link queues the next."""
+        s = make_sensor(switch_state="off")
+        await s._switch.async_ensure_with_retries("on", "Expired reverse timer turn-on")
+        s._switch.async_shutdown()
+        spawned_before = len(s._spawned)
+
+        await s._spawned[-1]
+
+        self.assertEqual(len(s._spawned), spawned_before)
+        drop_spawned(s)
 
 
 if __name__ == "__main__":

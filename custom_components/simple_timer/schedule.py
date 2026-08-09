@@ -50,6 +50,7 @@ class ScheduleManager:
         self._log = log or _LOGGER
 
         self._unsub = None
+        self._shutdown = False
         self._fire_at: datetime | None = None   # next fire, local tz aware
         self._duration: float = 0.0
         self._unit: str = "min"
@@ -160,7 +161,12 @@ class ScheduleManager:
 
         Used on entity removal and HA shutdown, where the schedule should
         survive to be restored, not be cancelled.
+
+        Sticky: disposing the tracker cannot recall an _async_fired() already
+        queued on the loop, so the flag is what actually stops it (S4). Safe to
+        latch, because a config-entry reload builds a new manager.
         """
+        self._shutdown = True
         self._dispose()
 
     # ------------------------------------------------------------------
@@ -187,6 +193,10 @@ class ScheduleManager:
 
     async def _async_fired(self) -> None:
         """Run the scheduled timer, then re-arm (recurring) or clear (one-shot)."""
+        if self._shutdown:
+            self._log.debug("Schedule fired after shutdown - ignoring")
+            return
+
         self._unsub = None
         # Captured before starting the timer: async_arm from a concurrent
         # service call would otherwise change what we re-arm to.
@@ -197,7 +207,18 @@ class ScheduleManager:
         self._log.info("Schedule fired - starting bounded timer")
 
         # Reverse is always overridden for scheduled runs (bounded auto-off).
-        await self._start_timer(duration, unit, reverse_mode=False, start_method="schedule")
+        #
+        # Widened on purpose: the schedule's own bookkeeping below must run
+        # whatever the timer did. Letting this escape leaves _unsub cleared and
+        # _fire_at set - armed forever, nothing registered to fire it (S2).
+        # Nothing upstack handles it either; _async_fired is a detached task.
+        # This repairs the SCHEDULE only - a start that raised part-way can
+        # still leave the timer half-committed (persistence defect #4).
+        try:
+            await self._start_timer(duration, unit, reverse_mode=False,
+                                    start_method="schedule")
+        except Exception as e:
+            self._log.error(f"Scheduled timer failed to start: {e}")
 
         if repeat:
             next_fire = compute_next_fire(start_time, repeat, days)

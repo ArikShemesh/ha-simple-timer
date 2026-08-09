@@ -52,6 +52,8 @@ class SwitchController:
         self._notify = notify
         self._is_timer_active = is_timer_active
         self._log = log or _LOGGER
+        self._tasks: set = set()
+        self._shutdown = False
 
     @property
     def entity_id(self) -> str | None:
@@ -83,10 +85,15 @@ class SwitchController:
                             context: Context | None = None) -> None:
         """Send turn_on/turn_off unconditionally, without verifying.
 
-        Deliberately NOT guarded on a missing entity_id: the raw call this
-        replaced was unguarded, so HA's own target validation raised and
-        aborted the operation. Swallowing it here would let async_start_timer
-        mark and persist a running timer when nothing was ever switched on.
+        **This raises, deliberately.** HA validates the service data before the
+        blocking/non-blocking split, so a missing or malformed entity_id raises
+        out of the await even with blocking=False; an execution failure under
+        blocking=False does not surface here at all.
+
+        That makes it the right primitive for async_start_timer, which has
+        persisted nothing yet and must abort rather than mark a timer running
+        with nothing switched on. Callers that have ALREADY cleared their state
+        must not use it - they want async_ensure, which warns instead.
         """
         action = "turn_on" if desired_state == "on" else "turn_off"
         await self._hass.services.async_call(
@@ -163,17 +170,41 @@ class SwitchController:
         except Exception as e:
             self._log.warning(f"Initial switch attempt failed: {e}")
 
-        self._hass.async_create_task(
+        self._spawn(
             self._async_verify_and_retry(desired_state, self.entity_id, force=force)
         )
+
+    def async_shutdown(self) -> None:
+        """Stop retrying, and drop chains already in flight.
+
+        A retry chain is detached and lives for up to 37s. Reload or unload the
+        config entry inside that window and it outlives the entity, keeping the
+        old controller alive and still able to switch the device - a turn-on
+        chain never consults the timer-active predicate, so nothing else stops
+        it (W2). Sticky, because a reload builds a new controller.
+        """
+        self._shutdown = True
+        for task in list(self._tasks):
+            task.cancel()
+        self._tasks.clear()
+
+    def _spawn(self, coro) -> None:
+        """Create a retry task and keep a handle so shutdown can cancel it."""
+        task = self._hass.async_create_task(coro)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     async def _async_verify_and_retry(self, desired_state: str, entity_id: str,
                                       attempt: int = 1, force: bool = False) -> None:
         """Re-check on a backoff and re-command; chains until the limit."""
-        if attempt > len(_RETRY_DELAYS):
+        if attempt > len(_RETRY_DELAYS) or self._shutdown:
             return
 
         await asyncio.sleep(_RETRY_DELAYS[attempt - 1])
+
+        if self._shutdown:
+            self._log.debug("Aborting switch retry - controller was shut down")
+            return
 
         # Do not fight a user who started a new timer while we were waiting.
         # One-directional on purpose: a pending turn-on is still wanted.
@@ -210,6 +241,6 @@ class SwitchController:
 
     def _chain(self, desired_state: str, entity_id: str, attempt: int, force: bool) -> None:
         """Queue the next link of the retry chain."""
-        self._hass.async_create_task(
+        self._spawn(
             self._async_verify_and_retry(desired_state, entity_id, attempt + 1, force=force)
         )

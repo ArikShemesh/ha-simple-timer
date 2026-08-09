@@ -60,6 +60,8 @@ def make_sensor(stored=None):
 
     s._switch_entity_id = "switch.boiler"
     s._timer_state = "idle"
+    # Real __init__ always sets this; async_start_timer's removal guard reads it.
+    s._stop_event_received = False
     s._timer_finishes_at = None
     s._timer_duration = 0
     s._timer_start_moment = None

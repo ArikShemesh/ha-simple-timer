@@ -133,6 +133,8 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._last_on_timestamp = None
         self._accumulation_task = None
         self._state_listener_disposer = None
+        self._stop_listener_disposer = None
+        self._init_task = None
         self._stop_event_received = False
 
         self._timer_state = "idle"
@@ -802,7 +804,14 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         the switch turn-on lets the logbook attribute the change to the user who
         pressed start, instead of "Generic turn on".
         """
-        
+        # The last barrier before the device is commanded. ScheduleManager's
+        # own latch only stops an _async_fired that has not begun; one already
+        # suspended inside this call resumes after removal and would otherwise
+        # command the switch and persist a timer on a dead sensor (S4).
+        if self._stop_event_received:
+            self._log.info("Ignoring timer start - entity is shutting down")
+            return
+
         # Convert duration to minutes for internal storage
         duration_minutes = duration_to_seconds(duration, unit) / 60.0
 
@@ -1011,9 +1020,14 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             if turn_off_entity:
                 # COUPLED: Turn switch OFF.
                 if self._switch_entity_id:
+                    # async_ensure cannot raise, but the try stays: it also
+                    # covers _stop_realtime_accumulation, and dropping it here
+                    # would silently widen what escapes async_cancel_timer.
                     try:
-                        await self._switch.async_command("off", context=context)
-                        await self._switch.async_ensure("off", "Timer cancellation turn-off", context=context)
+                        await self._switch.async_ensure(
+                            "off", "Timer cancellation turn-off",
+                            force=True, context=context,
+                        )
                         await self._stop_realtime_accumulation()
                     except Exception as e:
                         self._log.warning(f"Could not turn off switch: {e}")
@@ -1053,15 +1067,33 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             await self._cleanup_timer_state()
 
             if self._switch_entity_id:
-                await self._switch.async_command("on")
-                await self._switch.async_ensure("on", "Reverse timer completion turn-on", blocking=True)
+                # force: command unconditionally, as the bare async_command
+                # this replaced did. Going through async_ensure means a switch
+                # integration that is down warns the user instead of raising
+                # past the notification, logbook and state write - the timer
+                # state and storage are already cleared by this point, so an
+                # exception here strands the device off with no timer (W3).
+                await self._switch.async_ensure(
+                    "on", "Reverse timer completion turn-on",
+                    blocking=True, force=True,
+                )
 
                 # Reset state to not count the timer wait time as usage
                 # In reverse mode, usage should start from when switch turns ON
                 self._last_on_timestamp = dt_util.utcnow()
                 await self._start_realtime_accumulation()
 
-            await self._send_notification(f"Delayed start timer completed - device turned ON")
+            # Only claim the device turned on if it did. This went out
+            # unconditionally - outside the switch guard entirely - so a failed
+            # command, or no switch configured at all, still reported success.
+            if self._switch.is_on():
+                await self._send_notification(
+                    "Delayed start timer completed - device turned ON"
+                )
+            else:
+                await self._send_notification(
+                    "Delayed start timer completed - device did not turn on"
+                )
 
             # No context: expiry is the integration acting on its own, not
             # the user who started the timer. Leaving it unattributed keeps
@@ -1167,10 +1199,35 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             self._timer_unsub()
             self._timer_unsub = None
 
+        # The same barrier removal raises. Setting _stop_event_received is not
+        # enough on its own: HA moves tasks that predate this event aside and
+        # does not cancel them until its final shutdown stage, so a retry chain
+        # sleeping through its 2/5/10/20s backoff can still wake and command
+        # the device - and a turn-on retry never consults the timer-active
+        # predicate. The schedule and the init task have the same window.
+        if self._init_task and not self._init_task.done():
+            self._init_task.cancel()
+        self._init_task = None
+
+        self._schedule.async_shutdown()
+        self._switch.async_shutdown()
+
     async def async_will_remove_from_hass(self):
         """Handle entity removal."""
         self._stop_event_received = True
-        
+
+        # Cancel before anything else: the flag alone does not stop a task
+        # parked in the startup wait. CancelledError is a BaseException, so
+        # _wait_for_startup_completion's `except Exception` fallback will not
+        # swallow it and re-run initialization.
+        if self._init_task and not self._init_task.done():
+            self._init_task.cancel()
+        self._init_task = None
+
+        if self._stop_listener_disposer:
+            self._stop_listener_disposer()
+            self._stop_listener_disposer = None
+
         # Remove listeners
         if hasattr(self._entry, 'remove_update_listener'):
             try:
@@ -1186,6 +1243,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         # Drop the pending schedule callback, keeping its stored payload so
         # the schedule survives to be restored.
         self._schedule.async_shutdown()
+
+        # Retry chains are detached; without this they outlive the entity and
+        # can still command the device (W2).
+        self._switch.async_shutdown()
 
         # Clean up domain data
         if (DOMAIN in self.hass.data and
@@ -1248,11 +1309,18 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         # Restore basic state immediately to prevent history gaps
         await self._restore_basic_state()
         
-        # Register shutdown handler
-        self.hass.bus.async_listen(EVENT_HOMEASSISTANT_STOP, self._handle_ha_shutdown)
-        
-        # Defer complex initialization until after startup
-        asyncio.create_task(self._wait_for_startup_completion())
+        # Register shutdown handler.
+        # Keep the disposer: dropping it leaves the bus holding a reference to
+        # every removed instance until HA stops, and the entry is reloaded on
+        # every options-flow change (S4).
+        self._stop_listener_disposer = self.hass.bus.async_listen(
+            EVENT_HOMEASSISTANT_STOP, self._handle_ha_shutdown
+        )
+
+        # Defer complex initialization until after startup.
+        # Retained so removal can cancel it. Fire-and-forget let this resume
+        # after the entity was gone and restore a timer against a dead sensor.
+        self._init_task = asyncio.create_task(self._wait_for_startup_completion())
 
     async def _restore_basic_state(self):
         """Restore basic state values immediately to prevent history gaps."""
@@ -1331,8 +1399,12 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
     async def _complete_initialization(self):
         """Complete full initialization after HA startup."""
         try:
+            if self._stop_event_received:
+                self._log.info("Skipping initialization - entity is being removed")
+                return
+
             self._log.info("Completing initialization...")
-            
+
             # Load storage data
             storage_data = await self._load_storage_data()
             
@@ -1579,36 +1651,34 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             
             # Turn switch ON first (delayed start completed)
             if self._switch_entity_id:
-                
-                # Check current switch state first
-                current_state = self.hass.states.get(self._switch_entity_id)
-                if current_state:
-                    pass  # State exists
-                else:
-                    self._log.error("Switch entity not found in hass.states!")
-                
+                # TWO attempts, spanning 8s, on purpose. This path has no retry
+                # chain behind it - the sibling _handle_expired_timer uses
+                # async_ensure_with_retries, this one does not - so the command
+                # here plus the forced re-command inside async_ensure are the
+                # entire budget for an unattended restart turn-on against an
+                # integration that may still be coming up. Collapsing the pair
+                # into one forced ensure cut it to one command and 6s.
+                #
+                # Swallowed rather than re-raised (W3): the second attempt is
+                # the recovery path, so a failed first must not skip it, and
+                # _cleanup_timer_state below must run either way. The previous
+                # version re-raised past cleanup, leaving the timer 'active'
+                # with storage un-cleared for the next restart to re-read.
                 try:
                     await self._switch.async_command("on", blocking=False)
-                    
-                    # Wait and check if it worked
-                    await asyncio.sleep(2)
-                    updated_state = self.hass.states.get(self._switch_entity_id)
-                    if updated_state:
-                        pass  # State updated successfully
-                    else:
-                        self._log.error("Could not get updated switch state!")
-                    
-                    await self._switch.async_ensure("on", "Expired reverse timer completion turn-on", blocking=False, force=True)
-                    
-                except Exception as switch_error:
-                    self._log.error(f"ERROR turning switch ON: {switch_error}")
-                    import traceback
-                    self._log.error(f"Switch error traceback: {traceback.format_exc()}")
-                    raise
-                
+                except Exception as e:
+                    self._log.warning(f"First expired-restore turn-on failed: {e}")
+
+                await asyncio.sleep(2)
+
+                await self._switch.async_ensure(
+                    "on", "Expired reverse timer completion turn-on",
+                    blocking=False, force=True,
+                )
+
                 # Set timestamp and start accumulation BEFORE cleanup
                 self._last_on_timestamp = dt_util.utcnow()
-                
+
             else:
                 self._log.error("No switch entity configured!")
             
@@ -1621,8 +1691,15 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             else:
                 self._log.error(f"Cannot start accumulation - switch_entity: {self._switch_entity_id}, last_on: {self._last_on_timestamp}")
             
-            await self._send_notification(f"Delayed start timer completed - device turned ON")
-            
+            if self._switch.is_on():
+                await self._send_notification(
+                    "Delayed start timer completed - device turned ON"
+                )
+            else:
+                await self._send_notification(
+                    "Delayed start timer completed - device did not turn on"
+                )
+
             self.async_write_ha_state()
             
             self._log.info("Expired reverse timer handling completed successfully")
