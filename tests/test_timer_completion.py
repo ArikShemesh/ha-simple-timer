@@ -34,6 +34,9 @@ def make_sensor(switch_state="off", entity="switch.boiler", reverse=True):
     s._timer_start_method = "button"
     s._state = 0
     s._last_on_timestamp = None
+    # Real __init__ always sets this; the reverse-completion path reads it to
+    # decide whether a metering session is already open.
+    s._accumulation_task = None
 
     s._states = {}
     if switch_state is not None and entity:

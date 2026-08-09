@@ -838,11 +838,18 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         
         # Handle switch state based on mode
         if reverse_mode:
-            # REVERSE MODE: Decoupled - Do not force switch OFF.
-            # Just ensure we aren't accumulating until timer finishes (which turns it ON).
-            self._last_on_timestamp = None
-            await self._stop_realtime_accumulation()
-            # Logic removed: We no longer force turn_off here.
+            # REVERSE MODE: decoupled. A delayed start says only "turn it ON at
+            # time T" - the device may well already be running, and daily usage
+            # is a meter of device RUNTIME, not of timer state. Stopping the
+            # meter here lost that runtime outright, because completion then
+            # opens a fresh session from now (R1). Only stop when the device is
+            # genuinely off, where there is nothing to count.
+            #
+            # Order matters: _stop_realtime_accumulation's final flush is gated
+            # on _last_on_timestamp, so clearing it first skipped the flush.
+            if not self._switch.is_on():
+                await self._stop_realtime_accumulation()
+                self._last_on_timestamp = None
         else:
             # NORMAL MODE: Convenience turn ON, but don't wait for it
             current_switch_state = self.hass.states.get(self._switch_entity_id) if self._switch_entity_id else None
@@ -1078,9 +1085,17 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                     blocking=True, force=True,
                 )
 
-                # Reset state to not count the timer wait time as usage
-                # In reverse mode, usage should start from when switch turns ON
-                self._last_on_timestamp = dt_util.utcnow()
+                # Open a new session only if one is not already running. When
+                # the device was off through the countdown this starts usage
+                # from now, which is the point of reverse mode. When it was ON
+                # the meter is still going, and moving the timestamp under a
+                # live session is destructive: _start_realtime_accumulation
+                # returns early on an existing task, so _last_accumulated_seconds
+                # keeps the OLD baseline while the timestamp jumps to now. The
+                # tick then computes a negative diff and the meter freezes for
+                # as long as the device had already been on (R3).
+                if not self._accumulation_task:
+                    self._last_on_timestamp = dt_util.utcnow()
                 await self._start_realtime_accumulation()
 
             # Only claim the device turned on if it did. This went out
@@ -1768,39 +1783,27 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         )
         await self._start_timer_update_task()
         
-        # Handle switch state based on timer mode
-        reverse_mode = self._timer_reverse_mode
-        if reverse_mode:
-            # For reverse mode, ensure switch stays OFF during countdown
-            await self._switch.async_ensure("off", "Reverse timer state verification on restart", blocking=True)
-        else:
-            # For normal mode, ensure switch is ON
+        # Normal mode stays coupled: the device is supposed to be running for
+        # the timer's whole duration, so a restart re-asserts that.
+        #
+        # Reverse mode does NOT. It used to ensure("off") here, which switched
+        # the device off on every restart during a countdown - the same
+        # force-off _start_accumulation_if_needed used to do, from the other
+        # direction. Decoupled means the countdown makes no claim about the
+        # device until it fires (R2).
+        if not self._timer_reverse_mode:
             await self._switch.async_ensure("on", "Active timer state verification on restart", blocking=True)
 
     async def _start_accumulation_if_needed(self):
-        """Start accumulation if switch is on."""
-        # Check if we have an active reverse mode timer
-        reverse_mode_active = (
-            self._timer_state == "active" and 
-            self._timer_reverse_mode
-        )
-        
-        if reverse_mode_active:
-            # For reverse mode timers, ensure switch stays OFF during countdown
-            if self._switch_entity_id:
-                current_switch_state = self.hass.states.get(self._switch_entity_id)
-                if current_switch_state and current_switch_state.state == "on":
-                    # Switch should be OFF during reverse timer countdown
-                    self._log.info("Ensuring switch stays OFF during reverse timer countdown")
-                    try:
-                        await self._switch.async_command("off")
-                    except Exception as e:
-                        self._log.error(f"Failed to turn off switch during reverse timer: {e}")
-            
-            # Don't start accumulation during reverse timer countdown
-            return
-        
-        # Normal behavior for non-reverse timers
+        """Start accumulation if switch is on.
+
+        Reverse mode gets no special case. It used to command the switch OFF
+        here ("Ensuring switch stays OFF during reverse timer countdown") and
+        then return without metering - so arming a delayed start over a running
+        device and restarting HA switched the device off and stopped counting
+        its runtime. Reverse mode is decoupled: whatever the device is doing
+        during a countdown is the user's business, and runtime is runtime (R2).
+        """
         if self._switch.is_on() and not self._last_on_timestamp:
             self._last_on_timestamp = dt_util.utcnow()
             await self._start_realtime_accumulation()
