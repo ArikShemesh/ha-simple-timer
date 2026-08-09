@@ -34,6 +34,7 @@ from .const import (
     DOMAIN,
     WARNING_MSG_OFFLINE,
     SIGNAL_STATE_UPDATED,
+    CONF_TURN_ON_OPTION,
     ATTR_TIMER_STATE,
     ATTR_TIMER_FINISHES_AT,
     ATTR_TIMER_DURATION,
@@ -179,6 +180,9 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             lambda: self._switch_entity_id,
             notify=self._send_notification,
             is_timer_active=lambda: self._timer_state == "active",
+            # Read off the entry each time, not copied: the options flow
+            # updates entry data in place without reloading the entry.
+            get_turn_on_option=lambda: self._entry.data.get(CONF_TURN_ON_OPTION),
             log=self._log,
         )
 

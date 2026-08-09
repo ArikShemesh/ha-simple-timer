@@ -89,6 +89,15 @@ def _install_homeassistant() -> MagicMock:
     ha.const.STATE_UNKNOWN = "unknown"
     ha.const.EVENT_HOMEASSISTANT_STOP = "homeassistant_stop"
 
+    # Real exception classes, for the same reason the states above are real:
+    # `raise ha.exceptions.HomeAssistantError(...)` on a MagicMock raises
+    # TypeError instead, so a deliberate failure path would be untestable and
+    # every `except HomeAssistantError` would be unreachable.
+    ha.exceptions.HomeAssistantError = type("HomeAssistantError", (Exception,), {})
+    ha.exceptions.ServiceValidationError = type(
+        "ServiceValidationError", (ha.exceptions.HomeAssistantError,), {}
+    )
+
     # @callback must stay an identity decorator. Left as a MagicMock it would
     # replace every decorated method with the same mock object, and tests would
     # exercise that mock instead of the real code.

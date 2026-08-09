@@ -21,9 +21,15 @@ Two rules in the retry chain are load-bearing:
   desired state. That is what recovers from a stale state after a restart,
   where HA says "on" but the device is not.
 
-The chain also captures its entity id at spawn time rather than reading it
-back, so re-pointing the sensor at a different switch cannot redirect a retry
-that is already in flight.
+The chain also captures its entity id **and the configured turn-on option** at
+spawn time rather than reading them back, so re-pointing the sensor at a
+different device cannot redirect a retry that is already in flight, nor make it
+apply a mode the user chose for some other device.
+
+What "on" and "off" mean is not decided here — `domains.py` owns that. This
+module's public API stays abstract: callers ask for "on" or "off" and never
+learn that a climate entity is commanded with `set_hvac_mode` while a switch
+goes through `homeassistant.turn_on`.
 """
 from __future__ import annotations
 
@@ -32,6 +38,9 @@ import logging
 
 from homeassistant.const import STATE_OFF, STATE_ON
 from homeassistant.core import Context, HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
+
+from .domains import descriptor_for
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -56,15 +65,36 @@ _SETTLE_WAITS = (1.0, 2.0, 3.0)
 _RETRY_DELAYS = (2, 5, 10, 20)
 
 
+def _resolve_command(entity_id: str | None, desired_state: str,
+                     turn_on_option: str | None):
+    """The concrete service call for an abstract "on"/"off".
+
+    Raises when the domain needs a turn-on option and none is configured. That
+    is deliberate and it is why on_command may answer None: the alternative is
+    picking an hvac mode for somebody's house, and a loud failure at the call
+    site beats a heating strategy we invented.
+    """
+    descriptor = descriptor_for(entity_id)
+    command = (descriptor.on_command(turn_on_option) if desired_state == "on"
+               else descriptor.off_command())
+    if command is None:
+        raise HomeAssistantError(
+            f"Cannot turn on {entity_id}: no turn-on option is configured for "
+            f"this device. Reconfigure the timer and choose one."
+        )
+    return command
+
+
 class SwitchController:
-    """Commands one switch and verifies the command took effect."""
+    """Commands one device and verifies the command took effect."""
 
     def __init__(self, hass: HomeAssistant, get_entity_id, notify,
-                 is_timer_active, log=None):
+                 is_timer_active, get_turn_on_option, log=None):
         self._hass = hass
         self._get_entity_id = get_entity_id
         self._notify = notify
         self._is_timer_active = is_timer_active
+        self._get_turn_on_option = get_turn_on_option
         self._log = log or _LOGGER
         self._tasks: set = set()
         self._shutdown = False
@@ -80,16 +110,35 @@ class SwitchController:
         """
         return self._get_entity_id()
 
+    @property
+    def turn_on_option(self) -> str | None:
+        """What "on" means for this device, read live for the same reason.
+
+        An options-flow edit patches the config entry in place without
+        reloading, so a copy taken at construction would keep applying the
+        mode the user just changed away from.
+        """
+        return self._get_turn_on_option()
+
+    @property
+    def _descriptor(self):
+        """The domain rules for whatever entity is configured right now."""
+        return descriptor_for(self.entity_id)
+
     # ------------------------------------------------------------------
     # Reads
     # ------------------------------------------------------------------
 
     def is_on(self) -> bool:
-        """True only when the switch definitively reports on."""
+        """True only when the device definitively reports it is running.
+
+        For a switch that is the literal state "on"; for a climate entity it is
+        any non-off hvac mode, including one the user selected by hand.
+        """
         if not self.entity_id:
             return False
         state = self._hass.states.get(self.entity_id)
-        return state is not None and state.state == STATE_ON
+        return state is not None and self._descriptor.is_active(state.state)
 
     # ------------------------------------------------------------------
     # Commanding
@@ -108,10 +157,15 @@ class SwitchController:
         persisted nothing yet and must abort rather than mark a timer running
         with nothing switched on. Callers that have ALREADY cleared their state
         must not use it - they want async_ensure, which warns instead.
+
+        An unresolvable turn-on (a climate device with no mode configured)
+        raises here too, and travels the same paths for the same reason.
         """
-        action = "turn_on" if desired_state == "on" else "turn_off"
+        domain, service, extra = _resolve_command(
+            self.entity_id, desired_state, self.turn_on_option
+        )
         await self._hass.services.async_call(
-            "homeassistant", action, {"entity_id": self.entity_id},
+            domain, service, {"entity_id": self.entity_id, **extra},
             blocking=blocking, context=context,
         )
 
@@ -135,8 +189,12 @@ class SwitchController:
         # that is exactly when a pending turn-off matters most - returning here
         # used to let a timer report "turned off" with the device still on.
         # Only a state that positively matches lets us skip the work.
+        #
+        # For climate that means starting a timer while the unit already runs
+        # in ANY mode sends nothing, so the configured mode is applied only
+        # from a stopped device. force=True paths command regardless.
         current_state = self._hass.states.get(self.entity_id)
-        if current_state and current_state.state == desired_state and not force:
+        if current_state and self._descriptor.matches(desired_state, current_state.state) and not force:
             return
 
         try:
@@ -146,14 +204,14 @@ class SwitchController:
             for wait in _SETTLE_WAITS:
                 await asyncio.sleep(wait)
                 updated = self._hass.states.get(self.entity_id)
-                if updated and updated.state == desired_state:
+                if updated and self._descriptor.matches(desired_state, updated.state):
                     return
 
             # A switch that reports nothing back is as much a failure as one
             # reporting the wrong state - staying silent about it is what let
             # "Timer was turned off" go out with the device still on.
             updated = self._hass.states.get(self.entity_id)
-            if not updated or updated.state != desired_state:
+            if not updated or not self._descriptor.matches(desired_state, updated.state):
                 actual = updated.state if updated else "no state"
                 # The log keeps the internal wording; the notification is read
                 # by a person, and often spoken by a voice assistant, so it
@@ -201,7 +259,10 @@ class SwitchController:
             self._log.warning(f"Initial switch attempt failed: {e}")
 
         self._spawn(
-            self._async_verify_and_retry(desired_state, self.entity_id, force=force)
+            self._async_verify_and_retry(
+                desired_state, self.entity_id,
+                turn_on_option=self.turn_on_option, force=force,
+            )
         )
 
     def async_shutdown(self) -> None:
@@ -224,9 +285,16 @@ class SwitchController:
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
-    async def _async_verify_and_retry(self, desired_state: str, entity_id: str,
+    async def _async_verify_and_retry(self, desired_state: str, entity_id: str, *,
+                                      turn_on_option: str | None = None,
                                       attempt: int = 1, force: bool = False) -> None:
-        """Re-check on a backoff and re-command; chains until the limit."""
+        """Re-check on a backoff and re-command; chains until the limit.
+
+        `turn_on_option` is captured at spawn, alongside `entity_id`, so a
+        re-point or an options-flow edit during the 37s window cannot make a
+        retry apply the new device's mode to the old one. None is correct for
+        every switch-like domain, which has no such choice to make.
+        """
         if attempt > len(_RETRY_DELAYS) or self._shutdown:
             return
 
@@ -246,12 +314,14 @@ class SwitchController:
         if not state:
             # Entity not there yet - almost certainly still starting up.
             self._log.debug(f"Switch entity missing during verify, scheduling retry {attempt + 1}")
-            self._chain(desired_state, entity_id, attempt, force)
+            self._chain(desired_state, entity_id, turn_on_option, attempt, force)
             return
 
         actual = state.state
+        # Resolved from the captured entity id, not the live one.
+        descriptor = descriptor_for(entity_id)
         # `force` overrides the match check once, to shake off a stale state.
-        if actual == desired_state and not (force and attempt == 1):
+        if descriptor.matches(desired_state, actual) and not (force and attempt == 1):
             return
 
         self._log.warning(
@@ -259,18 +329,24 @@ class SwitchController:
             f"Retrying attempt {attempt}..."
         )
 
-        action = "turn_on" if desired_state == "on" else "turn_off"
         try:
+            # Resolution is inside the try on purpose: an option that went away
+            # mid-chain must warn and keep chaining, not kill the recovery path.
+            domain, service, extra = _resolve_command(entity_id, desired_state, turn_on_option)
             await self._hass.services.async_call(
-                "homeassistant", action, {"entity_id": entity_id}, blocking=True
+                domain, service, {"entity_id": entity_id, **extra}, blocking=True
             )
         except Exception as e:
             self._log.warning(f"Retry attempt {attempt} failed: {e}")
 
-        self._chain(desired_state, entity_id, attempt, force)
+        self._chain(desired_state, entity_id, turn_on_option, attempt, force)
 
-    def _chain(self, desired_state: str, entity_id: str, attempt: int, force: bool) -> None:
+    def _chain(self, desired_state: str, entity_id: str, turn_on_option: str | None,
+               attempt: int, force: bool) -> None:
         """Queue the next link of the retry chain."""
         self._spawn(
-            self._async_verify_and_retry(desired_state, entity_id, attempt + 1, force=force)
+            self._async_verify_and_retry(
+                desired_state, entity_id, turn_on_option=turn_on_option,
+                attempt=attempt + 1, force=force,
+            )
         )
