@@ -4,7 +4,9 @@ A professional timer integration for Home Assistant with precise countdown funct
 
 ## Key Features
 
-🕐 **Precise Timer Control** - Set countdown timers from 1-1000 minutes for any switch, input_boolean, light, or fan
+🕐 **Precise Timer Control** - Set countdown timers from 1-1000 minutes for any switch, input_boolean, light, fan, or climate entity
+
+❄️ **Native Climate Support** - Point a timer at an A/C or heat pump and choose the mode it runs in; no helper entity or automation needed
 
 📊 **Daily Runtime Tracking** - Automatically tracks and displays daily usage time in HH:MM format
 
@@ -22,7 +24,7 @@ A professional timer integration for Home Assistant with precise countdown funct
 - **Boiler Control** - Manage water heater schedules  
 - **Garden Irrigation** - Time watering systems
 - **Lighting Control** - Automatic light timers
-- **HVAC Management** - Climate control scheduling
+- **A/C and HVAC** - Run a climate entity in a chosen mode and switch it off on time
 
 ## Easy Setup
 
