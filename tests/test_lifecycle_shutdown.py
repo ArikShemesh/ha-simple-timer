@@ -148,3 +148,88 @@ class SwitchShutdownTestCase(unittest.IsolatedAsyncioTestCase):
         await s.async_will_remove_from_hass()
 
         s._switch.async_shutdown.assert_called_once()
+
+
+class ReAddAfterRemovalTestCase(unittest.IsolatedAsyncioTestCase):
+    """Removal is a barrier; being added again is the other side of it (L1).
+
+    Home Assistant handles an entity_id change by removing and re-adding the
+    SAME entity object - and it performs one whenever a device is renamed,
+    including from the "Name and assign" dialog it shows the moment a config
+    entry is created. Every barrier removal raises is one-way, so without this
+    the revived object registers itself in hass.data, answers every service
+    call, and silently does nothing.
+    """
+
+    def _revivable(self):
+        s = make_sensor()
+        s._wait_for_startup_completion = AsyncMock()
+        s._build_collaborators = MagicMock()
+        return s
+
+    async def test_a_re_add_lowers_the_shutdown_barrier(self):
+        s = self._revivable()
+        await s.async_added_to_hass()
+        await s.async_will_remove_from_hass()
+        self.assertTrue(s._stop_event_received)     # removal really did latch
+
+        await s.async_added_to_hass()
+
+        self.assertFalse(s._stop_event_received)
+
+    async def test_a_re_add_replaces_the_latched_collaborators(self):
+        """Clearing the flag alone would leave a sensor that accepts timer
+        starts while holding a controller that can never command again."""
+        s = self._revivable()
+        await s.async_added_to_hass()
+        await s.async_will_remove_from_hass()
+        s._build_collaborators.reset_mock()
+
+        await s.async_added_to_hass()
+
+        s._build_collaborators.assert_called_once()
+
+    async def test_a_first_add_rebuilds_nothing(self):
+        """The narrow condition, pinned: a normal startup must not discard the
+        collaborators __init__ just built, schedule state and all."""
+        s = self._revivable()
+        await s.async_added_to_hass()
+        s._build_collaborators.assert_not_called()
+
+    async def test_a_revived_sensor_starts_timers_again(self):
+        """The user-visible symptom: the card's start button did nothing.
+
+        Driven through the real guard in async_start_timer rather than the
+        flag, because that guard is what turned the press into a no-op.
+        """
+        s = self._revivable()
+        s._store.async_save_timer = AsyncMock()
+        await s.async_added_to_hass()
+        await s.async_will_remove_from_hass()
+        await s.async_added_to_hass()
+
+        s._timer_state = "idle"
+        s._async_setup_switch_listener = AsyncMock()
+        s._switch.async_command = AsyncMock()
+        s._start_realtime_accumulation = AsyncMock()
+        s._stop_realtime_accumulation = AsyncMock()
+        s._start_timer_update_task = AsyncMock()
+        s._fire_logbook_event = AsyncMock()
+        s._send_notification = AsyncMock()
+        s._notifier = MagicMock()
+        s._notifier.async_config = AsyncMock(return_value=([], False))
+        s.hass.states.get.return_value = None
+        s._switch_entity_id = "switch.boiler"
+        s._timer_reverse_mode = False
+        s._timer_finishes_at = None
+        s._timer_duration = 0
+        s._timer_start_moment = None
+        s._runtime_at_timer_start = 0
+        s._timer_start_method = None
+        s._watchdog_message = None
+        s._last_on_timestamp = None
+        s._accumulation_task = None
+
+        await s.async_start_timer(5, "min")
+
+        self.assertEqual(s._timer_state, "active")

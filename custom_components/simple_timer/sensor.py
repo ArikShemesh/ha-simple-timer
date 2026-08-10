@@ -174,10 +174,22 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._store = TimerStore(hass, self._entry_id, self._log)
         self._notifier = Notifier(hass, entry, self._log)
 
-        # Switch commanding. Handed a notify callback and a predicate rather
-        # than the sensor, so the dependency runs one way.
+        self._build_collaborators()
+
+    def _build_collaborators(self) -> None:
+        """Create the two collaborators whose shutdown is one-way.
+
+        Both `SwitchController.async_shutdown()` and
+        `ScheduleManager.async_shutdown()` are sticky on purpose - a chain
+        already sleeping through its backoff must not be able to wake up and
+        command the device after the entity is gone (W2/S4). Sticky means the
+        only way back is a new object, which a config-entry reload gives us for
+        free. An entity_id rename does not: Home Assistant removes and re-adds
+        the SAME entity object, so this is called again from
+        async_added_to_hass to hand the revived entity working collaborators.
+        """
         self._switch = SwitchController(
-            hass,
+            self.hass,
             lambda: self._switch_entity_id,
             notify=self._send_notification,
             is_timer_active=lambda: self._timer_state == "active",
@@ -187,11 +199,11 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             log=self._log,
         )
 
-        # Scheduled-start (future absolute clock time). Built after the store,
-        # which it needs, and handed the sensor callbacks it reaches back
-        # through - so the dependency runs one way, sensor -> schedule.
+        # Scheduled-start (future absolute clock time). Needs the store, and is
+        # handed the sensor callbacks it reaches back through - so the
+        # dependency runs one way, sensor -> schedule.
         self._schedule = ScheduleManager(
-            hass,
+            self.hass,
             store=self._store,
             start_timer=self.async_start_timer,
             write_state=self.async_write_ha_state,
@@ -1368,8 +1380,26 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
     async def async_added_to_hass(self):
         """Called when entity is added to hass - startup-safe initialization."""
+        # Being added while shut down means this object was REMOVED and is now
+        # coming back: Home Assistant handles an entity_id change - including
+        # the one it performs when a device is renamed, which is what its
+        # post-create "Name and assign" dialog does - by removing and re-adding
+        # the same entity object.
+        #
+        # Everything below assumes a live entity, and the barriers raised on
+        # removal do not lower themselves: _stop_event_received gates
+        # _complete_initialization and async_start_timer, and both collaborators
+        # latch shut permanently. Left as-is the revived entity registers itself
+        # in hass.data, so every service call resolves to it, and then quietly
+        # does nothing - no switch listener, no daily reset, no timer starts.
+        if self._stop_event_received:
+            self._log.info("Entity re-added after removal - resetting shutdown state")
+            self._stop_event_received = False
+            self._build_collaborators()
+
         self._log.info("Entity added to hass - startup safe mode")
-        
+
+
         # Register sensor in domain data for service calls
         if DOMAIN not in self.hass.data:
             self.hass.data[DOMAIN] = {}
