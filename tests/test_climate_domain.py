@@ -534,12 +534,94 @@ class UpdateSwitchEntityRejectionTestCase(ClimateSensorTestBase):
 
         self.assertEqual(s._switch_entity_id, "switch.boiler")
 
+    async def test_repointing_to_a_climate_that_cannot_be_turned_off_is_rejected(self):
+        """A usable on-mode is only half the contract. An entity advertising no
+        `off` mode would start fine and then ignore the set_hvac_mode: off at
+        the deadline, leaving the heater running - which is the config flow's
+        `climate_no_off_mode` refusal, and this boundary must match it."""
+        s = self.make_sensor(entity="climate.old", turn_on_option="heat")
+        s._entry.data = {"turn_on_option": "heat"}
+        self._with_modes(s, "climate.new", ["heat", "cool"])
+
+        with self.assertRaises(Exception):
+            await s.async_update_switch_entity("climate.new")
+
+        self.assertEqual(s._switch_entity_id, "climate.old")
+
     async def test_an_unreadable_climate_entity_is_rejected(self):
         s = self.make_sensor(entity="switch.boiler", turn_on_option=None)
         s._entry.data = {}
 
         with self.assertRaises(Exception):
             await s.async_update_switch_entity("climate.not_loaded_yet")
+
+
+class UpdateSwitchEntityPersistenceTestCase(ClimateSensorTestBase):
+    """Re-pointing must survive a restart.
+
+    The config entry is what `_wait_for_startup_completion` reads back, so a
+    re-point that only moved the in-memory attribute is undone by the next
+    restart - and an armed delayed start then fires against the OLD device,
+    which is this project's worst failure mode.
+    """
+
+    def make_sensor(self, **kwargs):
+        s = super().make_sensor(**kwargs)
+        s._last_on_timestamp = None
+        s.async_write_ha_state = MagicMock()
+        s._async_setup_switch_listener = AsyncMock()
+        s._start_realtime_accumulation = AsyncMock()
+        s._stop_realtime_accumulation = AsyncMock()
+        s._entry.data = {"switch_entity_id": "switch.boiler",
+                         "turn_on_option": "cool", "show_seconds": True}
+        s._switch_entity_id = "switch.boiler"
+        s._states["switch.new"] = _state("on")
+        return s
+
+    def written_data(self, s):
+        return s.hass.config_entries.async_update_entry.call_args.kwargs["data"]
+
+    async def test_a_repoint_is_written_to_the_config_entry(self):
+        s = self.make_sensor()
+
+        await s.async_update_switch_entity("switch.new")
+
+        s.hass.config_entries.async_update_entry.assert_called_once()
+        self.assertEqual(self.written_data(s)["switch_entity_id"], "switch.new")
+
+    async def test_the_write_keeps_every_other_option(self):
+        """A dict replace, so anything dropped here is silently lost config."""
+        s = self.make_sensor()
+
+        await s.async_update_switch_entity("switch.new")
+
+        self.assertEqual(self.written_data(s)["show_seconds"], True)
+        self.assertEqual(self.written_data(s)["turn_on_option"], "cool")
+
+    async def test_the_options_flow_listener_does_not_write_again(self):
+        """The other caller arrives with the entry ALREADY carrying the new
+        device. Writing there would fire the update listener from inside the
+        update listener."""
+        s = self.make_sensor()
+        s._entry.data = {"switch_entity_id": "switch.new"}
+        s._switch_entity_id = "switch.boiler"
+
+        await s.async_update_switch_entity("switch.new")
+
+        self.assertEqual(s._switch_entity_id, "switch.new")
+        s.hass.config_entries.async_update_entry.assert_not_called()
+
+    async def test_a_rejected_device_persists_nothing(self):
+        s = self.make_sensor()
+        s._entry.data = {"switch_entity_id": "switch.boiler"}
+        st = _state("off")
+        st.attributes = {"hvac_modes": ["off", "heat"]}
+        s._states["climate.new"] = st
+
+        with self.assertRaises(Exception):
+            await s.async_update_switch_entity("climate.new")
+
+        s.hass.config_entries.async_update_entry.assert_not_called()
 
 
 if __name__ == "__main__":

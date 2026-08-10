@@ -69,7 +69,7 @@ from .helpers import (
     next_reset_datetime,
     parse_reset_time,
 )
-from .domains import descriptor_for, needs_turn_on_option
+from .domains import descriptor_for, needs_turn_on_option, supports_off
 from .notify import Notifier
 from .schedule import ScheduleManager
 from .startup import async_wait_until_ready
@@ -589,23 +589,50 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         """Update the monitored switch entity."""
         self._log.info(f"Updating switch entity to: {switch_entity_id}")
 
-        # Refuse a device we would not know how to turn on. The alternative is
-        # accepting it and failing at 2am when the timer fires, with the user
-        # asleep and the boiler cold.
+        # Refuse a device we would not know how to turn on, or could not turn
+        # off again. The alternative is accepting it and failing at 2am when the
+        # timer fires, with the user asleep and the boiler cold - or still hot.
+        # Both refusals mirror the config flow's, which checks the same two
+        # things before it will accept an entity at all.
         if switch_entity_id:
             new_state = self.hass.states.get(switch_entity_id)
+            new_attrs = new_state.attributes if new_state else None
             if needs_turn_on_option(switch_entity_id,
                                     self._entry.data.get(CONF_TURN_ON_OPTION),
-                                    new_state.attributes if new_state else None):
+                                    new_attrs):
                 raise ServiceValidationError(
                     f"Cannot monitor {switch_entity_id}: this device needs a "
                     f"turn-on mode, and none is configured for it. Change the "
                     f"device through the integration's options instead."
                 )
+            if not supports_off(switch_entity_id, new_attrs):
+                raise ServiceValidationError(
+                    f"Cannot monitor {switch_entity_id}: this device offers no "
+                    f"way to turn it off, so a timer could never end it."
+                )
 
         if self._switch_entity_id != switch_entity_id:
             self._switch_entity_id = switch_entity_id
             await self._async_setup_switch_listener()
+
+        # Persist it. The config entry is what _wait_for_startup_completion
+        # reads back, so a re-point that only moved this attribute is undone by
+        # the next restart - and an armed delayed start then fires against the
+        # OLD device. Unprompted device activation is the failure this project
+        # weights heaviest, so the two must not be allowed to disagree.
+        #
+        # Written only when it actually differs. That is what makes the other
+        # caller - _handle_config_entry_update, which arrives BECAUSE the entry
+        # already changed - a no-op here, instead of writing the entry from
+        # inside the entry's own update listener.
+        #
+        # The turn-on option needs no companion write: the validation above
+        # already proved the stored one fits this device.
+        if self._entry.data.get("switch_entity_id") != switch_entity_id:
+            self.hass.config_entries.async_update_entry(
+                self._entry,
+                data={**self._entry.data, "switch_entity_id": switch_entity_id},
+            )
 
         # Update accumulation based on current switch state
         current_switch_state = self.hass.states.get(self._switch_entity_id) if self._switch_entity_id else None

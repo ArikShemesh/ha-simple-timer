@@ -213,7 +213,7 @@ cancel_timer:
 
 update_switch_entity:
   name: Update Device Entity
-  description: Tells the sensor which device entity to monitor for runtime calculation. Provide either entry_id or entity_id. A device whose "on" is a choice, such as a climate entity, is rejected unless that choice is already configured for this timer.
+  description: Tells the sensor which device entity to monitor for runtime calculation. Provide either entry_id or entity_id. A device whose "on" is a choice, such as a climate entity, is rejected unless that choice is already configured for this timer, and so is one that offers no way to turn it off.
   fields:
     entry_id:
       name: Entry ID
