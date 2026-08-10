@@ -214,7 +214,8 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
     @property
     def device_info(self) -> DeviceInfo | None:
         """Link this entity to the device of the switch it monitors."""
-        return device_info_for_switch(self.hass, self._switch_entity_id)
+        return device_info_for_switch(self.hass, self._switch_entity_id,
+                                      name=self.instance_title)
 
     @property
     def _monitored_descriptor(self):

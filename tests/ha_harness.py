@@ -95,6 +95,12 @@ def _install_homeassistant() -> MagicMock:
     ha.config_entries.ConfigFlow = MockFlowBase
     ha.config_entries.OptionsFlow = MockFlowBase
 
+    # DeviceInfo is a TypedDict, so a plain dict is what it really is at
+    # runtime. Left as a MagicMock, DeviceInfo(...) returns a mock that happily
+    # accepts __setitem__ and answers every lookup, so a test could not tell an
+    # omitted key from a present one - which is the whole point of default_name.
+    ha.helpers.device_registry.DeviceInfo = dict
+
     # Real values, not auto-mocked attributes. The integration compares entity
     # states against these by equality, and a MagicMock never equals the string
     # "on", so leaving them mocked silently makes every such comparison False.

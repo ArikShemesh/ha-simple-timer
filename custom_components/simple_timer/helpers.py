@@ -36,11 +36,35 @@ def instance_logger(logger: logging.Logger, entry_id: str) -> logging.LoggerAdap
     return _InstanceLogger(logger, {"entry_id": entry_id})
 
 
-def device_info_for_switch(hass: HomeAssistant, switch_entity_id: str | None) -> DeviceInfo | None:
-    """Return DeviceInfo that groups an entity onto the switch's device.
+def device_info_for_switch(hass: HomeAssistant, switch_entity_id: str | None,
+                           name: str | None = None) -> DeviceInfo | None:
+    """Return DeviceInfo placing an entity on the monitored device's card.
 
-    Reuses the switch device's identifiers so HA merges our entities into that
-    device rather than creating a second one. Shared by both sensors.
+    Reuses the switch device's identifiers so our entities sit with that
+    device. Shared by both sensors.
+
+    **We do not actually merge into the switch's device.** Observed on HA
+    2026.8.0 across four cases: an entry supplying another integration's
+    identifiers gets its OWN device row, holding only our entities, alongside
+    the original. So the row this describes is ours, and naming it renames
+    nothing of anyone else's. Should a future HA start merging again, `name`
+    would rewrite the shared device's name - a label, and `name_by_user` still
+    wins in the UI, but that is the assumption being made here.
+
+    **Which keys may appear is not a style question.** Home Assistant
+    classifies device info by finding the first type whose allowed keys cover
+    every key present (`device_registry.DEVICE_INFO_TYPES`):
+
+    * "link" - `connections`, `identifiers`
+    * "primary" - those plus `name`, `manufacturer`, `model`, ...
+    * "secondary" - `default_name` and friends, but NOT `identifiers`
+
+    `default_name` would have been the better instruction ("use this only if
+    the device has no name"), but it cannot appear next to `identifiers`: the
+    dict then matches no type and HA refuses to add the entity at all, with
+    "device info needs to either describe a device, link to existing device or
+    provide extra information". Verified the hard way - it took every Simple
+    Timer entity off a live instance. `name` is the only usable form.
     """
     if not switch_entity_id:
         return None
@@ -60,10 +84,15 @@ def device_info_for_switch(hass: HomeAssistant, switch_entity_id: str | None) ->
     if not device_entry:
         return None
 
-    return DeviceInfo(
+    info = DeviceInfo(
         connections=device_entry.connections,
         identifiers=device_entry.identifiers,
     )
+    # Omitted rather than passed as None: an absent key leaves the dict in the
+    # "link" category, which is what every caller got before names existed.
+    if name:
+        info["name"] = name
+    return info
 
 
 def duration_to_seconds(duration: float, unit: str) -> float:
