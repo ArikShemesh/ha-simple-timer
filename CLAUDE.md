@@ -25,8 +25,15 @@ npm install && npm run build
 rm -rf node_modules && npm install && npm run build
 ```
 
-`/release <version>` is a local command (`.claude/` is gitignored here) that
-walks the full release sequence.
+Two local commands live in `.claude/` (gitignored here): `/release <version>`
+walks the full release sequence, and `/verify-dev` checks a deployed change
+against the dev Home Assistant over its REST API — timer instances and their
+published attributes, service calls, the integration's log, and whether the
+served bundle matches the local build. The card has no test harness, so that
+command is the only thing standing between a card change and a user finding the
+bug. Its credentials come from `deploy_config.bat`, which also holds the **prod**
+url and token; only ever reach the dev instance through
+`.claude/scripts/ha-dev.ps1`, which refuses a non-local host.
 
 ## Architecture
 

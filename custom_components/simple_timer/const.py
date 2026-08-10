@@ -58,6 +58,19 @@ ATTR_TIMER_START_METHOD = "timer_start_method"
 # "on", which is wrong for climate, where running means any non-off hvac mode.
 ATTR_DEVICE_ACTIVE = "device_active"
 
+# Where the card must send a power-button press. "direct" means it may call
+# homeassistant.toggle itself, which is what every bundle did before climate
+# support; "integration" means only we know how to turn this device on or off,
+# so the press goes through the manual_power_toggle service.
+#
+# Published rather than derived from the entity domain, because the card is a
+# shipped bundle nobody rebuilds: a new domain in domains.py must not need a
+# card release. Absent means an integration older than this attribute, and the
+# card falls back to "direct" - exactly what it used to do.
+ATTR_POWER_TOGGLE_ROUTE = "power_toggle_route"
+POWER_TOGGLE_DIRECT = "direct"
+POWER_TOGGLE_INTEGRATION = "integration"
+
 # Scheduled-start attributes
 ATTR_SCHEDULE_STATE = "schedule_state"
 ATTR_SCHEDULED_START = "scheduled_start"

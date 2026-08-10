@@ -41,6 +41,9 @@ from .const import (
     ATTR_WATCHDOG_MESSAGE,
     ATTR_SWITCH_ENTITY_ID,
     ATTR_DEVICE_ACTIVE,
+    ATTR_POWER_TOGGLE_ROUTE,
+    POWER_TOGGLE_DIRECT,
+    POWER_TOGGLE_INTEGRATION,
     ATTR_STATUS_ENTITY_ID,
     ATTR_LAST_ON_TIMESTAMP,
     ATTR_INSTANCE_TITLE,
@@ -69,7 +72,12 @@ from .helpers import (
     next_reset_datetime,
     parse_reset_time,
 )
-from .domains import descriptor_for, needs_turn_on_option, supports_off
+from .domains import (
+    descriptor_for,
+    needs_turn_on_option,
+    supports_generic_toggle,
+    supports_off,
+)
 from .notify import Notifier
 from .schedule import ScheduleManager
 from .startup import async_wait_until_ready
@@ -406,6 +414,14 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             # itself, which is wrong for climate. Old bundles keep their own
             # fallback, so this must never be renamed or removed.
             ATTR_DEVICE_ACTIVE: self._device_active(),
+            # Keeps the domain table the only place that knows domain names -
+            # the card reads this instead of matching on the entity id, so a
+            # new domain never needs a rebuilt bundle. Additive: bundles that
+            # predate it keep their own hardcoded check.
+            ATTR_POWER_TOGGLE_ROUTE: (
+                POWER_TOGGLE_DIRECT if supports_generic_toggle(self._switch_entity_id)
+                else POWER_TOGGLE_INTEGRATION
+            ),
             # Lets the card open more-info on the status sensor without having
             # to scan for it. Safe to add here: the card's instance lookup keys
             # off entry_id + switch_entity_id, both of which stay on this entity.

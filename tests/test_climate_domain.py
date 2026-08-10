@@ -136,6 +136,46 @@ class DeviceActiveAttributeTestCase(ClimateSensorTestBase):
         self.assertFalse(s._device_active())
 
 
+class PowerToggleRouteAttributeTestCase(unittest.TestCase):
+    """Where the card sends a power press, published instead of guessed.
+
+    The card must never match on the entity id: it ships as a built bundle
+    nobody rebuilds, so a domain added to `domains.py` later has to work
+    without a card release. This attribute is that contract, and it is part of
+    the card's public API - the name cannot change.
+
+    `extra_state_attributes` reads roughly thirty attributes, so the fixture is
+    a MagicMock rather than the usual `object.__new__` sensor. Only
+    `_switch_entity_id` needs a real value: `descriptor_for` does a string
+    membership test on it.
+    """
+
+    def _attributes(self, entity_id):
+        fake = MagicMock()
+        fake._switch_entity_id = entity_id
+        return TimerRuntimeSensor.extra_state_attributes.fget(fake)
+
+    def test_switch_like_entity_publishes_direct(self):
+        for entity_id in ("switch.boiler", "input_boolean.test", "light.hall",
+                          "fan.office"):
+            with self.subTest(entity_id=entity_id):
+                self.assertEqual(
+                    self._attributes(entity_id)["power_toggle_route"], "direct"
+                )
+
+    def test_climate_entity_publishes_integration(self):
+        self.assertEqual(
+            self._attributes("climate.ac")["power_toggle_route"], "integration"
+        )
+
+    def test_unconfigured_or_unknown_entity_publishes_direct(self):
+        for entity_id in (None, "", "media_player.tv"):
+            with self.subTest(entity_id=entity_id):
+                self.assertEqual(
+                    self._attributes(entity_id)["power_toggle_route"], "direct"
+                )
+
+
 class SwitchChangeTestBase(ClimateSensorTestBase):
     """`_handle_switch_change` is a sync callback that queues real work.
 

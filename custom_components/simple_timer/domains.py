@@ -69,6 +69,12 @@ class DomainDescriptor:
     #: advertise their capabilities in attributes; "turn it off later" is the
     #: core promise, so the config flow refuses an entity that cannot.
     off_supported: Callable[[dict], bool]
+    #: True when ``homeassistant.turn_on``/``turn_off``/``toggle`` reach this
+    #: entity, so a caller outside the integration can flip its power without
+    #: us. False means power must go through the integration - either because
+    #: the generic services do not reach the domain at all, or because "on" is
+    #: a stored choice only the config entry knows.
+    generic_toggle_supported: bool
     #: Services that must be registered before we may command the device.
     required_services: tuple[tuple[str, str], ...]
 
@@ -94,6 +100,7 @@ _SWITCH_LIKE = DomainDescriptor(
     off_command=lambda: ("homeassistant", "turn_off", {}),
     turn_on_options=None,
     off_supported=lambda attrs: True,
+    generic_toggle_supported=True,
     required_services=(("homeassistant", "turn_on"), ("homeassistant", "turn_off")),
 )
 
@@ -141,6 +148,10 @@ _CLIMATE = DomainDescriptor(
     off_command=lambda: ("climate", "set_hvac_mode", {"hvac_mode": STATE_OFF}),
     turn_on_options=_climate_turn_on_options,
     off_supported=lambda attrs: STATE_OFF in _climate_modes(attrs),
+    # Same reason as off_command: the generic services need feature flags many
+    # climate integrations omit, and turning one "on" means applying the mode
+    # stored on the config entry, which nothing outside the integration knows.
+    generic_toggle_supported=False,
     required_services=(("climate", "set_hvac_mode"),),
 )
 
@@ -198,3 +209,14 @@ def supports_off(entity_id: str | None, entity_attrs: dict | None) -> bool:
     timer that cannot turn the device off is worse than no timer.
     """
     return descriptor_for(entity_id).off_supported(entity_attrs)
+
+
+def supports_generic_toggle(entity_id: str | None) -> bool:
+    """May a caller outside the integration toggle this entity's power itself?
+
+    The card asks this - through a published attribute, never by inspecting the
+    entity id, so that adding a domain here needs no rebuilt bundle. An unknown
+    domain answers True via the switch-like fallback, which is the behaviour
+    every shipped card already has.
+    """
+    return descriptor_for(entity_id).generic_toggle_supported

@@ -639,17 +639,23 @@ class TimerCard extends LitElement {
     const switchId = this._effectiveSwitchEntity;
     console.log(`Timer-card: Toggling independent power for ${switchId}`);
 
-    // Climate devices go through the integration, because "on" for them means
-    // a specific hvac mode that only the config entry knows. Everything else
-    // keeps the direct toggle it always used - byte-identical for existing
-    // users, and it does not need the integration to be reachable.
-    if (switchId.split('.')[0] === 'climate') {
+    // The backend says where the press goes, because only it knows what "on"
+    // means for the device - a climate entity needs a stored hvac mode, and
+    // homeassistant.toggle does not reach every domain. Never decided here
+    // from the entity id: this bundle ships frozen, and a domain added to the
+    // integration later must work without a card release. An older integration
+    // publishes nothing, so absent means the direct toggle every version used.
+    const sensor = this._effectiveSensorEntity
+      ? this.hass.states[this._effectiveSensorEntity]
+      : undefined;
+    const route = sensor?.attributes?.power_toggle_route;
+
+    if (route && route !== 'direct') {
       const entryId = this._getEntryId();
       if (!entryId) {
         console.error("Timer-card: Cannot toggle power without an entry_id.");
         return;
       }
-      const sensor = this.hass.states[this._effectiveSensorEntity!];
       const active = sensor?.attributes?.device_active === true;
       this.hass.callService("simple_timer", "manual_power_toggle", {
         entry_id: entryId,

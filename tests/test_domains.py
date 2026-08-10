@@ -126,6 +126,25 @@ class DescriptorContractTestCase(unittest.TestCase):
                 with self.subTest(domain=domain, attrs=attrs):
                     self.assertIsInstance(descriptor.off_supported(attrs), bool)
 
+    def test_every_descriptor_declares_generic_toggle_support_as_a_bool(self):
+        for domain, descriptor in domains.DESCRIPTORS.items():
+            with self.subTest(domain=domain):
+                self.assertIsInstance(descriptor.generic_toggle_supported, bool)
+
+    def test_generic_toggle_support_agrees_with_how_the_domain_is_commanded(self):
+        # The invariant behind the published route attribute. A domain that
+        # claims a caller outside the integration can flip its power must be
+        # commanded through the generic services and must need no stored
+        # option - otherwise the card's direct toggle lands on nothing, or
+        # lands on a device whose "on" it was never told.
+        for domain, descriptor in domains.DESCRIPTORS.items():
+            if not descriptor.generic_toggle_supported:
+                continue
+            with self.subTest(domain=domain):
+                self.assertIsNone(descriptor.turn_on_options)
+                self.assertEqual(descriptor.on_command(None)[0], "homeassistant")
+                self.assertEqual(descriptor.off_command()[0], "homeassistant")
+
     def test_command_services_are_covered_by_required_services(self):
         # Startup waits on required_services before acting. A descriptor that
         # commands a service it never waits for can fire into a dead registry.
@@ -345,6 +364,26 @@ class SupportsOffTestCase(unittest.TestCase):
     def test_climate_must_advertise_an_off_mode(self):
         self.assertTrue(domains.supports_off("climate.ac", CLIMATE_ATTRS))
         self.assertFalse(domains.supports_off("climate.ac", {"hvac_modes": ["heat", "cool"]}))
+
+
+class SupportsGenericToggleTestCase(unittest.TestCase):
+    """What the card's power button is allowed to call for itself."""
+
+    def test_switch_like_domains_may_be_toggled_directly(self):
+        for entity_id in ("switch.boiler", "input_boolean.test", "light.hall",
+                          "fan.office"):
+            with self.subTest(entity_id=entity_id):
+                self.assertTrue(domains.supports_generic_toggle(entity_id))
+
+    def test_climate_must_go_through_the_integration(self):
+        self.assertFalse(domains.supports_generic_toggle("climate.ac"))
+
+    def test_unknown_or_absent_entity_keeps_the_direct_toggle(self):
+        # Matches descriptor_for's switch-like fallback, which is what every
+        # shipped bundle already does for an entity it does not recognise.
+        for entity_id in (None, "", "boiler", "media_player.tv"):
+            with self.subTest(entity_id=entity_id):
+                self.assertTrue(domains.supports_generic_toggle(entity_id))
 
 
 class ServicesYamlMirrorTestCase(unittest.TestCase):
