@@ -8,16 +8,16 @@ from typing import Any
 
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorStateClass
 from homeassistant.const import (
-    STATE_ON,
-    STATE_OFF,
     STATE_UNAVAILABLE,
     STATE_UNKNOWN,
     UnitOfTime,
     EVENT_HOMEASSISTANT_STOP,
 )
 from homeassistant.core import HomeAssistant, callback, Context, Event, CoreState
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.event import (
+    async_track_entity_registry_updated_event,
     async_track_state_change_event,
     async_track_time_change,
     async_track_point_in_utc_time,
@@ -34,12 +34,17 @@ from .const import (
     DOMAIN,
     WARNING_MSG_OFFLINE,
     SIGNAL_STATE_UPDATED,
+    CONF_TURN_ON_OPTION,
     ATTR_TIMER_STATE,
     ATTR_TIMER_FINISHES_AT,
     ATTR_TIMER_DURATION,
     ATTR_TIMER_REMAINING,
     ATTR_WATCHDOG_MESSAGE,
     ATTR_SWITCH_ENTITY_ID,
+    ATTR_DEVICE_ACTIVE,
+    ATTR_POWER_TOGGLE_ROUTE,
+    POWER_TOGGLE_DIRECT,
+    POWER_TOGGLE_INTEGRATION,
     ATTR_STATUS_ENTITY_ID,
     ATTR_LAST_ON_TIMESTAMP,
     ATTR_INSTANCE_TITLE,
@@ -67,6 +72,12 @@ from .helpers import (
     format_duration_natural,
     next_reset_datetime,
     parse_reset_time,
+)
+from .domains import (
+    descriptor_for,
+    needs_turn_on_option,
+    supports_generic_toggle,
+    supports_off,
 )
 from .notify import Notifier
 from .schedule import ScheduleManager
@@ -133,6 +144,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._last_on_timestamp = None
         self._accumulation_task = None
         self._state_listener_disposer = None
+        self._registry_listener_disposer = None
         self._stop_listener_disposer = None
         self._init_task = None
         self._stop_event_received = False
@@ -172,21 +184,36 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._store = TimerStore(hass, self._entry_id, self._log)
         self._notifier = Notifier(hass, entry, self._log)
 
-        # Switch commanding. Handed a notify callback and a predicate rather
-        # than the sensor, so the dependency runs one way.
+        self._build_collaborators()
+
+    def _build_collaborators(self) -> None:
+        """Create the two collaborators whose shutdown is one-way.
+
+        Both `SwitchController.async_shutdown()` and
+        `ScheduleManager.async_shutdown()` are sticky on purpose - a chain
+        already sleeping through its backoff must not be able to wake up and
+        command the device after the entity is gone (W2/S4). Sticky means the
+        only way back is a new object, which a config-entry reload gives us for
+        free. An entity_id rename does not: Home Assistant removes and re-adds
+        the SAME entity object, so this is called again from
+        async_added_to_hass to hand the revived entity working collaborators.
+        """
         self._switch = SwitchController(
-            hass,
+            self.hass,
             lambda: self._switch_entity_id,
             notify=self._send_notification,
             is_timer_active=lambda: self._timer_state == "active",
+            # Read off the entry each time, not copied: the options flow
+            # updates entry data in place without reloading the entry.
+            get_turn_on_option=lambda: self._entry.data.get(CONF_TURN_ON_OPTION),
             log=self._log,
         )
 
-        # Scheduled-start (future absolute clock time). Built after the store,
-        # which it needs, and handed the sensor callbacks it reaches back
-        # through - so the dependency runs one way, sensor -> schedule.
+        # Scheduled-start (future absolute clock time). Needs the store, and is
+        # handed the sensor callbacks it reaches back through - so the
+        # dependency runs one way, sensor -> schedule.
         self._schedule = ScheduleManager(
-            hass,
+            self.hass,
             store=self._store,
             start_timer=self.async_start_timer,
             write_state=self.async_write_ha_state,
@@ -197,7 +224,30 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
     @property
     def device_info(self) -> DeviceInfo | None:
         """Link this entity to the device of the switch it monitors."""
-        return device_info_for_switch(self.hass, self._switch_entity_id)
+        return device_info_for_switch(self.hass, self._switch_entity_id,
+                                      name=self.instance_title)
+
+    @property
+    def _monitored_descriptor(self):
+        """Domain rules for the device this timer watches.
+
+        A property rather than an attribute set in __init__, deliberately: the
+        monitored entity is re-pointed at runtime, and the test fixtures build
+        sensors through object.__new__ and set only what the path under test
+        touches. Derived on read, so neither can go stale.
+        """
+        return descriptor_for(self._switch_entity_id)
+
+    def _device_active(self) -> bool:
+        """Is the monitored device running right now?
+
+        "on" for a switch, any non-off hvac mode for climate. Published as an
+        attribute so the card does not have to know the difference.
+        """
+        if not self._switch_entity_id:
+            return False
+        state = self.hass.states.get(self._switch_entity_id)
+        return state is not None and self._monitored_descriptor.is_active(state.state)
 
     def _parse_reset_time(self, time_str: str) -> time:
         """Parse a configured reset time, warning and falling back if unusable."""
@@ -362,6 +412,18 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             ATTR_WATCHDOG_MESSAGE: self._watchdog_message,
             "entry_id": self._entry_id,
             ATTR_SWITCH_ENTITY_ID: self._switch_entity_id,
+            # Additive: the card used to compare the device state against "on"
+            # itself, which is wrong for climate. Old bundles keep their own
+            # fallback, so this must never be renamed or removed.
+            ATTR_DEVICE_ACTIVE: self._device_active(),
+            # Keeps the domain table the only place that knows domain names -
+            # the card reads this instead of matching on the entity id, so a
+            # new domain never needs a rebuilt bundle. Additive: bundles that
+            # predate it keep their own hardcoded check.
+            ATTR_POWER_TOGGLE_ROUTE: (
+                POWER_TOGGLE_DIRECT if supports_generic_toggle(self._switch_entity_id)
+                else POWER_TOGGLE_INTEGRATION
+            ),
             # Lets the card open more-info on the status sensor without having
             # to scan for it. Safe to add here: the card's instance lookup keys
             # off entry_id + switch_entity_id, both of which stay on this entity.
@@ -461,10 +523,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             
             if self._switch_entity_id:
                 current_switch_state = self.hass.states.get(self._switch_entity_id)
-                if current_switch_state and current_switch_state.state == STATE_ON:
+                if current_switch_state and self._monitored_descriptor.is_active(current_switch_state.state):
                     self._last_on_timestamp = dt_util.utcnow()
                     await self._start_realtime_accumulation()
-            
+
             self.async_write_ha_state()
         finally:
             self._is_performing_reset = False
@@ -532,33 +594,139 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         """Set up switch state change listener."""
         if self._state_listener_disposer:
             self._state_listener_disposer()
-        
+        # Both subscriptions are indexed by entity id, so both have to move
+        # when the monitored entity does - a stale registry one keeps reporting
+        # renames of a device this instance no longer watches.
+        if self._registry_listener_disposer:
+            self._registry_listener_disposer()
+            self._registry_listener_disposer = None
+
         if self._switch_entity_id:
             self._log.info(f"Setting up switch listener for: {self._switch_entity_id}")
             self._state_listener_disposer = async_track_state_change_event(
                 self.hass, self._switch_entity_id, self._handle_switch_change_event
             )
+            self._registry_listener_disposer = async_track_entity_registry_updated_event(
+                self.hass, self._switch_entity_id,
+                self._handle_monitored_entity_registry_update
+            )
         else:
             self._log.warning("No switch entity configured")
+
+    @callback
+    def _handle_monitored_entity_registry_update(self, event: Event) -> None:
+        """Follow the monitored entity when Home Assistant renames it.
+
+        HA does not rewrite config entry data when an entity id changes, and it
+        changes without being asked for - renaming a device offers to rename its
+        entities, and the post-create "Name and assign" dialog just does it.
+        Left alone the entry points at an id nothing answers to, and the only
+        recovery is re-pointing by hand.
+
+        `old_entity_id` is the whole test, and it is deliberately the ONLY one.
+        It appears on exactly one thing: an `update` whose entity id changed.
+        An `update` for an icon, a friendly name or an area does not carry it,
+        so those cannot rewrite the entry and reload the instance every time
+        somebody edits a label. Neither does a `remove`, whose reported id is
+        the one that just stopped existing - the last thing worth persisting.
+
+        An `action` check on top of this looked prudent and was dead code: the
+        suite stayed green with it deleted, because nothing reaches the write
+        without `old_entity_id` anyway. Two guards over one path is how a test
+        here passes for the wrong reason, so there is one.
+
+        The write goes to the entry, not to `_switch_entity_id`, because the
+        entry is what `_wait_for_startup_completion` reads back. Its update
+        listener then performs the re-point through machinery already tested.
+        """
+        data = event.data
+        new_entity_id = data.get("entity_id")
+        old_entity_id = data.get("old_entity_id")
+        if not new_entity_id or not old_entity_id or new_entity_id == old_entity_id:
+            return
+
+        self._log.info(
+            f"Monitored entity renamed {old_entity_id} -> {new_entity_id}, "
+            f"updating the config entry"
+        )
+        self.hass.config_entries.async_update_entry(
+            self._entry,
+            data={**self._entry.data, "switch_entity_id": new_entity_id},
+        )
 
     async def async_update_switch_entity(self, switch_entity_id: str):
         """Update the monitored switch entity."""
         self._log.info(f"Updating switch entity to: {switch_entity_id}")
-        
-        if self._switch_entity_id != switch_entity_id:
+
+        # Refuse a device we would not know how to turn on, or could not turn
+        # off again. The alternative is accepting it and failing at 2am when the
+        # timer fires, with the user asleep and the boiler cold - or still hot.
+        # Both refusals mirror the config flow's, which checks the same two
+        # things before it will accept an entity at all.
+        if switch_entity_id:
+            new_state = self.hass.states.get(switch_entity_id)
+            new_attrs = new_state.attributes if new_state else None
+            if needs_turn_on_option(switch_entity_id,
+                                    self._entry.data.get(CONF_TURN_ON_OPTION),
+                                    new_attrs):
+                raise ServiceValidationError(
+                    f"Cannot monitor {switch_entity_id}: this device needs a "
+                    f"turn-on mode, and none is configured for it. Change the "
+                    f"device through the integration's options instead."
+                )
+            if not supports_off(switch_entity_id, new_attrs):
+                raise ServiceValidationError(
+                    f"Cannot monitor {switch_entity_id}: this device offers no "
+                    f"way to turn it off, so a timer could never end it."
+                )
+
+        repointed = self._switch_entity_id != switch_entity_id
+        if repointed:
             self._switch_entity_id = switch_entity_id
             await self._async_setup_switch_listener()
-        
+
+        # Persist it. The config entry is what _wait_for_startup_completion
+        # reads back, so a re-point that only moved this attribute is undone by
+        # the next restart - and an armed delayed start then fires against the
+        # OLD device. Unprompted device activation is the failure this project
+        # weights heaviest, so the two must not be allowed to disagree.
+        #
+        # Written only when it actually differs. That is what makes the other
+        # caller - _handle_config_entry_update, which arrives BECAUSE the entry
+        # already changed - a no-op here, instead of writing the entry from
+        # inside the entry's own update listener.
+        #
+        # The turn-on option needs no companion write: the validation above
+        # already proved the stored one fits this device.
+        if self._entry.data.get("switch_entity_id") != switch_entity_id:
+            self.hass.config_entries.async_update_entry(
+                self._entry,
+                data={**self._entry.data, "switch_entity_id": switch_entity_id},
+            )
+
         # Update accumulation based on current switch state
         current_switch_state = self.hass.states.get(self._switch_entity_id) if self._switch_entity_id else None
-        if current_switch_state and current_switch_state.state == STATE_ON:
+        if current_switch_state and self._monitored_descriptor.is_active(current_switch_state.state):
             if not self._last_on_timestamp:
                 self._last_on_timestamp = dt_util.utcnow()
             await self._start_realtime_accumulation()
         else:
             await self._stop_realtime_accumulation()
-        
+
         self.async_write_ha_state()
+
+        # Re-add both entities so their device_info is read again. Home
+        # Assistant consumes device_info only when an entity is ADDED to the
+        # registry, so without this the timer stays on whichever device it
+        # landed on when the entry last loaded, and the re-point shows up only
+        # after a restart. Nothing else reloads us - the __init__.py update
+        # listener is a bare `pass`.
+        #
+        # Scheduled, never awaited: this also runs from inside the entry's own
+        # update listener, and awaiting a reload there deadlocks. Last in the
+        # method so the reload cannot tear the entity down mid-update.
+        if repointed:
+            self.hass.config_entries.async_schedule_reload(self._entry_id)
 
     @callback
     def _handle_switch_change_event(self, event: Event) -> None:
@@ -602,8 +770,13 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         if not to_state:
             return
 
-        # Switch turned on
-        if to_state.state == STATE_ON and (not from_state or from_state.state != STATE_ON):
+        # Device started running. For climate the edge is off/unavailable ->
+        # any mode; cool -> heat is NOT an edge, so a user changing the mode
+        # mid-timer does not re-seed the meter or auto-start a second timer.
+        descriptor = self._monitored_descriptor
+        if descriptor.is_active(to_state.state) and (
+            not from_state or not descriptor.is_active(from_state.state)
+        ):
             if self._watchdog_message:
                 self._watchdog_message = None
             self._last_on_timestamp = now
@@ -617,9 +790,12 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                     self.async_start_timer(self._default_timer_duration, self._default_timer_unit, reverse_mode=self._default_timer_reverse_mode)
                 )
 
-        # Switch transitioned to a non-ON state
-        elif to_state.state != STATE_ON:
-            is_definitive_off = to_state.state == STATE_OFF
+        # Device stopped running, or stopped answering
+        elif not descriptor.is_active(to_state.state):
+            # Only a positive off cancels a coupled timer. An entity that went
+            # unavailable has told us nothing, and cancelling a running timer
+            # on a dropped radio message is the failure this weights against.
+            is_definitive_off = descriptor.is_definitive_off(to_state.state)
 
             if is_definitive_off:
                 self.hass.async_create_task(self._stop_realtime_accumulation())
@@ -677,8 +853,8 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             
         current_switch_state = self.hass.states.get(self._switch_entity_id) if self._switch_entity_id else None
         
-        # Only start if switch is ON (or we are in a permissive state)
-        if current_switch_state and current_switch_state.state == STATE_ON:
+        # Only start if the device is running (or we are in a permissive state)
+        if current_switch_state and self._monitored_descriptor.is_active(current_switch_state.state):
             if not self._last_on_timestamp:
                 self._last_on_timestamp = dt_util.utcnow()
         else:
@@ -752,12 +928,14 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
         current_switch_state = self.hass.states.get(self._switch_entity_id)
         
-        # Accumulate ONLY if switch is ON
+        # Accumulate ONLY if the device is running. An entity that stopped
+        # answering keeps accumulating, unchanged: it was on a moment ago and
+        # nothing has said otherwise.
         should_accumulate = (
-            current_switch_state 
+            current_switch_state
             and self._last_on_timestamp
             and (
-                current_switch_state.state == STATE_ON 
+                self._monitored_descriptor.is_active(current_switch_state.state)
                 or current_switch_state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN)
             )
         )
@@ -853,7 +1031,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         else:
             # NORMAL MODE: Convenience turn ON, but don't wait for it
             current_switch_state = self.hass.states.get(self._switch_entity_id) if self._switch_entity_id else None
-            if not current_switch_state or current_switch_state.state != STATE_ON:
+            if not current_switch_state or not self._monitored_descriptor.is_active(current_switch_state.state):
                 await self._switch.async_command("on", blocking=False, context=context)
                 # DECOUPLED: Do NOT wait for state change. Start timer immediately.
                 # User can turn switch on/off manually during timer.
@@ -1284,7 +1462,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         if self._state_listener_disposer:
             self._state_listener_disposer()
             self._state_listener_disposer = None
-        
+        if self._registry_listener_disposer:
+            self._registry_listener_disposer()
+            self._registry_listener_disposer = None
+
         self.async_write_ha_state()
         await super().async_will_remove_from_hass()
 
@@ -1313,8 +1494,26 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
 
     async def async_added_to_hass(self):
         """Called when entity is added to hass - startup-safe initialization."""
+        # Being added while shut down means this object was REMOVED and is now
+        # coming back: Home Assistant handles an entity_id change - including
+        # the one it performs when a device is renamed, which is what its
+        # post-create "Name and assign" dialog does - by removing and re-adding
+        # the same entity object.
+        #
+        # Everything below assumes a live entity, and the barriers raised on
+        # removal do not lower themselves: _stop_event_received gates
+        # _complete_initialization and async_start_timer, and both collaborators
+        # latch shut permanently. Left as-is the revived entity registers itself
+        # in hass.data, so every service call resolves to it, and then quietly
+        # does nothing - no switch listener, no daily reset, no timer starts.
+        if self._stop_event_received:
+            self._log.info("Entity re-added after removal - resetting shutdown state")
+            self._stop_event_received = False
+            self._build_collaborators()
+
         self._log.info("Entity added to hass - startup safe mode")
-        
+
+
         # Register sensor in domain data for service calls
         if DOMAIN not in self.hass.data:
             self.hass.data[DOMAIN] = {}
@@ -1327,8 +1526,8 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         
         # Register shutdown handler.
         # Keep the disposer: dropping it leaves the bus holding a reference to
-        # every removed instance until HA stops, and the entry is reloaded on
-        # every options-flow change (S4).
+        # every removed instance until HA stops, and re-pointing the monitored
+        # device reloads the entry (S4).
         self._stop_listener_disposer = self.hass.bus.async_listen(
             EVENT_HOMEASSISTANT_STOP, self._handle_ha_shutdown
         )
@@ -1853,10 +2052,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._state = 0.0
         self._last_on_timestamp = None
         
-        # If switch is currently on, restart accumulation from zero
+        # If the device is currently running, restart accumulation from zero
         if self._switch_entity_id:
             current_switch_state = self.hass.states.get(self._switch_entity_id)
-            if current_switch_state and current_switch_state.state == STATE_ON:
+            if current_switch_state and self._monitored_descriptor.is_active(current_switch_state.state):
                 self._last_on_timestamp = dt_util.utcnow()
                 await self._start_realtime_accumulation()
         

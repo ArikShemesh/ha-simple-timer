@@ -138,3 +138,4 @@ deploy_config.bat
 /notepad session
 /*.tmp
 /custom_components/simple_timer/dist/*.map
+docs/

@@ -36,11 +36,35 @@ def instance_logger(logger: logging.Logger, entry_id: str) -> logging.LoggerAdap
     return _InstanceLogger(logger, {"entry_id": entry_id})
 
 
-def device_info_for_switch(hass: HomeAssistant, switch_entity_id: str | None) -> DeviceInfo | None:
-    """Return DeviceInfo that groups an entity onto the switch's device.
+def device_info_for_switch(hass: HomeAssistant, switch_entity_id: str | None,
+                           name: str | None = None) -> DeviceInfo | None:
+    """Return DeviceInfo placing an entity on the monitored device's card.
 
-    Reuses the switch device's identifiers so HA merges our entities into that
-    device rather than creating a second one. Shared by both sensors.
+    Reuses the switch device's identifiers so our entities sit with that
+    device. Shared by both sensors.
+
+    **We do not actually merge into the switch's device.** Observed on HA
+    2026.8.0 across four cases: an entry supplying another integration's
+    identifiers gets its OWN device row, holding only our entities, alongside
+    the original. So the row this describes is ours, and naming it renames
+    nothing of anyone else's. Should a future HA start merging again, `name`
+    would rewrite the shared device's name - a label, and `name_by_user` still
+    wins in the UI, but that is the assumption being made here.
+
+    **Which keys may appear is not a style question.** Home Assistant
+    classifies device info by finding the first type whose allowed keys cover
+    every key present (`device_registry.DEVICE_INFO_TYPES`):
+
+    * "link" - `connections`, `identifiers`
+    * "primary" - those plus `name`, `manufacturer`, `model`, ...
+    * "secondary" - `default_name` and friends, but NOT `identifiers`
+
+    `default_name` would have been the better instruction ("use this only if
+    the device has no name"), but it cannot appear next to `identifiers`: the
+    dict then matches no type and HA refuses to add the entity at all, with
+    "device info needs to either describe a device, link to existing device or
+    provide extra information". Verified the hard way - it took every Simple
+    Timer entity off a live instance. `name` is the only usable form.
     """
     if not switch_entity_id:
         return None
@@ -60,10 +84,46 @@ def device_info_for_switch(hass: HomeAssistant, switch_entity_id: str | None) ->
     if not device_entry:
         return None
 
-    return DeviceInfo(
+    info = DeviceInfo(
         connections=device_entry.connections,
         identifiers=device_entry.identifiers,
     )
+    # Omitted rather than passed as None: an absent key leaves the dict in the
+    # "link" category, which is what every caller got before names existed.
+    if name:
+        info["name"] = name
+    return info
+
+
+def cleanup_orphan_devices(hass: HomeAssistant, entry_id: str) -> None:
+    """Drop our claim on device rows that no longer hold any of our entities.
+
+    Re-pointing an instance at a different device moves both sensors, which
+    leaves the previous row empty. Home Assistant deletes a device only once no
+    config entry still references it, and ours still does - so without this the
+    integration page grows one dead row per re-point, each named after whatever
+    the timer was called at the time.
+
+    `include_disabled_entities=True`, or disabling an entity would look like an
+    empty device and take the row out from under it.
+
+    Called on load, not at re-point time: when the re-point happens our
+    entities are still on the old device and it would correctly look occupied.
+    They move when the reload re-adds them, so load is the first moment the
+    membership is final - which is also why this cleans up rows stranded by
+    earlier versions.
+    """
+    dev_reg = dr.async_get(hass)
+    ent_reg = er.async_get(hass)
+
+    # Snapshot: removing the last entry deletes the device mid-iteration.
+    for device in list(dev_reg.devices.values()):
+        if entry_id not in device.config_entries:
+            continue
+        if er.async_entries_for_device(ent_reg, device.id,
+                                       include_disabled_entities=True):
+            continue
+        dev_reg.async_update_device(device.id, remove_config_entry_id=entry_id)
 
 
 def duration_to_seconds(duration: float, unit: str) -> float:

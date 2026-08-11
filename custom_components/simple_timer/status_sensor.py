@@ -82,7 +82,8 @@ class TimerStatusSensor(SensorEntity):
     @property
     def device_info(self) -> DeviceInfo | None:
         """Group with the switch's device, same as the runtime sensor."""
-        return device_info_for_switch(self.hass, self._switch_entity_id)
+        return device_info_for_switch(self.hass, self._switch_entity_id,
+                                      name=self.instance_title)
 
     @property
     def instance_title(self) -> str:

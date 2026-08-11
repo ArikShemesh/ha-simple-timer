@@ -212,8 +212,8 @@ cancel_timer:
         boolean:
 
 update_switch_entity:
-  name: Update Switch Entity
-  description: Tells the sensor which switch entity to monitor for runtime calculation. Provide either entry_id or entity_id.
+  name: Update Device Entity
+  description: Tells the sensor which device entity to monitor for runtime calculation. Provide either entry_id or entity_id. A device whose "on" is a choice, such as a climate entity, is rejected unless that choice is already configured for this timer, and so is one that offers no way to turn it off.
   fields:
     entry_id:
       name: Entry ID
@@ -231,12 +231,17 @@ update_switch_entity:
           integration: simple_timer
           domain: sensor
     switch_entity_id:
-      name: Switch Entity
-      description: The entity ID of the switch to monitor (e.g., switch.my_timer).
+      name: Device Entity
+      description: The entity ID of the device to monitor (e.g., switch.my_timer, climate.living_room).
       required: true
       selector:
         entity:
-          domain: switch
+          domain:
+            - switch
+            - input_boolean
+            - light
+            - fan
+            - climate
 
 force_name_sync:
   name: Force Name Sync

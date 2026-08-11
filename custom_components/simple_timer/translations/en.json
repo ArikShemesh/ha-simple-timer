@@ -5,7 +5,7 @@
                 "title": "Select Entity",
                 "description": "Choose the entity to control with the timer.",
                 "data": {
-                    "switch_entity_id": "Switch Entity"
+                    "switch_entity_id": "Device Entity"
                 }
             },
             "name": {
@@ -13,6 +13,7 @@
                 "description": "Set the name and additional options for the timer.\n\nCurrent Notifications: {current_notifications}",
                 "data": {
                     "name": "Name",
+                    "turn_on_option": "Mode to use when turning on",
                     "reset_time": "Reset Time (HH:MM)",
                     "default_timer_duration": "Default Timer Duration (0 for none)",
                     "show_seconds": "Show Seconds"
@@ -27,7 +28,9 @@
             "fraction_only_hours_days": "Fractional values are only allowed for Hours (h) and Days (d)",
             "negative_duration": "Duration cannot be negative",
             "entity_not_found": "Entity not found",
-            "no_entities_found": "No controllable entities found"
+            "no_entities_found": "No controllable entities found",
+            "climate_no_off_mode": "This device cannot be turned off, so a timer cannot control it. Choose a different entity.",
+            "entity_not_ready": "This device is not reporting the modes it supports yet. Wait for it to finish starting up and try again."
         },
         "abort": {
             "already_configured": "This device is already configured"
@@ -40,10 +43,18 @@
                 "description": "{migration_notice}",
                 "data": {
                     "name": "Name",
-                    "switch_entity_id": "Switch Entity",
+                    "switch_entity_id": "Device Entity",
+                    "turn_on_option": "Mode to use when turning on",
                     "reset_time": "Reset Time (HH:MM)",
                     "default_timer_duration": "Default Timer Duration (0 for none)",
                     "show_seconds": "Show Seconds"
+                }
+            },
+            "turn_on_option": {
+                "title": "How should this device turn on?",
+                "description": "{device} needs a mode to switch into when the timer turns it on. The timer always switches it off again at the end.",
+                "data": {
+                    "turn_on_option": "Mode to use when turning on"
                 }
             }
         },
@@ -55,7 +66,9 @@
             "fraction_only_hours_days": "Fractional values are only allowed for Hours (h) and Days (d)",
             "negative_duration": "Duration cannot be negative",
             "entity_not_found": "Entity not found",
-            "no_entities_found": "No controllable entities found"
+            "no_entities_found": "No controllable entities found",
+            "climate_no_off_mode": "This device cannot be turned off, so a timer cannot control it. Choose a different entity.",
+            "entity_not_ready": "This device is not reporting the modes it supports yet. Wait for it to finish starting up and try again."
         }
     }
 }

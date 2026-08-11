@@ -13,10 +13,16 @@ from ha_harness import load
 startup = load("startup")
 
 
-def _hass(*, services=("turn_on", "turn_off"), switch_state="on"):
-    """A hass double whose registries answer, unless told otherwise."""
+def _hass(*, services=("turn_on", "turn_off"), switch_state="on",
+          service_registry=None):
+    """A hass double whose registries answer, unless told otherwise.
+
+    `services` names the homeassistant.* services present, which is what every
+    switch-like domain waits for. `service_registry` replaces the whole
+    registry when a test needs another domain's services.
+    """
     hass = MagicMock()
-    hass.services.async_services.return_value = {
+    hass.services.async_services.return_value = service_registry or {
         "homeassistant": {name: object() for name in services}
     }
     if switch_state is None:
@@ -72,6 +78,35 @@ class TestServiceRegistryReady(unittest.IsolatedAsyncioTestCase):
         hass.services.async_services.side_effect = RuntimeError("not up")
         self.assertFalse(await startup.async_service_registry_ready(hass))
 
+    async def test_a_switch_entity_still_waits_on_the_homeassistant_services(self):
+        hass = _hass(switch_state="on")
+        self.assertTrue(
+            await startup.async_service_registry_ready(hass, "switch.boiler"))
+
+        hass = _hass(services=("turn_on",))
+        self.assertFalse(
+            await startup.async_service_registry_ready(hass, "switch.boiler"))
+
+    async def test_a_climate_entity_waits_on_set_hvac_mode_instead(self):
+        """Waiting for the wrong service would let a climate timer command a
+        registry that cannot serve it - and waiting for homeassistant.turn_on
+        would block forever on setups that never register it."""
+        hass = _hass(service_registry={"climate": {"set_hvac_mode": object()}})
+        self.assertTrue(
+            await startup.async_service_registry_ready(hass, "climate.ac"))
+
+    async def test_a_climate_entity_is_not_ready_without_set_hvac_mode(self):
+        hass = _hass(service_registry={"climate": {"turn_on": object()},
+                                       "homeassistant": {"turn_on": object(),
+                                                         "turn_off": object()}})
+        self.assertFalse(
+            await startup.async_service_registry_ready(hass, "climate.ac"))
+
+    async def test_an_unknown_domain_keeps_the_switch_like_requirement(self):
+        hass = _hass(service_registry={"climate": {"set_hvac_mode": object()}})
+        self.assertFalse(
+            await startup.async_service_registry_ready(hass, "media_player.tv"))
+
 
 class TestDependenciesReady(unittest.IsolatedAsyncioTestCase):
     """The aggregate must fail if any single probe fails."""
@@ -93,6 +128,14 @@ class TestDependenciesReady(unittest.IsolatedAsyncioTestCase):
         with patch.object(startup, "async_entity_registry_ready", return_value=True):
             hass = _hass(switch_state="unavailable")
             self.assertFalse(await startup.async_dependencies_ready(hass, "switch.boiler"))
+
+    async def test_the_entity_id_reaches_the_service_probe(self):
+        """The aggregate must pass the entity through, or a climate instance
+        waits on switch services that its setup may never register."""
+        with patch.object(startup, "async_entity_registry_ready", return_value=True):
+            hass = _hass(service_registry={"climate": {"set_hvac_mode": object()}},
+                         switch_state="heat")
+            self.assertTrue(await startup.async_dependencies_ready(hass, "climate.ac"))
 
     async def test_returns_a_real_bool(self):
         """`and` chaining returns the last operand - it must still be a bool."""

@@ -15,7 +15,8 @@ switch_module = load("switch_control")
 TimerRuntimeSensor = sensor_module.TimerRuntimeSensor
 
 
-def make_sensor(switch_state="off", entity="switch.boiler", reverse=True):
+def make_sensor(switch_state="off", entity="switch.boiler", reverse=True,
+                turn_on_option=None):
     s = object.__new__(TimerRuntimeSensor)
     s.hass = MagicMock()
     s.hass.data = {}
@@ -61,10 +62,12 @@ def make_sensor(switch_state="off", entity="switch.boiler", reverse=True):
     s._store = MagicMock()
     s._store.async_save_timer = AsyncMock()
 
+    s._turn_on_option = turn_on_option
     s._switch = switch_module.SwitchController(
         s.hass, lambda: s._switch_entity_id,
         notify=s._send_notification,
         is_timer_active=lambda: s._timer_state == "active",
+        get_turn_on_option=lambda: s._turn_on_option,
         log=s._log,
     )
     return s

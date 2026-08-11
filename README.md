@@ -17,7 +17,9 @@ A simple Home Assistant integration that turns entities on and off with a precis
 ## ✨ Key Features
 🚀 **Out-of-the-box**, pre-packaged timer solution, eliminating manual creation of multiple Home Assistant entities, sensors, and automations.
 
-🕐 Flexible Timer Control - Set countdown timers in seconds, minutes, hours, or days for any switch, input_boolean, light, or fan
+🕐 Flexible Timer Control - Set countdown timers in seconds, minutes, hours, or days for any switch, input_boolean, light, fan, or climate entity
+
+❄️ **Native Climate Support** - Point a timer straight at an A/C or heat pump and pick the mode it should run in, no helper entity, no automation
 
 ⚡ **Default Timer** - Automatically starts a countdown when the device is turned on manually (Auto-Off functionality)
 
@@ -46,6 +48,7 @@ A simple Home Assistant integration that turns entities on and off with a precis
 - **Garden Irrigation** - Time watering systems
 - **Lighting Control** - Automatic light timers
 - **Fan Control** - Bathroom or ventilation fans
+- **A/C and Heat Pumps** - Run a climate entity in a chosen mode and switch it off on time
 - **Any Timed Device** - Universal timer for any switchable device
 
 ## 📦 Installation
@@ -73,10 +76,14 @@ You will continue to receive updates in both cases, but switching ensures you're
 1. Go to **Settings → Devices & Services**
 2. Click **"Add Integration"**
 3. Search for **"Simple Timer"**
-4. Select the device you want to control (switch, light, fan, input_boolean)
+4. Select the device you want to control (switch, light, fan, input_boolean, climate)
 5. Give your timer instance a descriptive name (e.g., "Kitchen Timer", "Water Heater")
-6. Choose notification entitiy (optional) - can be add more than one
-7. Check show seconds (optional) - display seconds in uasge time and notifications
+6. **Climate entities only:** choose the mode to use when turning on (Heat, Cool, Dry, …). The list comes from the entity itself, and only that mode is applied - the timer always switches the device off at the end
+7. Choose notification entitiy (optional) - can be add more than one
+8. Check show seconds (optional) - display seconds in uasge time and notifications
+
+> A climate entity that offers no **off** mode cannot be selected - a timer that
+> cannot turn the device off again would be worse than no timer.
 
 ### Add Timer Card to Dashboard
 1. **Edit your dashboard**
@@ -108,7 +115,7 @@ Enable **Show Schedule Panel** in the card editor to add a collapsible "Schedule
 - Once set, the card shows a banner ("Starts … · runs …"); ✕ cancels it.
 - Survives Home Assistant restarts. On a reverse-mode card, the schedule runs as a normal bounded timer (start at the time, auto-off after the duration).
 
-Disabled by default — existing cards are unchanged until you turn it on.
+Disabled by default - existing cards are unchanged until you turn it on.
 
 ## 📜 History & Activity
 
@@ -120,17 +127,17 @@ Entries read naturally and name whoever triggered them:
 
 ```
 9:08 PM   Water Heater   started for 30 minutes by Alex
-9:05 PM   Water Heater   finished — device turned off, daily usage 45 minutes
+9:05 PM   Water Heater   finished - device turned off, daily usage 45 minutes
 6:00 AM   Water Heater   scheduled for 18:00 (30 minutes), repeating by Alex
 ```
 
-Actions the integration takes on its own — a timer expiring, a schedule firing — are intentionally left unattributed rather than credited to the person who set them up hours earlier.
+Actions the integration takes on its own - a timer expiring, a schedule firing - are intentionally left unattributed rather than credited to the person who set them up hours earlier.
 
 ### Opening history from the card
 
 **Press and hold the countdown display** (or the progress bar) for about a second. This opens the status entity's more-info dialog, showing its state timeline and logbook.
 
-There is no icon for this — it's a hidden gesture, so it's worth knowing it exists. It works in every countdown display mode, since the hold is bound to the countdown text and the progress bar alike.
+There is no icon for this - it's a hidden gesture, so it's worth knowing it exists. It works in every countdown display mode, since the hold is bound to the countdown text and the progress bar alike.
 
 ## 🎛️ Card Configuration
 
@@ -261,39 +268,37 @@ data:
 Cancel an armed schedule with `simple_timer.cancel_schedule` (same `entry_id`/`entity_id`).
 
 ### Can I control my A/C or Climate entity?
-Not directly, but you can achieve this easily!
-1. Create a Helper (Input Boolean) for your timer (e.g., `input_boolean.ac_timer`).
-2. Point the Simple Timer integration to this helper.
-3. Create an automation that acts on the helper's state changes:
+Yes, directly. Select the climate entity when you add the integration instance,
+and pick the mode it should run in.
 
-```yaml
-alias: "A/C Timer Control"
-trigger:
-  - platform: state
-    entity_id: input_boolean.ac_timer
-    to: "on"
-    id: "start"
-  - platform: state
-    entity_id: input_boolean.ac_timer
-    to: "off"
-    id: "stop"
-action:
-  - choose:
-      - conditions:
-          - condition: trigger
-            id: "start"
-        sequence:
-          - service: climate.turn_on
-            target:
-              entity_id: climate.living_room_ac
-      - conditions:
-          - condition: trigger
-            id: "stop"
-        sequence:
-          - service: climate.turn_off
-            target:
-              entity_id: climate.living_room_ac
-```
+**What "on" means.** A switch is on or off. A climate entity has no "on" - its
+state *is* its mode (`heat`, `cool`, `dry`, `fan_only`, `auto`, `heat_cool`, or
+`off`). So you choose one mode when you set the timer up, and that is what the
+timer applies. Turning off is always `off`.
+
+**Any non-off mode counts as running.** The device is metered, and the card
+shows it as on, in every mode. That has three consequences worth knowing:
+
+- **Changing the mode during a timer does not cancel it.** Start a 2 hour timer
+  in `cool`, switch the unit to `heat` by hand, and the timer keeps running -
+  the device is still on, and that is what the timer is counting.
+- **Turning the device off does cancel it**, the same as with a switch.
+- **A unit that goes `unavailable` does not cancel it.** An entity that stopped
+  answering has not told us it is off, and losing a timer to a dropped Zigbee
+  message would be worse than waiting.
+
+**Starting a timer on a unit that is already running leaves its mode alone.**
+The configured mode is applied when the device is off. The one exception is a
+delayed start: when it fires, it applies the configured mode, because "turn it
+on at 21:30" has to mean something specific.
+
+> **Upgrading with a cached card?** A browser holding an old card bundle shows a
+> climate timer as off and its power button may not work. Hard-refresh
+> (Ctrl+Shift+R) once.
+
+The old workaround - an `input_boolean` helper plus an automation - still works
+and is no longer needed. It is only worth keeping if your automation does more
+than turn the unit on and off, for example setting a target temperature.
 
 ### Can I customize the timer buttons?
 Yes! You can configure values with explicit units. Example: `timer_buttons: [30, "45s", "1.5h", "1d"]`. 

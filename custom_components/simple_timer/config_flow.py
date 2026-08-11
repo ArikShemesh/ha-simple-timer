@@ -8,7 +8,13 @@ from homeassistant import config_entries
 from homeassistant.core import HomeAssistant, callback
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers import selector
-from .const import DOMAIN
+from .const import CONF_TURN_ON_OPTION, DOMAIN
+from .domains import (
+    descriptor_for,
+    needs_turn_on_option,
+    selectable_domains,
+    supports_off,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -79,6 +85,46 @@ def _parse_duration_string(duration_str: str) -> tuple[float, str | None]:
     # If no unit was originally provided, return None for unit so caller knows
     return value, (unit if unit_str else None)
 
+def _resolve_turn_on_options(entity_id: str, attrs) -> tuple[str | None, list[str]]:
+    """What to ask the user about "on" for this entity, if anything.
+
+    Returns (error_key or None, options). An empty list with no error means the
+    domain has no such question - which is every switch-like one, so those
+    users never see a new field.
+
+    The decisions themselves live in domains.py and are tested there; this only
+    turns them into form errors.
+    """
+    descriptor = descriptor_for(entity_id)
+    if descriptor.turn_on_options is None:
+        return None, []
+
+    options = descriptor.turn_on_options(attrs)
+    can_turn_off = supports_off(entity_id, attrs)
+
+    if not options and not can_turn_off:
+        # The entity advertises nothing at all - usually still starting up.
+        return "entity_not_ready", []
+    if not can_turn_off:
+        # Home Assistant does not guarantee a climate entity offers "off", and
+        # turning the device off later is the whole promise of a timer.
+        return "climate_no_off_mode", []
+    if not options:
+        return "entity_not_ready", []
+    return None, options
+
+
+def _turn_on_option_selector(options: list[str]):
+    """Dropdown over the entity's own modes. No free text, ever."""
+    return selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=[{"value": option, "label": option.replace("_", " ").title()}
+                     for option in options],
+            mode=selector.SelectSelectorMode.DROPDOWN,
+        )
+    )
+
+
 class SimpleTimerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Simple Timer."""
     VERSION = 1
@@ -87,6 +133,9 @@ class SimpleTimerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Initialize the config flow."""
         self._switch_entity_id = None
         self._notification_entities = []
+        # Turn-on choices offered by the selected entity, empty for domains
+        # where "on" is not a choice at all (every switch-like one).
+        self._turn_on_options = []
 
     def _get_notification_services(self):
         """Get available notification services with comprehensive discovery."""
@@ -165,10 +214,18 @@ class SimpleTimerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     if entity_state is None:
                         errors["switch_entity_id"] = "entity_not_found"
                     else:
-                        # Store the selected entity and move to name step
-                        self._switch_entity_id = switch_entity_id
-                        return await self.async_step_name()
-                        
+                        options_error, options = _resolve_turn_on_options(
+                            switch_entity_id, entity_state.attributes
+                        )
+                        if options_error:
+                            errors["switch_entity_id"] = options_error
+                        else:
+                            # Store the selected entity and move to name step
+                            self._switch_entity_id = switch_entity_id
+                            self._turn_on_options = options
+                            return await self.async_step_name()
+
+
             except Exception as e:
                 _LOGGER.error(f"Simple Timer: config_flow: Exception in step_user: {e}")
                 errors["base"] = "base"
@@ -176,8 +233,7 @@ class SimpleTimerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # Check if we have any compatible entities
         compatible_entities_exist = False
         if self.hass:
-            SWITCH_LIKE_DOMAINS = ["switch", "input_boolean", "light", "fan"]
-            for domain in SWITCH_LIKE_DOMAINS:
+            for domain in selectable_domains():
                 try:
                     domain_entities = self.hass.states.async_entity_ids(domain)
                     if domain_entities:
@@ -193,7 +249,7 @@ class SimpleTimerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         data_schema = vol.Schema({
             vol.Required("switch_entity_id"): selector.EntitySelector(
                 selector.EntitySelectorConfig(
-                    domain=["switch", "input_boolean", "light", "fan"]
+                    domain=selectable_domains()
                 )
             ),
         })
@@ -252,17 +308,23 @@ class SimpleTimerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         errors["name"] = "Please enter a name"
                     else:
                         _LOGGER.info(f"Simple Timer: FINAL SUBMIT - Creating entry with notifications={self._notification_entities}, reset_time={reset_time_str}")
+                        entry_data = {
+                            "name": name,
+                            "switch_entity_id": self._switch_entity_id,
+                            "notification_entities": self._notification_entities,
+                            "show_seconds": show_seconds,
+                            "reset_time": reset_time_str,
+                            "default_timer_duration": default_duration,
+                            "default_timer_unit": default_unit
+                        }
+                        # Absent entirely for switch-likes, rather than stored
+                        # as None: nothing should have to read it to find out
+                        # the domain has no such concept.
+                        if self._turn_on_options:
+                            entry_data[CONF_TURN_ON_OPTION] = user_input.get(CONF_TURN_ON_OPTION)
                         return self.async_create_entry(
                             title=name,
-                            data={
-                                "name": name,
-                                "switch_entity_id": self._switch_entity_id,
-                                "notification_entities": self._notification_entities,
-                                "show_seconds": show_seconds,
-                                "reset_time": reset_time_str,
-                                "default_timer_duration": default_duration,
-                                "default_timer_unit": default_unit
-                            }
+                            data=entry_data
                         )
                         
             except Exception as e:
@@ -289,7 +351,14 @@ class SimpleTimerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         schema_dict = {
             vol.Required("name", default=suggested_name): str,
         }
-        
+
+        # Only for domains where "on" is a choice. A switch user sees exactly
+        # the form they always saw.
+        if self._turn_on_options:
+            schema_dict[vol.Required(CONF_TURN_ON_OPTION,
+                                     default=self._turn_on_options[0])] = \
+                _turn_on_option_selector(self._turn_on_options)
+
         # Add single multi-select dropdown for all notification management
         if available_notifications:
             notification_options = []
@@ -355,6 +424,10 @@ class SimpleTimerOptionsFlow(config_entries.OptionsFlow):
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
         self._notification_entities = list(config_entry.data.get("notification_entities", []))
+        # Everything the init form submitted, held while a second step asks
+        # what "on" means for a newly chosen device.
+        self._pending = None
+        self._pending_options = []
 
     def _get_notification_services(self):
         """Get available notification services with comprehensive discovery."""
@@ -457,9 +530,37 @@ class SimpleTimerOptionsFlow(config_entries.OptionsFlow):
                         if entity_state is None:
                             errors["switch_entity_id"] = "Entity not found"
                         else:
-                            _LOGGER.info(f"Simple Timer: FINAL SUBMIT - Saving with notifications={self._notification_entities}, reset_time={reset_time_str}")
-                            await self._update_config_entry(name, switch_entity_id, show_seconds, reset_time_str, default_duration, default_unit)
-                            return self.async_create_entry(title="", data={})
+                            attrs = entity_state.attributes
+                            options_error, options = _resolve_turn_on_options(
+                                switch_entity_id, attrs
+                            )
+                            # A domain with no such question drops any stored
+                            # answer; keeping it would leave a stale hvac mode
+                            # attached to a plain switch.
+                            turn_on_option = (
+                                user_input.get(CONF_TURN_ON_OPTION) if options else None
+                            )
+
+                            if options_error:
+                                errors["switch_entity_id"] = options_error
+                            elif needs_turn_on_option(switch_entity_id, turn_on_option, attrs):
+                                # Covers a domain change AND a climate-to-climate
+                                # re-point whose modes do not include the stored
+                                # one. Ask before writing anything.
+                                self._pending = {
+                                    "name": name,
+                                    "switch_entity_id": switch_entity_id,
+                                    "show_seconds": show_seconds,
+                                    "reset_time": reset_time_str,
+                                    "default_duration": default_duration,
+                                    "default_unit": default_unit,
+                                }
+                                self._pending_options = options
+                                return await self.async_step_turn_on_option()
+                            else:
+                                _LOGGER.info(f"Simple Timer: FINAL SUBMIT - Saving with notifications={self._notification_entities}, reset_time={reset_time_str}")
+                                await self._update_config_entry(name, switch_entity_id, show_seconds, reset_time_str, default_duration, default_unit, turn_on_option)
+                                return self.async_create_entry(title="", data={})
                         
             except Exception as e:
                 _LOGGER.error(f"Simple Timer: options_flow: Exception: {e}")
@@ -504,11 +605,26 @@ class SimpleTimerOptionsFlow(config_entries.OptionsFlow):
             vol.Required("name", default=current_name): str,
             vol.Required("switch_entity_id", default=current_switch_entity if current_switch_exists else ""): selector.EntitySelector(
                 selector.EntitySelectorConfig(
-                    domain=["switch", "input_boolean", "light", "fan"]
+                    domain=selectable_domains()
                 )
             ),
         }
-        
+
+        # If the device already has a turn-on choice, offer it here so changing
+        # only the mode is one screen. Re-pointing at a device whose modes do
+        # not include the answer falls through to the second step instead.
+        current_state = self.hass.states.get(current_switch_entity) if current_switch_entity else None
+        _, current_options = _resolve_turn_on_options(
+            current_switch_entity, current_state.attributes if current_state else None
+        )
+        if current_options:
+            stored_option = self.config_entry.data.get(CONF_TURN_ON_OPTION)
+            schema_dict[vol.Required(
+                CONF_TURN_ON_OPTION,
+                default=stored_option if stored_option in current_options else current_options[0],
+            )] = _turn_on_option_selector(current_options)
+
+
         # Add single multi-select dropdown for all notification management
         if available_notifications:
             notification_options = []
@@ -556,6 +672,39 @@ class SimpleTimerOptionsFlow(config_entries.OptionsFlow):
             description_placeholders=description_placeholders
         )
 
+    async def async_step_turn_on_option(self, user_input=None):
+        """Ask what "on" means for a newly chosen device.
+
+        Reached only when the init form's answer cannot apply to the entity the
+        user just picked. Everything is written in ONE async_update_entry from
+        here, so the sensor's update listener never observes a climate entity
+        carrying a stale or missing mode.
+        """
+        if user_input is not None:
+            pending = self._pending or {}
+            await self._update_config_entry(
+                pending.get("name"),
+                pending.get("switch_entity_id"),
+                pending.get("show_seconds"),
+                pending.get("reset_time"),
+                pending.get("default_duration"),
+                pending.get("default_unit"),
+                user_input.get(CONF_TURN_ON_OPTION),
+            )
+            return self.async_create_entry(title="", data={})
+
+        return self.async_show_form(
+            step_id="turn_on_option",
+            data_schema=vol.Schema({
+                vol.Required(CONF_TURN_ON_OPTION,
+                             default=self._pending_options[0]):
+                    _turn_on_option_selector(self._pending_options),
+            }),
+            description_placeholders={
+                "device": (self._pending or {}).get("switch_entity_id", "")
+            },
+        )
+
     async def _force_name_sync_on_open(self):
         """Force name sync when options flow opens."""
         current_title = self.config_entry.title
@@ -576,8 +725,14 @@ class SimpleTimerOptionsFlow(config_entries.OptionsFlow):
                 data=new_data
             )
 
-    async def _update_config_entry(self, name: str, switch_entity_id: str, show_seconds: bool, reset_time: str, default_duration: float, default_unit: str):
-        """Update config entry and force immediate sensor sync."""
+    async def _update_config_entry(self, name: str, switch_entity_id: str, show_seconds: bool, reset_time: str, default_duration: float, default_unit: str, turn_on_option: str | None = None):
+        """Update config entry and force immediate sensor sync.
+
+        ONE write, deliberately. The update listener runs on it and re-points
+        the sensor, so the entity and the mode it is commanded with must land
+        together - a second write would leave a window where the sensor watches
+        a climate device with the previous device's mode.
+        """
         new_data = {
             "name": name,
             "switch_entity_id": switch_entity_id,
@@ -587,7 +742,12 @@ class SimpleTimerOptionsFlow(config_entries.OptionsFlow):
             "default_timer_duration": default_duration,
             "default_timer_unit": default_unit
         }
-        
+        # Omitted, not set to None, when the new device has no such choice -
+        # which is also how a leftover mode gets dropped on a switch re-point.
+        if turn_on_option:
+            new_data[CONF_TURN_ON_OPTION] = turn_on_option
+
+
         _LOGGER.info(f"Simple Timer: Updating entry {self.config_entry.entry_id} with name='{name}', switch='{switch_entity_id}', notifications={self._notification_entities}, show_seconds={show_seconds}, reset_time={reset_time}")
         
         # Update both data and title

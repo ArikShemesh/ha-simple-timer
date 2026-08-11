@@ -66,7 +66,8 @@ class ReverseModeTestBase(unittest.IsolatedAsyncioTestCase):
         sensor_module.async_track_point_in_utc_time = self._real_track_point
         sensor_module.async_track_time_interval = self._real_track_interval
 
-    def make_sensor(self, switch_state="on", entity="switch.boiler"):
+    def make_sensor(self, switch_state="on", entity="switch.boiler",
+                    turn_on_option=None):
         """Real accumulation and real SwitchController; everything else stubbed.
 
         _start_realtime_accumulation and _stop_realtime_accumulation are NOT
@@ -121,10 +122,12 @@ class ReverseModeTestBase(unittest.IsolatedAsyncioTestCase):
         s._store.async_save_timer = AsyncMock()
         s._store.async_read = AsyncMock(return_value={})
 
+        s._turn_on_option = turn_on_option
         s._switch = switch_module.SwitchController(
             s.hass, lambda: s._switch_entity_id,
             notify=s._send_notification,
             is_timer_active=lambda: s._timer_state == "active",
+            get_turn_on_option=lambda: s._turn_on_option,
             log=s._log,
         )
         return s

@@ -52,7 +52,7 @@ interface HomeAssistant {
 }
 
 const DOMAIN = "simple_timer";
-const CARD_VERSION = "1.7.0";
+const CARD_VERSION = "1.8.0";
 const DEFAULT_TIMER_BUTTONS = [15, 30, 60, 90, 120, 150]; // Default for new cards only
 const TOTAL_BLOCKS = 16; // Segments in the block-style progress bar
 
@@ -638,6 +638,31 @@ class TimerCard extends LitElement {
 
     const switchId = this._effectiveSwitchEntity;
     console.log(`Timer-card: Toggling independent power for ${switchId}`);
+
+    // The backend says where the press goes, because only it knows what "on"
+    // means for the device - a climate entity needs a stored hvac mode, and
+    // homeassistant.toggle does not reach every domain. Never decided here
+    // from the entity id: this bundle ships frozen, and a domain added to the
+    // integration later must work without a card release. An older integration
+    // publishes nothing, so absent means the direct toggle every version used.
+    const sensor = this._effectiveSensorEntity
+      ? this.hass.states[this._effectiveSensorEntity]
+      : undefined;
+    const route = sensor?.attributes?.power_toggle_route;
+
+    if (route && route !== 'direct') {
+      const entryId = this._getEntryId();
+      if (!entryId) {
+        console.error("Timer-card: Cannot toggle power without an entry_id.");
+        return;
+      }
+      const active = sensor?.attributes?.device_active === true;
+      this.hass.callService("simple_timer", "manual_power_toggle", {
+        entry_id: entryId,
+        action: active ? "turn_off" : "turn_on",
+      }).catch(err => console.error("Timer-card: Error toggling power:", err));
+      return;
+    }
 
     this.hass.callService("homeassistant", "toggle", { entity_id: switchId })
       .catch(err => console.error("Timer-card: Error toggling power:", err));
@@ -1284,7 +1309,7 @@ class TimerCard extends LitElement {
           message = `Timer instance '${this._config.timer_instance_id}' not found. It may have been removed, or the Simple Timer integration is not loaded yet. Check Settings → Devices & Services, or pick another instance in the card editor.`;
           isWarning = true;
         } else if (typeof configuredSensorState.attributes.switch_entity_id !== 'string' || !(configuredSensorState.attributes.switch_entity_id && this.hass.states[configuredSensorState.attributes.switch_entity_id])) {
-          message = `Timer Control Instance '${this._config.timer_instance_id}' linked to missing or invalid switch '${configuredSensorState.attributes.switch_entity_id}'. Please check instance configuration.`;
+          message = `Timer Control Instance '${this._config.timer_instance_id}' linked to missing or invalid device '${configuredSensorState.attributes.switch_entity_id}'. Please check instance configuration.`;
           isWarning = true;
         } else {
           message = "Loading Timer Control Card. Please wait...";
@@ -1296,7 +1321,7 @@ class TimerCard extends LitElement {
           message = `Configured Timer Control Sensor '${this._config.sensor_entity}' not found. Please select a valid instance in the card editor.`;
           isWarning = true;
         } else if (typeof configuredSensorState.attributes.switch_entity_id !== 'string' || !(configuredSensorState.attributes.switch_entity_id && this.hass.states[configuredSensorState.attributes.switch_entity_id])) {
-          message = `Configured Timer Control Sensor '${this._config.sensor_entity}' is invalid or its linked switch '${configuredSensorState.attributes.switch_entity_id}' is missing. Please select a valid instance.`;
+          message = `Configured Timer Control Sensor '${this._config.sensor_entity}' is invalid or its linked device '${configuredSensorState.attributes.switch_entity_id}' is missing. Please select a valid instance.`;
           isWarning = true;
         } else {
           message = "Loading Timer Control Card. Please wait...";
@@ -1314,7 +1339,13 @@ class TimerCard extends LitElement {
     const timerSwitch = this.hass!.states[this._effectiveSwitchEntity!];
     const sensor = this.hass!.states[this._effectiveSensorEntity!];
 
-    const isOn = timerSwitch.state === 'on';
+    // The backend resolves this now, because "running" is not the same string
+    // in every domain - a climate entity's state is its hvac mode. The
+    // fallback keeps this card working against an older backend that does not
+    // publish the attribute yet.
+    const isOn = typeof sensor.attributes.device_active === 'boolean'
+      ? sensor.attributes.device_active
+      : timerSwitch.state === 'on';
     const isTimerActive = sensor.attributes.timer_state === 'active';
     const timerDurationInMinutes = sensor.attributes.timer_duration || 0;
     const isManualOn = isOn && !isTimerActive;

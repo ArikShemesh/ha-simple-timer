@@ -25,8 +25,15 @@ npm install && npm run build
 rm -rf node_modules && npm install && npm run build
 ```
 
-`/release <version>` is a local command (`.claude/` is gitignored here) that
-walks the full release sequence.
+Two local commands live in `.claude/` (gitignored here): `/release <version>`
+walks the full release sequence, and `/verify-dev` checks a deployed change
+against the dev Home Assistant over its REST API — timer instances and their
+published attributes, service calls, the integration's log, and whether the
+served bundle matches the local build. The card has no test harness, so that
+command is the only thing standing between a card change and a user finding the
+bug. Its credentials come from `deploy_config.bat`, which also holds the **prod**
+url and token; only ever reach the dev instance through
+`.claude/scripts/ha-dev.ps1`, which refuses a non-local host.
 
 ## Architecture
 
@@ -138,6 +145,12 @@ absence fails the build with
 
 ## Backlog
 
-`TODO.md` at the repo root is untracked on purpose — it holds the correctness
-backlog, the reasoning behind past decisions, and a "recurring mistakes"
-section. Read it before structural or correctness work.
+`docs/` is untracked on purpose — `.gitignore` excludes it wholesale, and it
+carries local testing notes that must never reach the repo. Read it before
+structural or correctness work:
+
+- `TODO.md` — the correctness backlog and a "recurring mistakes" section.
+- `DECISIONS.md` — why the code is shaped the way it is, and for each choice,
+  what would change it. Read before reversing a design decision.
+- `PLAN-*.md` — per-feature implementation plans. Expected to go stale once
+  their feature lands; the durable reasoning migrates to `DECISIONS.md`.

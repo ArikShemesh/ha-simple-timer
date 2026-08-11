@@ -40,6 +40,18 @@ class MockRestoreEntity:
         return None
 
 
+class MockFlowBase:
+    """Base for ConfigFlow / OptionsFlow.
+
+    Real classes, not MagicMocks: `class X(Base, domain=DOMAIN)` needs a base
+    that is genuinely a class, and the keyword goes to __init_subclass__, which
+    plain object rejects.
+    """
+
+    def __init_subclass__(cls, **kwargs):
+        return None
+
+
 # Submodules the integration imports from. Each is bound to the matching
 # attribute of the mock root, so `ha.helpers.event` and
 # sys.modules["homeassistant.helpers.event"] stay the same object.
@@ -59,6 +71,7 @@ _HA_SUBMODULES = (
     "helpers.entity",
     "helpers.event",
     "helpers.restore_state",
+    "helpers.selector",
     "helpers.storage",
     "util",
     "util.dt",
@@ -79,6 +92,14 @@ def _install_homeassistant() -> MagicMock:
 
     ha.components.sensor.SensorEntity = MockSensorEntity
     ha.helpers.restore_state.RestoreEntity = MockRestoreEntity
+    ha.config_entries.ConfigFlow = MockFlowBase
+    ha.config_entries.OptionsFlow = MockFlowBase
+
+    # DeviceInfo is a TypedDict, so a plain dict is what it really is at
+    # runtime. Left as a MagicMock, DeviceInfo(...) returns a mock that happily
+    # accepts __setitem__ and answers every lookup, so a test could not tell an
+    # omitted key from a present one - which is the whole point of default_name.
+    ha.helpers.device_registry.DeviceInfo = dict
 
     # Real values, not auto-mocked attributes. The integration compares entity
     # states against these by equality, and a MagicMock never equals the string
@@ -88,6 +109,15 @@ def _install_homeassistant() -> MagicMock:
     ha.const.STATE_UNAVAILABLE = "unavailable"
     ha.const.STATE_UNKNOWN = "unknown"
     ha.const.EVENT_HOMEASSISTANT_STOP = "homeassistant_stop"
+
+    # Real exception classes, for the same reason the states above are real:
+    # `raise ha.exceptions.HomeAssistantError(...)` on a MagicMock raises
+    # TypeError instead, so a deliberate failure path would be untestable and
+    # every `except HomeAssistantError` would be unreachable.
+    ha.exceptions.HomeAssistantError = type("HomeAssistantError", (Exception,), {})
+    ha.exceptions.ServiceValidationError = type(
+        "ServiceValidationError", (ha.exceptions.HomeAssistantError,), {}
+    )
 
     # @callback must stay an identity decorator. Left as a MagicMock it would
     # replace every decorated method with the same mock object, and tests would
