@@ -145,6 +145,12 @@ absence fails the build with
 
 ## Backlog
 
-`TODO.md` at the repo root is untracked on purpose — it holds the correctness
-backlog, the reasoning behind past decisions, and a "recurring mistakes"
-section. Read it before structural or correctness work.
+`docs/` is untracked on purpose — `.gitignore` excludes it wholesale, and it
+carries local testing notes that must never reach the repo. Read it before
+structural or correctness work:
+
+- `TODO.md` — the correctness backlog and a "recurring mistakes" section.
+- `DECISIONS.md` — why the code is shaped the way it is, and for each choice,
+  what would change it. Read before reversing a design decision.
+- `PLAN-*.md` — per-feature implementation plans. Expected to go stale once
+  their feature lands; the durable reasoning migrates to `DECISIONS.md`.
