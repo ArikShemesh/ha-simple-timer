@@ -95,6 +95,37 @@ def device_info_for_switch(hass: HomeAssistant, switch_entity_id: str | None,
     return info
 
 
+def cleanup_orphan_devices(hass: HomeAssistant, entry_id: str) -> None:
+    """Drop our claim on device rows that no longer hold any of our entities.
+
+    Re-pointing an instance at a different device moves both sensors, which
+    leaves the previous row empty. Home Assistant deletes a device only once no
+    config entry still references it, and ours still does - so without this the
+    integration page grows one dead row per re-point, each named after whatever
+    the timer was called at the time.
+
+    `include_disabled_entities=True`, or disabling an entity would look like an
+    empty device and take the row out from under it.
+
+    Called on load, not at re-point time: when the re-point happens our
+    entities are still on the old device and it would correctly look occupied.
+    They move when the reload re-adds them, so load is the first moment the
+    membership is final - which is also why this cleans up rows stranded by
+    earlier versions.
+    """
+    dev_reg = dr.async_get(hass)
+    ent_reg = er.async_get(hass)
+
+    # Snapshot: removing the last entry deletes the device mid-iteration.
+    for device in list(dev_reg.devices.values()):
+        if entry_id not in device.config_entries:
+            continue
+        if er.async_entries_for_device(ent_reg, device.id,
+                                       include_disabled_entities=True):
+            continue
+        dev_reg.async_update_device(device.id, remove_config_entry_id=entry_id)
+
+
 def duration_to_seconds(duration: float, unit: str) -> float:
     """Convert a service-call duration + unit pair to seconds."""
     if unit in ["s", "sec", "seconds"]:

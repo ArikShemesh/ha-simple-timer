@@ -31,6 +31,7 @@ def make_sensor():
     s._timer_unsub = None
     s._reset_time_tracker = None
     s._state_listener_disposer = None
+    s._registry_listener_disposer = None
     s._state = 0.0
 
     s._store = MagicMock()

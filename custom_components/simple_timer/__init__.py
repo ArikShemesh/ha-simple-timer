@@ -16,6 +16,7 @@ from homeassistant.components.frontend import async_register_built_in_panel, add
 from homeassistant.components.lovelace.resources import ResourceStorageCollection
 
 from .const import DOMAIN, PLATFORMS, CARD_URL, LEGACY_CARD_URL
+from .helpers import cleanup_orphan_devices
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -393,6 +394,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.add_update_listener(_async_update_listener)
     
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # After the platforms, never before: this asks which of our device rows
+    # hold no entities, and the entities only land during the forward above.
+    # Re-pointing an instance reloads the entry, so this is where a re-point
+    # ends up releasing the device it moved off.
+    cleanup_orphan_devices(hass, entry.entry_id)
     return True
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:

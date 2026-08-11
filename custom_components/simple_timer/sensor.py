@@ -17,6 +17,7 @@ from homeassistant.core import HomeAssistant, callback, Context, Event, CoreStat
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.event import (
+    async_track_entity_registry_updated_event,
     async_track_state_change_event,
     async_track_time_change,
     async_track_point_in_utc_time,
@@ -143,6 +144,7 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         self._last_on_timestamp = None
         self._accumulation_task = None
         self._state_listener_disposer = None
+        self._registry_listener_disposer = None
         self._stop_listener_disposer = None
         self._init_task = None
         self._stop_event_received = False
@@ -592,14 +594,65 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         """Set up switch state change listener."""
         if self._state_listener_disposer:
             self._state_listener_disposer()
-        
+        # Both subscriptions are indexed by entity id, so both have to move
+        # when the monitored entity does - a stale registry one keeps reporting
+        # renames of a device this instance no longer watches.
+        if self._registry_listener_disposer:
+            self._registry_listener_disposer()
+            self._registry_listener_disposer = None
+
         if self._switch_entity_id:
             self._log.info(f"Setting up switch listener for: {self._switch_entity_id}")
             self._state_listener_disposer = async_track_state_change_event(
                 self.hass, self._switch_entity_id, self._handle_switch_change_event
             )
+            self._registry_listener_disposer = async_track_entity_registry_updated_event(
+                self.hass, self._switch_entity_id,
+                self._handle_monitored_entity_registry_update
+            )
         else:
             self._log.warning("No switch entity configured")
+
+    @callback
+    def _handle_monitored_entity_registry_update(self, event: Event) -> None:
+        """Follow the monitored entity when Home Assistant renames it.
+
+        HA does not rewrite config entry data when an entity id changes, and it
+        changes without being asked for - renaming a device offers to rename its
+        entities, and the post-create "Name and assign" dialog just does it.
+        Left alone the entry points at an id nothing answers to, and the only
+        recovery is re-pointing by hand.
+
+        `old_entity_id` is the whole test, and it is deliberately the ONLY one.
+        It appears on exactly one thing: an `update` whose entity id changed.
+        An `update` for an icon, a friendly name or an area does not carry it,
+        so those cannot rewrite the entry and reload the instance every time
+        somebody edits a label. Neither does a `remove`, whose reported id is
+        the one that just stopped existing - the last thing worth persisting.
+
+        An `action` check on top of this looked prudent and was dead code: the
+        suite stayed green with it deleted, because nothing reaches the write
+        without `old_entity_id` anyway. Two guards over one path is how a test
+        here passes for the wrong reason, so there is one.
+
+        The write goes to the entry, not to `_switch_entity_id`, because the
+        entry is what `_wait_for_startup_completion` reads back. Its update
+        listener then performs the re-point through machinery already tested.
+        """
+        data = event.data
+        new_entity_id = data.get("entity_id")
+        old_entity_id = data.get("old_entity_id")
+        if not new_entity_id or not old_entity_id or new_entity_id == old_entity_id:
+            return
+
+        self._log.info(
+            f"Monitored entity renamed {old_entity_id} -> {new_entity_id}, "
+            f"updating the config entry"
+        )
+        self.hass.config_entries.async_update_entry(
+            self._entry,
+            data={**self._entry.data, "switch_entity_id": new_entity_id},
+        )
 
     async def async_update_switch_entity(self, switch_entity_id: str):
         """Update the monitored switch entity."""
@@ -627,7 +680,8 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
                     f"way to turn it off, so a timer could never end it."
                 )
 
-        if self._switch_entity_id != switch_entity_id:
+        repointed = self._switch_entity_id != switch_entity_id
+        if repointed:
             self._switch_entity_id = switch_entity_id
             await self._async_setup_switch_listener()
 
@@ -658,8 +712,21 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
             await self._start_realtime_accumulation()
         else:
             await self._stop_realtime_accumulation()
-        
+
         self.async_write_ha_state()
+
+        # Re-add both entities so their device_info is read again. Home
+        # Assistant consumes device_info only when an entity is ADDED to the
+        # registry, so without this the timer stays on whichever device it
+        # landed on when the entry last loaded, and the re-point shows up only
+        # after a restart. Nothing else reloads us - the __init__.py update
+        # listener is a bare `pass`.
+        #
+        # Scheduled, never awaited: this also runs from inside the entry's own
+        # update listener, and awaiting a reload there deadlocks. Last in the
+        # method so the reload cannot tear the entity down mid-update.
+        if repointed:
+            self.hass.config_entries.async_schedule_reload(self._entry_id)
 
     @callback
     def _handle_switch_change_event(self, event: Event) -> None:
@@ -1395,7 +1462,10 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         if self._state_listener_disposer:
             self._state_listener_disposer()
             self._state_listener_disposer = None
-        
+        if self._registry_listener_disposer:
+            self._registry_listener_disposer()
+            self._registry_listener_disposer = None
+
         self.async_write_ha_state()
         await super().async_will_remove_from_hass()
 
@@ -1456,8 +1526,8 @@ class TimerRuntimeSensor(SensorEntity, RestoreEntity):
         
         # Register shutdown handler.
         # Keep the disposer: dropping it leaves the bus holding a reference to
-        # every removed instance until HA stops, and the entry is reloaded on
-        # every options-flow change (S4).
+        # every removed instance until HA stops, and re-pointing the monitored
+        # device reloads the entry (S4).
         self._stop_listener_disposer = self.hass.bus.async_listen(
             EVENT_HOMEASSISTANT_STOP, self._handle_ha_shutdown
         )
