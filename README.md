@@ -386,6 +386,6 @@ If you find this integration useful, please consider:
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=ArikShemesh/ha-simple-timer&type=date&theme=dark)](https://star-history.com/#ArikShemesh/ha-simple-timer&type=date)
+[![Star History Chart](https://api.star-history.com/chart?repos=ArikShemesh/ha-simple-timer&type=date&legend=top-left&theme=dark&sealed_token=6hUIN9XBI9MEE4tGb7M9NclmVS6iMVviICtpM110dTVccwWiwg2xtF4Re_edJDv-1YO2DsUtglwJBk4oIdkPsV4xDFqDsqmDW5zRPKvZgcEaPxhBaa9VIsPBl-Z14J2z73xIpGXMx7I3rjfRW4hpfCMGNESU0jXZ8CNhcoB09k_NtLFQQagy28g-H2Pu)](https://www.star-history.com/?repos=ArikShemesh%2Fha-simple-timer&type=date&legend=top-left)
 
 **Made with ❤️ for the Home Assistant community**
