@@ -14,9 +14,12 @@
                 "data": {
                     "name": "Name",
                     "turn_on_option": "Mode to use when turning on",
-                    "reset_time": "Reset Time (HH:MM)",
+                    "reset_time": "Daily Usage Reset Time",
                     "default_timer_duration": "Default Timer Duration (0 for none)",
                     "show_seconds": "Show Seconds"
+                },
+                "data_description": {
+                    "reset_time": "Time of day when the daily usage counter goes back to zero. Defaults to 00:00 (midnight). If Home Assistant is offline at that moment, the reset is caught up on the next start."
                 }
             }
         },
@@ -45,9 +48,12 @@
                     "name": "Name",
                     "switch_entity_id": "Device Entity",
                     "turn_on_option": "Mode to use when turning on",
-                    "reset_time": "Reset Time (HH:MM)",
+                    "reset_time": "Daily Usage Reset Time",
                     "default_timer_duration": "Default Timer Duration (0 for none)",
                     "show_seconds": "Show Seconds"
+                },
+                "data_description": {
+                    "reset_time": "Time of day when the daily usage counter goes back to zero. Defaults to 00:00 (midnight). If Home Assistant is offline at that moment, the reset is caught up on the next start."
                 }
             },
             "turn_on_option": {

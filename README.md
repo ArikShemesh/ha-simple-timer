@@ -31,7 +31,7 @@ A simple Home Assistant integration that turns entities on and off with a precis
 
 🔔 **Notification Support** - Optional notifications for timer start, finish, and cancellation events
 
-🌙 **Midnight Reset** - Daily usage statistics reset automatically at midnight
+🌙 **Daily Usage Reset** - Daily usage statistics reset automatically at a time you choose (midnight by default)
 
 👆 Manual Usage Reset - Long-press the daily usage display to reset statistics manually
 
@@ -80,7 +80,8 @@ You will continue to receive updates in both cases, but switching ensures you're
 5. Give your timer instance a descriptive name (e.g., "Kitchen Timer", "Water Heater")
 6. **Climate entities only:** choose the mode to use when turning on (Heat, Cool, Dry, …). The list comes from the entity itself, and only that mode is applied - the timer always switches the device off at the end
 7. Choose notification entitiy (optional) - can be add more than one
-8. Check show seconds (optional) - display seconds in uasge time and notifications
+8. Set the **Daily Usage Reset Time** (optional) - the time of day the daily usage counter goes back to zero. Defaults to `00:00` (midnight); set it to `06:00` if your tracking day starts in the morning
+9. Check show seconds (optional) - display seconds in uasge time and notifications
 
 > A climate entity that offers no **off** mode cannot be selected - a timer that
 > cannot turn the device off again would be worse than no timer.
@@ -303,6 +304,11 @@ than turn the unit on and off, for example setting a target temperature.
 ### Can I customize the timer buttons?
 Yes! You can configure values with explicit units. Example: `timer_buttons: [30, "45s", "1.5h", "1d"]`. 
 
+### When does the daily usage counter reset?
+At the **Daily Usage Reset Time** configured on the integration instance (Settings → Devices & Services → Simple Timer → Configure). It defaults to `00:00`, so usage resets at midnight unless you change it. Pick any time of day if your tracking or billing day starts elsewhere.
+
+If Home Assistant is offline when that time passes, the reset is caught up on the next start, and the card shows a note saying the reset was a catch-up.
+
 ### Why does my usage show a warning message?
 This appears when HA was offline during a timer to indicate potential time sync issues.
 
@@ -327,7 +333,7 @@ This appears when HA was offline during a timer to indicate potential time sync 
 
 1. **Device state changes:** Timer only tracks when the device is actually ON
 2. **Manual control:** If you turn the device off manually, tracking stops (by design)
-3. **Midnight reset:** Usage resets at 00:00 each day automatically
+3. **Daily reset:** Usage resets once a day at the configured reset time (`00:00` by default)
 
 ### Card Installation Issues
 
