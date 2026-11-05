@@ -309,6 +309,9 @@ class TimerCardEditor extends LitElement {
     const newConfigData: TimerCardConfig = {
       ...cfg, // Preserve any HA-managed properties (e.g. visibility)
       type: cfg.type || "custom:timer-card",
+      // Same rule as the card: no key means a card saved before the option
+      // existed, which is classic.
+      layout: cfg.layout === 'compact' ? 'compact' : 'classic',
       timer_buttons: timerButtonsToSet,
       card_title: cfg.card_title || null,
       entity_state_icon: cfg.entity_state_icon || cfg.power_button_icon || null, // Migrate legacy value
@@ -538,6 +541,7 @@ class TimerCardEditor extends LitElement {
 
   private _computeLabel = (schema: { name: string }): string => {
     const labels: Record<string, string> = {
+      layout: "Layout",
       card_title: "Card Title (optional)",
       entity_state_icon: "Entity State Icon (optional)",
       slider_max: "Slider maximum (1–9999)",
@@ -552,8 +556,43 @@ class TimerCardEditor extends LitElement {
     return labels[schema.name] ?? schema.name;
   };
 
+  // Grey help line under a field. The title's meaning depends on the layout:
+  // compact always shows a name, so an empty title falls back to the device.
+  private _computeHelper = (schema: { name: string }): string | undefined => {
+    if (schema.name !== "card_title") return undefined;
+    if (this._config?.layout !== "compact") return "Leave empty for no title.";
+    const device = this._selectedDeviceName();
+    return device
+      ? `Leave empty to show the device's name (${device}).`
+      : "Leave empty to show the device's name.";
+  };
+
+  // Friendly name of the device the selected timer instance controls.
+  private _selectedDeviceName(): string | null {
+    const entryId = this._config?.timer_instance_id;
+    if (!entryId || !this.hass?.states) return null;
+    const sensor = Object.values(this.hass.states).find((s: any) =>
+      s.entity_id.startsWith("sensor.") &&
+      s.attributes.entry_id === entryId &&
+      typeof s.attributes.switch_entity_id === "string") as any;
+    const device = sensor ? this.hass.states[sensor.attributes.switch_entity_id] : undefined;
+    return device?.attributes?.friendly_name || null;
+  }
+
   private _mainSchema(): any[] {
     return [
+      {
+        // Required: no clear button. A cleared value would silently mean
+        // classic, which reads as a bug from the editor.
+        name: "layout", required: true, selector: {
+          select: {
+            mode: "dropdown", options: [
+              { value: "compact", label: "Compact — one row plus preset buttons" },
+              { value: "classic", label: "Classic — large countdown and slider" },
+            ],
+          },
+        },
+      },
       { name: "card_title", selector: { text: {} } },
       { name: "entity_state_icon", selector: { icon: {} } },
       {
@@ -699,6 +738,7 @@ class TimerCardEditor extends LitElement {
           .data=${this._config}
           .schema=${this._mainSchema()}
           .computeLabel=${this._computeLabel}
+          .computeHelper=${this._computeHelper}
           @value-changed=${this._formChanged}
         ></ha-form>
 

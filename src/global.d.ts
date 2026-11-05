@@ -2,6 +2,7 @@
 
 interface TimerCardConfig {
   type: string;
+  layout?: 'classic' | 'compact';
   timer_instance_id?: string | null;
   entity?: string | null;
   sensor_entity?: string | null;

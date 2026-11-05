@@ -150,6 +150,7 @@ Copy this block to your dashboard configuration and uncomment/edit the lines you
 
 ```yaml
 type: custom:timer-card
+layout: compact               # 'compact' (one row + preset buttons) or 'classic'
 # -------------------------------------------------------------------------
 # REQUIRED: Link to your timer instance
 # -------------------------------------------------------------------------
@@ -205,6 +206,7 @@ Option | Type | Default | Description
 ---|---|---|---
 `type` | string | - | Must be `custom:timer-card`
 `timer_instance_id` | string | - | Entry ID of your timer instance
+`layout` | string | `classic` | `compact`: one tile-style row (tap the icon to toggle power) with the preset buttons under it, and the slider and schedule behind a chevron. Resizable in sections dashboards. `classic`: the large countdown layout. New cards are created as `compact`; cards without this option stay `classic`.
 `timer_buttons` | array | [15,30,60,90,120,150] | Timer duration buttons. Supports mixed units (e.g., `[30, "15s", "1.5h", "1day"]`)
 `card_title` | string | - | Custom title for the card
 `slider_max` | integer | 120 | The maximum value for the slider (supported range: 1–9999)

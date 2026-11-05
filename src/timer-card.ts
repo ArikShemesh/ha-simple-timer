@@ -2,6 +2,7 @@
 
 import { LitElement, html } from 'lit';
 import { cardStyles } from './timer-card.styles';
+import { compactStyles } from './timer-card-compact.styles';
 
 
 interface HAState {
@@ -53,7 +54,10 @@ interface HomeAssistant {
 
 const DOMAIN = "simple_timer";
 const CARD_VERSION = "1.8.0";
-const DEFAULT_TIMER_BUTTONS = [15, 30, 60, 90, 120, 150]; // Default for new cards only
+const DEFAULT_TIMER_BUTTONS = [15, 30, 60, 90, 120, 150]; // Fallback when a config has no timer_buttons
+// What a freshly added card starts with. Kept separate from the fallback above
+// so shrinking it never changes a card that is already on a dashboard.
+const NEW_CARD_TIMER_BUTTONS = [15, 30, 60, 120];
 const TOTAL_BLOCKS = 16; // Segments in the block-style progress bar
 
 console.info(
@@ -88,6 +92,7 @@ class TimerCard extends LitElement {
       _scheduleUnit: { state: true },
       _scheduleRepeat: { state: true },
       _scheduleDays: { state: true },
+      _compactExpanded: { state: true },
     };
   }
 
@@ -131,6 +136,9 @@ class TimerCard extends LitElement {
   _scheduleRepeat: boolean = false;
   _scheduleDays: string[] = [];
 
+  // Compact layout: the chevron panel holding the slider and schedule
+  _compactExpanded: boolean = false;
+
   static async getConfigElement(): Promise<HTMLElement> {
     await import("./timer-card-editor.js");
     return document.createElement("timer-card-editor");
@@ -139,13 +147,14 @@ class TimerCard extends LitElement {
   static getStubConfig(_hass: HomeAssistant): TimerCardConfig {
     console.log("TimerCard: Generating stub config - NO auto-selection will be performed");
 
+    // New cards start compact. No card_title: compact names itself after the
+    // controlled device. Existing cards carry no `layout` key and stay classic.
     return {
       type: "custom:timer-card",
+      layout: "compact",
       timer_instance_id: null, // Changed from auto-selected instance to null
-      timer_buttons: [...DEFAULT_TIMER_BUTTONS], // Use default buttons
-      card_title: "Simple Timer",
-      power_button_icon: "mdi:power",
-      countdown_display: "countdown",
+      timer_buttons: [...NEW_CARD_TIMER_BUTTONS],
+      countdown_display: "both",
       hide_slider: false,
       slider_thumb_color: null,
       slider_background_color: null,
@@ -163,6 +172,9 @@ class TimerCard extends LitElement {
     this._config = {
       ...cfg, // Preserve any HA-managed properties (e.g. visibility)
       type: cfg.type || "custom:timer-card",
+      // Anything but an explicit "compact" is classic, so cards saved before
+      // the option existed keep the layout they were built with.
+      layout: cfg.layout === 'compact' ? 'compact' : 'classic',
       timer_buttons: cfg.timer_buttons || [...DEFAULT_TIMER_BUTTONS],
       card_title: cfg.card_title || null,
       entity_state_icon: cfg.entity_state_icon || null,
@@ -808,7 +820,9 @@ class TimerCard extends LitElement {
 
         // Format countdown based on show_seconds setting
         const showSeconds = this._getShowSeconds();
-        if (showSeconds) {
+        if (this._isCompact()) {
+          this._timeRemaining = this._formatCompactRemaining(remaining, showSeconds);
+        } else if (showSeconds) {
           const hours = Math.floor(remaining / 3600);
           const minutes = Math.floor((remaining % 3600) / 60);
           const seconds = remaining % 60;
@@ -845,6 +859,84 @@ class TimerCard extends LitElement {
   }
 
 
+
+  _isCompact(): boolean {
+    return this._config?.layout === 'compact';
+  }
+
+  // Sections-view sizing. Compact is content-height ("auto") and full width
+  // by default - half of a narrow section is too tight for a running timer -
+  // but can be shrunk to half; under ~260px the card switches to its narrow
+  // arrangement (see the container query in the compact styles). Classic
+  // keeps the full-width default it always had.
+  getGridOptions(): Record<string, unknown> {
+    if (!this._isCompact()) {
+      return { columns: 12, rows: 'auto' };
+    }
+    return { columns: 12, rows: 'auto', min_columns: 6 };
+  }
+
+  // Compact countdown. Drops the hours under one hour; with seconds hidden it
+  // rounds UP, so a running timer never reads "0 min".
+  _formatCompactRemaining(remaining: number, showSeconds: boolean): string {
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    if (showSeconds) {
+      const h = Math.floor(remaining / 3600);
+      const m = Math.floor((remaining % 3600) / 60);
+      const s = remaining % 60;
+      return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+    }
+    const totalMinutes = Math.ceil(remaining / 60);
+    if (totalMinutes < 60) return `${totalMinutes} min`;
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  }
+
+  // Compact daily usage: elapsed time, so it rounds DOWN.
+  _formatCompactUsage(totalSeconds: number, showSeconds: boolean): string {
+    const t = Math.max(0, Math.floor(totalSeconds));
+    const h = Math.floor(t / 3600);
+    const m = Math.floor((t % 3600) / 60);
+    const s = t % 60;
+    if (showSeconds) {
+      if (h > 0) return `${h}h ${m}m ${s}s`;
+      if (m > 0) return `${m}m ${s}s`;
+      return `${s}s`;
+    }
+    if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
+    return `${m} min`;
+  }
+
+  // Wall-clock time in the user's HA 12/24h setting. Adds the weekday when it
+  // is not today, and the date when it is a week or more away.
+  // The user's HA language and 12/24h choice, for toLocale*String. Shared by
+  // every clock time the card shows, so they never disagree.
+  _clockLocale(): { lang: string | string[]; hourOpt: { hour12?: boolean } } {
+    const locale = (this.hass as any)?.locale;
+    const lang = locale?.language || [];
+    if (locale?.time_format === '12') return { lang, hourOpt: { hour12: true } };
+    if (locale?.time_format === '24') return { lang, hourOpt: { hour12: false } };
+    return { lang, hourOpt: {} }; // "language" / "system": the locale decides
+  }
+
+  _formatClockTime(iso: string): string {
+    try {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return '';
+      const { lang, hourOpt } = this._clockLocale();
+      const time = d.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', ...hourOpt });
+      const now = new Date();
+      if (d.toDateString() === now.toDateString()) return time;
+      const daysAway = (d.getTime() - now.getTime()) / 86400000;
+      const day = daysAway < 6
+        ? d.toLocaleDateString(lang, { weekday: 'short' })
+        : d.toLocaleDateString(lang, { month: 'short', day: 'numeric' });
+      return `${day} ${time}`;
+    } catch {
+      return '';
+    }
+  }
 
   // Get show_seconds from the sensor attributes (backend config)
   _getShowSeconds(): boolean {
@@ -1239,6 +1331,7 @@ class TimerCard extends LitElement {
 
 
   _renderPreview() {
+    if (this._isCompact()) return this._renderCompactPreview();
     const previewButtons = [15, 30, 60, 90, 120];
     const previewMode = this._config?.countdown_display || 'countdown';
     const previewShowCountdown = previewMode !== 'progress';
@@ -1399,6 +1492,13 @@ class TimerCard extends LitElement {
     const activeBlocksCount = remainingPercentage > 0
       ? Math.max(1, Math.ceil(remainingPercentage * TOTAL_BLOCKS))
       : 0;
+
+    if (this._isCompact()) {
+      return this._renderCompact(sensor, timerSwitch, {
+        isOn, isTimerActive, isReverseMode: !!isReverseMode, committedSeconds,
+        showSeconds, watchdogMessage, remainingPercentage, timerDurationInMinutes,
+      });
+    }
 
     const countdownDisplayMode = this._config?.countdown_display || 'countdown';
     const showCountdownText = countdownDisplayMode !== 'progress';
@@ -1570,19 +1670,321 @@ class TimerCard extends LitElement {
     `;
   }
 
+  // ---- Compact layout -----------------------------------------------------
+  // One tile-style row (icon, name, status, action), preset buttons under it,
+  // and the slider + schedule behind a chevron. Reuses every classic handler;
+  // only the markup and formatting differ.
+
+  _shortUnit(unit: string): string {
+    return ({ s: 's', min: 'm', h: 'h', d: 'd' } as Record<string, string>)[unit] ?? unit;
+  }
+
+  _startFromCompactSlider(): void {
+    if (this._sliderValue <= 0) return;
+    this._startTimer(this._sliderValue, this._config?.slider_unit || 'min', 'slider');
+    this._compactExpanded = false;
+  }
+
+  // Stop only. Unlike _handleTimerControl it never falls through to "start":
+  // a timer that ended a moment before the tap landed must not be restarted
+  // for the slider length. Nor does it cancel an idle timer, which for a
+  // just-finished delayed start would switch the device back off.
+  _stopFromCompact(): void {
+    const sensor = this._effectiveSensorEntity ? this.hass?.states[this._effectiveSensorEntity] : undefined;
+    if (sensor?.attributes?.timer_state !== 'active') return;
+    this._cancelTimer();
+  }
+
+  // Collapse the chevron panel when a timer starts or a schedule is armed,
+  // whatever started it (chip, slider, schedule form, automation), so it does
+  // not pop back open when that ends. Only on the transition: the panel may
+  // be opened again while a schedule is armed.
+  _lastCompactStatus: string | null = null;
+
+  willUpdate(changed: Map<string | number | symbol, unknown>): void {
+    super.willUpdate(changed);
+    if (!this._isCompact() || !this.hass || !this._effectiveSensorEntity) return;
+    const a = this.hass.states[this._effectiveSensorEntity]?.attributes;
+    if (!a) return;
+    const status = a.timer_state === 'active' ? 'active' : a.schedule_state === 'armed' ? 'armed' : 'idle';
+    if (status !== this._lastCompactStatus) {
+      if (this._lastCompactStatus !== null && status !== 'idle') this._compactExpanded = false;
+      this._lastCompactStatus = status;
+    }
+  }
+
+  // Remaining time for the compact row. Falls back to computing it from
+  // timer_finishes_at when the ticking string is not there yet (first render)
+  // or has been cleared at 0 while HA still reports the timer active.
+  _compactTimeText(sensor: HAState, showSeconds: boolean): string {
+    if (this._timeRemaining) return this._timeRemaining;
+    const finishesAt = sensor.attributes.timer_finishes_at;
+    const remaining = finishesAt
+      ? Math.max(0, Math.round((new Date(finishesAt).getTime() - (Date.now() + this._serverTimeOffset)) / 1000))
+      : 0;
+    return this._formatCompactRemaining(remaining, showSeconds);
+  }
+
+  _renderCompactIcon(timerSwitch: HAState | undefined) {
+    const override = this._config?.entity_state_icon || this._config?.power_button_icon || undefined;
+    // ha-state-icon gives the device's own icon (a fan, a water heater). It is
+    // HA's element and may not be loaded on every page, so fall back to
+    // ha-icon, which every card here already relies on.
+    if (timerSwitch && customElements.get('ha-state-icon')) {
+      return html`<ha-state-icon .hass=${this.hass} .stateObj=${timerSwitch} .icon=${override}></ha-state-icon>`;
+    }
+    return html`<ha-icon icon=${override || timerSwitch?.attributes?.icon || 'mdi:power'}></ha-icon>`;
+  }
+
+  _getCompactStyle(): string {
+    const c = this._config;
+    if (!c) return '';
+    const rules: string[] = [];
+    const decl = (pairs: [string, string | null | undefined][]) =>
+      pairs.filter(([, v]) => v).map(([k, v]) => `${k}: ${v} !important;`).join(' ');
+
+    if (c.timer_button_font_color || c.timer_button_background_color) {
+      rules.push(`.c-chip { ${decl([['color', c.timer_button_font_color], ['background', c.timer_button_background_color]])} }`);
+    }
+    if (c.power_button_background_color || c.power_button_icon_color) {
+      rules.push(`.c-act.ctl, .c-start { ${decl([['background', c.power_button_background_color], ['color', c.power_button_icon_color]])} }`);
+    }
+    if (c.entity_state_button_background_color || c.entity_state_button_icon_color) {
+      rules.push(`.c-icon { ${decl([['background', c.entity_state_button_background_color], ['color', c.entity_state_button_icon_color]])} }`);
+    }
+    if (c.entity_state_button_background_color_on || c.entity_state_button_icon_color_on) {
+      rules.push(`.c-icon.on { ${decl([['background', c.entity_state_button_background_color_on], ['color', c.entity_state_button_icon_color_on]])} }`);
+    }
+    if (c.slider_thumb_color || c.slider_background_color) {
+      rules.push(`.c-range { ${decl([['--st-range-fill', c.slider_thumb_color], ['--st-range-track', c.slider_background_color]])} }`);
+    }
+    return rules.join('\n');
+  }
+
+  _renderCompact(sensor: HAState, timerSwitch: HAState, s: {
+    isOn: boolean; isTimerActive: boolean; isReverseMode: boolean; committedSeconds: number;
+    showSeconds: boolean; watchdogMessage: string | undefined; remainingPercentage: number;
+    timerDurationInMinutes: number;
+  }) {
+    const cfg = this._config!;
+    const chips = this.buttons.filter(b => !b.isDefault);
+    const displayMode = cfg.countdown_display || 'countdown';
+    const showTime = s.isTimerActive && displayMode !== 'progress';
+    const showBar = s.isTimerActive && displayMode !== 'countdown';
+    const expandable = !cfg.hide_slider || !!cfg.show_schedule;
+    const isArmed = !s.isTimerActive && sensor.attributes.schedule_state === 'armed' && !!sensor.attributes.scheduled_start;
+    // While a schedule is armed the row already shows it, so the panel holds
+    // only the slider. It is offered only when no preset buttons exist: they
+    // already start a timer, and without them nothing else could.
+    const canExpand = isArmed ? (!cfg.hide_slider && chips.length === 0) : expandable;
+    const showPanel = this._compactExpanded && canExpand && !s.isTimerActive;
+    // `reverse` colors the RUNNING timer (the sensor's sticky attribute
+    // describes the timer in progress). `startsReverse` colors controls that
+    // START one, and must match what _startTimer will actually send.
+    const reverse = s.isReverseMode ? 'reverse' : '';
+    const startsReverse = cfg.reverse_mode && !sensor.attributes.default_timer_enabled ? 'reverse' : '';
+    const timeText = showTime ? this._compactTimeText(sensor, s.showSeconds) : '';
+    const chevron = html`
+      <button type="button" class="c-act ghost ${isArmed ? 'c-armed-chev' : ''}"
+              @click=${() => { this._compactExpanded = !this._compactExpanded; }}
+              aria-label=${this._compactExpanded ? 'Fewer options' : 'More options'}
+              aria-expanded=${this._compactExpanded ? 'true' : 'false'}>
+        <ha-icon icon=${this._compactExpanded ? 'mdi:chevron-up' : 'mdi:chevron-down'}></ha-icon>
+      </button>`;
+    const name = cfg.card_title || timerSwitch?.attributes?.friendly_name || 'Simple Timer';
+    const sliderUnit = cfg.slider_unit || 'min';
+
+    // Second line
+    const usage = cfg.show_daily_usage !== false
+      ? `${this._formatCompactUsage(s.committedSeconds, s.showSeconds)} today`
+      : null;
+    let lead: string;
+    let withUsage = true;
+    if (s.isTimerActive) {
+      // Only the end time: the icon already shows on/off, and usage matters
+      // when idle, not while a countdown runs. Keeps the line from truncating.
+      const at = sensor.attributes.timer_finishes_at ? this._formatClockTime(sensor.attributes.timer_finishes_at) : '';
+      lead = at
+        ? (s.isReverseMode ? `Turns on at ${at}` : `Until ${at}`)
+        : (s.isOn ? 'On' : 'Off');
+      withUsage = false;
+    } else if (isArmed) {
+      const repeatDays = this._scheduleRepeatDays(sensor);
+      lead = [
+        this._formatClockTime(sensor.attributes.scheduled_start),
+        `${sensor.attributes.scheduled_duration} ${sensor.attributes.scheduled_unit || 'min'}`,
+        repeatDays,
+      ].filter(Boolean).join(' · ');
+      withUsage = false;
+    } else {
+      lead = s.isOn ? 'On' : 'Off';
+    }
+
+    // Right side of the main row
+    let action;
+    if (s.isTimerActive) {
+      action = html`
+        ${showTime ? html`
+          <div class="c-time ${reverse}"
+               @mousedown=${this._startCountdownLongPress}
+               @mouseup=${this._endCountdownLongPress}
+               @mouseleave=${this._endCountdownLongPress}
+               @touchstart=${this._handleCountdownTouchStart}
+               @touchmove=${this._handleCountdownTouchMove}
+               @touchend=${this._endCountdownLongPress}
+               @touchcancel=${this._endCountdownLongPress}
+               title="Hold to show history">${timeText}</div>
+        ` : ''}
+        <button type="button" class="c-act ctl ${reverse}" @click=${this._stopFromCompact}
+                aria-label=${s.isReverseMode ? 'Cancel delayed start' : 'Stop timer'} title="Stop timer">
+          <ha-icon icon="mdi:stop"></ha-icon>
+        </button>`;
+    } else if (isArmed) {
+      action = html`
+        <button type="button" class="c-act ghost" @click=${this._cancelSchedule}
+                aria-label="Cancel schedule" title="Cancel schedule">
+          <ha-icon icon="mdi:close"></ha-icon>
+        </button>
+        ${canExpand ? chevron : ''}`;
+    } else {
+      action = html`
+        ${chips.length === 0 && !cfg.hide_slider ? html`
+          <button type="button" class="c-pill ${startsReverse}" ?disabled=${this._sliderValue <= 0}
+                  @click=${this._startFromCompactSlider} title="Start timer">
+            <ha-icon icon="mdi:play"></ha-icon><span class="c-pill-label">${this._sliderValue} ${sliderUnit}</span>
+          </button>
+        ` : ''}
+        ${expandable ? chevron : ''}`;
+    }
+
+    const sliderMax = cfg.slider_max || 120;
+    const pct = Math.max(0, Math.min(100, (this._sliderValue / sliderMax) * 100));
+    const hasExtra = chips.length > 0 || showPanel || !!s.watchdogMessage || this._validationMessages.length > 0;
+
+    return html`
+      <style>${this._getCompactStyle()}</style>
+      <ha-card class="compact ${hasExtra ? 'has-extra' : ''}">
+        <div class="c-row">
+          <button type="button" class="c-icon ${s.isOn ? 'on' : ''}" @click=${this._handleIndependentPower}
+                  aria-label="Toggle power" title="Toggle power">
+            ${this._renderCompactIcon(timerSwitch)}
+          </button>
+          <div class="c-info" @click=${() => this._showMoreInfo()}>
+            <div class="c-name">${name}</div>
+            <div class="c-sec">
+              ${isArmed ? html`<ha-icon icon="mdi:clock-outline"></ha-icon>` : ''}
+              ${showTime ? html`<span class="c-left ${reverse}">${s.isReverseMode
+                ? `On in ${timeText}`
+                : `${timeText} left`}</span>` : ''}
+              <span class="c-sec-text ${showTime ? 'wide-only' : ''}">${lead}${withUsage && usage ? html` · <span
+                  @click=${(e: Event) => { e.stopPropagation(); this._handleUsageClick(e); }}
+                  @mousedown=${this._startLongPress}
+                  @mouseup=${this._endLongPress}
+                  @mouseleave=${this._endLongPress}
+                  @touchstart=${this._handleTouchStart}
+                  @touchend=${this._handleTouchEnd}
+                  @touchcancel=${this._endLongPress}
+                  title="Click to show more info, hold to reset daily usage">${usage}</span>` : ''}</span>
+            </div>
+          </div>
+          ${action}
+        </div>
+
+        ${s.watchdogMessage ? html`
+          <div class="status-message warning">
+            <ha-icon icon="mdi:alert-outline" class="status-icon"></ha-icon>
+            <span class="status-text">${s.watchdogMessage}</span>
+          </div>
+        ` : ''}
+
+        ${chips.length > 0 ? html`
+          <div class="c-feat">
+            ${chips.map(button => {
+              const selected = s.isTimerActive
+                && Math.abs(s.timerDurationInMinutes - button.minutesEquivalent) < 0.001
+                && sensor.attributes.timer_start_method === 'button';
+              return html`
+                <button type="button" class="c-chip ${selected ? 'sel' : ''}"
+                        @click=${() => s.isTimerActive
+                          ? this._addTimer(button.displayValue, button.unit)
+                          : this._startTimer(button.displayValue, button.unit, 'button')}>
+                  ${s.isTimerActive ? '+' : ''}${button.displayValue}${this._shortUnit(button.unit)}
+                </button>`;
+            })}
+          </div>
+        ` : ''}
+
+        ${showPanel ? html`
+          <div class="c-panel">
+            ${!cfg.hide_slider ? html`
+              <div class="c-slider-row">
+                <div class="c-range-wrap">
+                  <input type="range" class="c-range" min="0" step="1" max=${sliderMax}
+                         style="--st-pct: ${pct}%"
+                         aria-label="Timer duration"
+                         .value=${this._sliderValue.toString()}
+                         @input=${this._handleSliderChange} />
+                  <span class="c-range-label">${this._sliderValue} ${sliderUnit}</span>
+                </div>
+                <button type="button" class="c-start ${startsReverse}" ?disabled=${this._sliderValue <= 0}
+                        @click=${this._startFromCompactSlider}>
+                  <ha-icon icon="mdi:play"></ha-icon>Start
+                </button>
+              </div>
+            ` : ''}
+            ${cfg.show_schedule && !isArmed ? this._renderSchedulePanel(sensor) : ''}
+          </div>
+        ` : ''}
+
+        ${this._validationMessages.length > 0 ? html`
+          <div class="status-message warning">
+            <ha-icon icon="mdi:alert-outline" class="status-icon"></ha-icon>
+            <div class="status-text">
+              ${this._validationMessages.map(msg => html`<div>${msg}</div>`)}
+            </div>
+          </div>
+        ` : ''}
+
+        ${showBar ? html`
+          <div class="c-bar ${reverse}"><div style="width: ${(s.remainingPercentage * 100).toFixed(2)}%"></div></div>
+        ` : ''}
+      </ha-card>
+    `;
+  }
+
+  _renderCompactPreview() {
+    const cfg = this._config;
+    const chips = this.buttons.filter(b => !b.isDefault).slice(0, 6);
+    const icon = cfg?.entity_state_icon || cfg?.power_button_icon || 'mdi:timer-outline';
+    return html`
+      <style>${this._getCompactStyle()}</style>
+      <ha-card class="compact ${chips.length ? 'has-extra' : ''}">
+        <div class="c-row">
+          <div class="c-icon"><ha-icon icon=${icon}></ha-icon></div>
+          <div class="c-info">
+            <div class="c-name">${cfg?.card_title || 'Simple Timer'}</div>
+            <div class="c-sec"><span class="c-sec-text">Off${cfg?.show_daily_usage !== false ? ' · 3 min today' : ''}</span></div>
+          </div>
+          <div class="c-act ghost"><ha-icon icon="mdi:chevron-down"></ha-icon></div>
+        </div>
+        ${chips.length ? html`
+          <div class="c-feat">
+            ${chips.map(b => html`<div class="c-chip" style="display:flex;align-items:center;justify-content:center">${b.displayValue}${this._shortUnit(b.unit)}</div>`)}
+          </div>
+        ` : ''}
+      </ha-card>
+    `;
+  }
+
   _formatScheduleClock(iso: string): string {
     try {
       const d = new Date(iso);
-      const locale = (this.hass as any)?.locale;
-      const lang = locale?.language || [];
       // Respect HA's configured time format (falls back to locale/OS default).
-      let hour12: boolean | undefined;
-      if (locale?.time_format === '12') hour12 = true;
-      else if (locale?.time_format === '24') hour12 = false;
+      const { lang, hourOpt } = this._clockLocale();
       return d.toLocaleString(lang, {
         month: 'short', day: 'numeric',
         hour: '2-digit', minute: '2-digit',
-        ...(hour12 === undefined ? {} : { hour12 }),
+        ...hourOpt,
       });
     } catch {
       return iso;
@@ -1624,6 +2026,21 @@ class TimerCard extends LitElement {
     return rotated.map(k => days[k]);
   }
 
+  // "daily", "Mon, Wed, Fri", or null for a one-shot schedule. Days are ordered
+  // by the locale's first weekday, the same as the day chips.
+  _scheduleRepeatDays(sensor: HAState): string | null {
+    if (!sensor.attributes.schedule_repeat) return null;
+    const days: number[] = sensor.attributes.schedule_days || [];
+    if (days.length === 0 || days.length === 7) return 'daily';
+    const keyToInt: Record<string, number> = { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: 6 };
+    const intToName: Record<number, string> = { 0: 'Mon', 1: 'Tue', 2: 'Wed', 3: 'Thu', 4: 'Fri', 5: 'Sat', 6: 'Sun' };
+    return this._orderDaysByLocale()
+      .map(d => keyToInt[d.key])
+      .filter(i => days.includes(i))
+      .map(i => intToName[i])
+      .join(', ');
+  }
+
   _renderSchedulePanel(sensor: HAState) {
     const DAYS = this._orderDaysByLocale();
 
@@ -1632,25 +2049,8 @@ class TimerCard extends LitElement {
       const start = this._formatScheduleClock(sensor.attributes.scheduled_start);
       const dur = sensor.attributes.scheduled_duration;
       const unit = sensor.attributes.scheduled_unit || 'min';
-      const repeat = sensor.attributes.schedule_repeat;
-      const days: number[] = sensor.attributes.schedule_days || [];
-      const keyToInt: Record<string, number> = { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: 6 };
-      const intToName: Record<number, string> = { 0: 'Mon', 1: 'Tue', 2: 'Wed', 3: 'Thu', 4: 'Fri', 5: 'Sat', 6: 'Sun' };
-      let repeatText = '';
-      if (repeat) {
-        if (days.length === 0 || days.length === 7) {
-          repeatText = 'Repeats daily';
-        } else {
-          // Order the selected days by the locale's first weekday (same as the chips).
-          const ordered = DAYS
-            .map(d => keyToInt[d.key])
-            .filter(i => days.includes(i))
-            .map(i => intToName[i]);
-          repeatText = `Repeats ${ordered.join(', ')}`;
-        }
-      } else {
-        repeatText = 'One-shot';
-      }
+      const repeatDays = this._scheduleRepeatDays(sensor);
+      const repeatText = repeatDays === null ? 'One-shot' : `Repeats ${repeatDays}`;
       return html`
         <div class="schedule-banner">
           <ha-icon class="sched-ico" icon="mdi:clock-outline"></ha-icon>
@@ -1744,7 +2144,7 @@ class TimerCard extends LitElement {
   }
 
   static get styles() {
-    return cardStyles;
+    return [cardStyles, compactStyles];
   }
 
   _syncServerTime() {
