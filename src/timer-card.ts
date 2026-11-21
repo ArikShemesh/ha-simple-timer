@@ -53,7 +53,7 @@ interface HomeAssistant {
 }
 
 const DOMAIN = "simple_timer";
-const CARD_VERSION = "1.8.0";
+const CARD_VERSION = "1.9.0";
 const DEFAULT_TIMER_BUTTONS = [15, 30, 60, 90, 120, 150]; // Fallback when a config has no timer_buttons
 // What a freshly added card starts with. Kept separate from the fallback above
 // so shrinking it never changes a card that is already on a dashboard.
