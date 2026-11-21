@@ -5,12 +5,18 @@ import { css } from 'lit';
 export const cardStyles = css`
   :host {
     display: block;
+    --st-edge: 17px;
   }
 
   ha-card {
-    padding: 0;
+    padding: 0 0 var(--st-edge);
     position: relative;
     isolation: isolate;
+  }
+
+  ha-card > :last-child {
+    margin-bottom: 0 !important;
+    padding-bottom: 0 !important;
   }
 
   .card-header {
@@ -27,13 +33,19 @@ export const cardStyles = css`
   }
 
   .card-header.has-title {
-      margin-bottom: -15px;
+      margin-bottom: -10px;
+      padding-top: calc(var(--st-edge) - 2px);
+  }
+
+  .card-header:not(.has-title) {
+      padding-top: calc(var(--st-edge) - 15px);
   }
     
   .card-title {
     font-family: 'Roboto', sans-serif;
     font-weight: 500;
     font-size: 1.7rem;
+    line-height: 1;
     color: rgba(160,160,160,0.7);
     text-align: left;
     margin: 0;
@@ -385,7 +397,7 @@ export const cardStyles = css`
     flex-wrap: wrap;
     gap: 10px;
     justify-content: center;
-    padding-bottom: 24px;
+    padding-bottom: 0;
     margin-top: 0px;
   }
 

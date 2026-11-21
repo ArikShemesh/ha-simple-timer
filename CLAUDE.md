@@ -11,12 +11,12 @@ timer silently vanishing** — weight testing accordingly.
 
 ```bash
 # Tests — HA is stubbed, no HA install needed. pytest is NOT installed.
-cd tests && python -m unittest discover -s . -p "test_*.py"
+cd tests && py -3.14 -m unittest discover -s . -p "test_*.py"
 
 # A single test file / case / method
-cd tests && python -m unittest test_schedule
-cd tests && python -m unittest test_schedule.FiringFailureTestCase
-cd tests && python -m unittest test_schedule.FiringFailureTestCase.test_one_shot_clears_when_the_timer_fails_to_start
+cd tests && py -3.14 -m unittest test_schedule
+cd tests && py -3.14 -m unittest test_schedule.FiringFailureTestCase
+cd tests && py -3.14 -m unittest test_schedule.FiringFailureTestCase.test_one_shot_clears_when_the_timer_fails_to_start
 
 # Card bundle -> custom_components/simple_timer/dist/timer-card.js
 npm install && npm run build

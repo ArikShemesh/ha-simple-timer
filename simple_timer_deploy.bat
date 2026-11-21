@@ -89,8 +89,16 @@ call :ColorEcho "Cyan" "[2/2] Copying integration files..."
 if not exist "%DEST_INTEGRATION%" (
     call :ColorEcho "Yellow" "[INFO] Creating destination directory: %DEST_INTEGRATION%"
     mkdir "%DEST_INTEGRATION%"
+    if errorlevel 1 (
+        call :ColorEcho "Red" "[ERROR] Could not access or create %DEST_INTEGRATION%. Check path or network credentials."
+        exit /b 1
+    )
 )
 xcopy /E /I /Y "custom_components\simple_timer\*" "%DEST_INTEGRATION%\" >nul
+if %errorlevel% neq 0 (
+    call :ColorEcho "Red" "[ERROR] File copy to %DEST_INTEGRATION% failed. Halting."
+    exit /b %errorlevel%
+)
 echo Integration files copied.
 REM NOTE: The card is served by the integration from its own dist folder at
 REM /simple_timer/timer-card.js. Do NOT copy it into <config>\www\ — that path

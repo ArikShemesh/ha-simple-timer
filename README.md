@@ -2,6 +2,7 @@
 
 [![GitHub Release](https://img.shields.io/github/v/release/arikshemesh/ha-simple-timer)](https://github.com/arikshemesh/ha-simple-timer/releases)
 [![Downloads](https://img.shields.io/github/downloads/arikshemesh/ha-simple-timer/total.svg)](https://github.com/arikshemesh/ha-simple-timer/releases)
+[![Active Installs](https://img.shields.io/badge/dynamic/json?color=41BDF5&logo=home-assistant&label=active%20installs&cacheSeconds=15600&url=https%3A%2F%2Fanalytics.home-assistant.io%2Fcustom_integrations.json&query=%24.simple_timer.total)](https://analytics.home-assistant.io/custom_integrations.json)
 [![Community Forum](https://img.shields.io/badge/Community-Forum-5294E2.svg)](https://community.home-assistant.io/t/custom-integration-simple-timer-card/919597)
 
 # HA Simple Timer Integration (+ Card)
@@ -9,15 +10,16 @@ A simple Home Assistant integration that turns entities on and off with a precis
 
 <a href="https://coff.ee/codemakor" target="_blank"><img src="https://www.buymeacoffee.com/assets/img/custom_images/white_img.png" alt="Buy Me A Coffee" style="height: auto !important;width: auto !important;" ></a>
 
-![image](https://github.com/ArikShemesh/ha-simple-timer/blob/main/images/simple_timer_dashboard.png)
+### Compact Layout
+![image](https://github.com/ArikShemesh/ha-simple-timer/blob/main/images/simple_timer_dashboard_compact.png)
 
-### Configuration
-![image](https://github.com/ArikShemesh/ha-simple-timer/blob/main/images/simple_timer_card_configuration.png)
+### Classic Layout
+![image](https://github.com/ArikShemesh/ha-simple-timer/blob/main/images/simple_timer_dashboard.png)
 
 ## ✨ Key Features
 🚀 **Out-of-the-box**, pre-packaged timer solution, eliminating manual creation of multiple Home Assistant entities, sensors, and automations.
 
-🕐 Flexible Timer Control - Set countdown timers in seconds, minutes, hours, or days for any switch, input_boolean, light, fan, or climate entity
+🕐 **Flexible Timer Control** - Set countdown timers in seconds, minutes, hours, or days for any switch, input_boolean, light, fan, or climate entity
 
 ❄️ **Native Climate Support** - Point a timer straight at an A/C or heat pump and pick the mode it should run in, no helper entity, no automation
 
@@ -27,13 +29,13 @@ A simple Home Assistant integration that turns entities on and off with a precis
 
 🔄 **Smart Auto-Cancel** - Timer automatically cancels if the controlled device is turned off externally
 
-🎨 **Professional Timer Card** - Beautiful, modern UI with customizable timer buttons and real-time countdown
+🎨 **Compact or Classic Card** - Tile-style compact layout or classic large-countdown layout, with customizable preset buttons and progress bar
 
 🔔 **Notification Support** - Optional notifications for timer start, finish, and cancellation events
 
 🌙 **Daily Usage Reset** - Daily usage statistics reset automatically at a time you choose (midnight by default)
 
-👆 Manual Usage Reset - Long-press the daily usage display to reset statistics manually
+👆 **Manual Usage Reset** - Long-press the daily usage display to reset statistics manually
 
 ⏰ **Delayed Start Timers** - Turns devices ON when timer completes and keeps them on indefinitely until manually turned off
 
@@ -79,9 +81,9 @@ You will continue to receive updates in both cases, but switching ensures you're
 4. Select the device you want to control (switch, light, fan, input_boolean, climate)
 5. Give your timer instance a descriptive name (e.g., "Kitchen Timer", "Water Heater")
 6. **Climate entities only:** choose the mode to use when turning on (Heat, Cool, Dry, …). The list comes from the entity itself, and only that mode is applied - the timer always switches the device off at the end
-7. Choose notification entitiy (optional) - can be add more than one
+7. Choose notification entities (optional) - can add more than one
 8. Set the **Daily Usage Reset Time** (optional) - the time of day the daily usage counter goes back to zero. Defaults to `00:00` (midnight); set it to `06:00` if your tracking day starts in the morning
-9. Check show seconds (optional) - display seconds in uasge time and notifications
+9. Check show seconds (optional) - display seconds in usage time and notifications
 
 > A climate entity that offers no **off** mode cannot be selected - a timer that
 > cannot turn the device off again would be worse than no timer.
@@ -150,6 +152,7 @@ Copy this block to your dashboard configuration and uncomment/edit the lines you
 
 ```yaml
 type: custom:timer-card
+layout: compact               # 'compact' (one row + preset buttons) or 'classic'
 # -------------------------------------------------------------------------
 # REQUIRED: Link to your timer instance
 # -------------------------------------------------------------------------
@@ -173,7 +176,8 @@ turn_off_on_cancel: true      # Turn off the device when timer is cancelled?
 # -------------------------------------------------------------------------
 # SLIDER & DISPLAY
 # -------------------------------------------------------------------------
-card_title: "Water Heater"    # Custom title
+card_title: "Water Heater"    # Custom title (optional; compact falls back to device name)
+countdown_display: both       # 'countdown', 'progress', or 'both'
 hide_slider: false            # Set true to hide the slider
 show_daily_usage: true        # Show/Hide the daily usage stats
 show_schedule: false          # Show the "Schedule Timer" panel on the card
@@ -205,10 +209,12 @@ Option | Type | Default | Description
 ---|---|---|---
 `type` | string | - | Must be `custom:timer-card`
 `timer_instance_id` | string | - | Entry ID of your timer instance
-`timer_buttons` | array | [15,30,60,90,120,150] | Timer duration buttons. Supports mixed units (e.g., `[30, "15s", "1.5h", "1day"]`)
-`card_title` | string | - | Custom title for the card
+`layout` | string | `classic` | `compact`: one tile-style row (tap the icon to toggle power) with the preset buttons under it, and the slider and schedule behind a chevron. Resizable in sections dashboards. `classic`: the large countdown layout. New cards are created as `compact`; cards without this option stay `classic`.
+`timer_buttons` | array | `[15,30,60,90,120,150]` | Timer duration buttons (new cards created in the UI start with `[15,30,60,120]`). Supports mixed units (e.g., `[30, "15s", "1.5h", "1day"]`)
+`card_title` | string | - | Custom title for the card. When left empty, `compact` shows the controlled device's name and `classic` hides the header.
+`countdown_display` | string | `countdown` | How remaining time is shown while a timer runs: `countdown` (time text only), `progress` (progress bar only), or `both` (new cards created in the UI start with `both`).
 `slider_max` | integer | 120 | The maximum value for the slider (supported range: 1–9999)
-`slider_unit` | string | min | Unit for the slider (`s`, `min`, `h`)
+`slider_unit` | string | min | Unit for the slider (`s`/`sec`, `min`, `h`/`hr`, `d`/`day`)
 `reverse_mode` | boolean | false | Enable delayed start (turns device ON when timer ends). `Note: Disabled if Default Timer is enabled for this entity.`
 `hide_slider` | boolean | false | Hide the slider control completely
 `show_daily_usage` | boolean | true | Display daily usage statistics
@@ -316,9 +322,9 @@ This appears when HA was offline during a timer to indicate potential time sync 
 
 ### Card Not Appearing in Card Picker
 
-1. **Restart Home Assistant:** The card is installed during integration setup
-2. **Check integration logs:** Look for any errors during the card installation process
-3. **Verify automatic installation:** Check if `/config/www/simple-timer/timer-card.js` exists
+1. **Restart Home Assistant:** The card resource is registered during integration setup
+2. **Check integration logs:** Look for any errors during the card registration process
+3. **Verify the resource:** In Settings → Dashboards → Resources, confirm an entry for `/simple_timer/timer-card.js` exists. Opening that URL in your browser should return the card's JavaScript (not a 404). The card is served straight from the integration — it is **not** copied into `/config/www/`.
 4. **Clear browser cache:** Hard refresh with Ctrl+F5 (Windows) or Cmd+Shift+R (Mac)
 5. **Check browser console:** Press F12 and look for JavaScript errors
 
@@ -337,11 +343,11 @@ This appears when HA was offline during a timer to indicate potential time sync 
 
 ### Card Installation Issues
 
-If the automatic card installation fails:
-1. **Check file permissions:** Ensure Home Assistant can write to the `www` directory
-2. **Verify disk space:** Ensure sufficient space for file copying
-3. **Check integration logs:** Look for specific error messages
-4. **Manual fallback:** You can still manually copy the card file from the integration's `dist` folder
+If the card resource does not register:
+1. **Check integration logs:** Look for specific error messages during setup
+2. **Reload Resources:** Call the `simple_timer.reload_resources` service from Developer Tools → Actions to re-register the resource
+3. **Restart Home Assistant:** Re-runs the resource registration
+4. **Verify the resource:** Settings → Dashboards → Resources should list `/simple_timer/timer-card.js`
 
 ### Card Not Updating After Upgrade
 
