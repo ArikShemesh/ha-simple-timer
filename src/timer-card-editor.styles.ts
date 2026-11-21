@@ -68,9 +68,20 @@ export const editorCardStyles = css`
       .config-row ha-select {
         width: 100%;
       }
-      .config-row ha-formfield {
+      .config-row .switch-row {
         display: flex;
         align-items: center;
+        gap: 12px;
+      }
+      .config-row .switch-text {
+        color: var(--primary-text-color);
+        font-size: 14px;
+        cursor: pointer;
+        user-select: none;
+      }
+      .config-row .switch-text.disabled {
+        color: var(--disabled-text-color, var(--secondary-text-color));
+        cursor: not-allowed;
       }
 
       /* Timer Chips UI */

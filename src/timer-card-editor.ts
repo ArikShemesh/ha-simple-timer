@@ -969,24 +969,28 @@ class TimerCardEditor extends LitElement {
         </ha-expansion-panel>
         
         <div class="config-row">
-          <ha-formfield .label=${"Turn off entity on timer cancel"}>
+          <div class="switch-row">
             <ha-switch
               .checked=${this._config?.turn_off_on_cancel !== false}
               .configValue=${"turn_off_on_cancel"}
               @change=${this._valueChanged}
             ></ha-switch>
-          </ha-formfield>
+            <span class="switch-text" @click=${this._toggleRowSwitch}>Turn off entity on timer cancel</span>
+          </div>
         </div>
 
         <div class="config-row">
-          <ha-formfield .label=${"Reverse Mode (Delayed Start)" + (isDefaultTimerEnabled ? " (Disabled)" : "")}>
+          <div class="switch-row">
             <ha-switch
               .checked=${(this._config?.reverse_mode || false) && !isDefaultTimerEnabled}
               .configValue=${"reverse_mode"}
               @change=${this._valueChanged}
               .disabled=${isDefaultTimerEnabled}
             ></ha-switch>
-          </ha-formfield>
+            <span class="switch-text ${isDefaultTimerEnabled ? 'disabled' : ''}" @click=${this._toggleRowSwitch}>
+              ${"Reverse Mode (Delayed Start)" + (isDefaultTimerEnabled ? " (Disabled)" : "")}
+            </span>
+          </div>
           ${isDefaultTimerEnabled ? html`
             <div class="helper-text" style="color: var(--warning-color, orange); margin-top: 4px;">
               Disabled because a
@@ -1001,33 +1005,36 @@ class TimerCardEditor extends LitElement {
         </div>
 
         <div class="config-row">
-          <ha-formfield .label=${"Hide Timer Slider"}>
+          <div class="switch-row">
             <ha-switch
               .checked=${this._config?.hide_slider || false}
               .configValue=${"hide_slider"}
               @change=${this._valueChanged}
             ></ha-switch>
-          </ha-formfield>
+            <span class="switch-text" @click=${this._toggleRowSwitch}>Hide Timer Slider</span>
+          </div>
         </div>
 
         <div class="config-row">
-          <ha-formfield .label=${"Show Daily Usage"}>
+          <div class="switch-row">
             <ha-switch
               .checked=${this._config?.show_daily_usage !== false}
               .configValue=${"show_daily_usage"}
               @change=${this._valueChanged}
             ></ha-switch>
-          </ha-formfield>
+            <span class="switch-text" @click=${this._toggleRowSwitch}>Show Daily Usage</span>
+          </div>
         </div>
 
         <div class="config-row">
-          <ha-formfield .label=${"Show Schedule Panel"}>
+          <div class="switch-row">
             <ha-switch
               .checked=${this._config?.show_schedule || false}
               .configValue=${"show_schedule"}
               @change=${this._valueChanged}
             ></ha-switch>
-          </ha-formfield>
+            <span class="switch-text" @click=${this._toggleRowSwitch}>Show Schedule Panel</span>
+          </div>
         </div>
 
       </div>
@@ -1072,6 +1079,12 @@ class TimerCardEditor extends LitElement {
       </div>
     `;
   }
+
+  private _toggleRowSwitch = (ev: Event): void => {
+    const sw = (ev.currentTarget as HTMLElement)?.parentElement?.querySelector("ha-switch") as any;
+    if (!sw || sw.disabled) return;
+    sw.click();
+  };
 
   private _instanceSelected(ev: CustomEvent): void {
     ev.stopPropagation();
