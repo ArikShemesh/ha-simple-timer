@@ -247,22 +247,25 @@ class OrphanDeviceCleanupTestCase(unittest.TestCase):
 
     def setUp(self):
         self._real_entries_for_device = helpers.er.async_entries_for_device
+        self._real_entries_for_config_entry = helpers.dr.async_entries_for_config_entry
 
     def tearDown(self):
         # The harness shares module objects across test files; leaving a stub
         # behind silently changes whatever runs next.
         helpers.er.async_entries_for_device = self._real_entries_for_device
+        helpers.dr.async_entries_for_config_entry = self._real_entries_for_config_entry
 
-    def _device(self, device_id, entries):
-        device = MagicMock()
+    def _device(self, device_id):
+        device = MagicMock(spec=["id"])
         device.id = device_id
-        device.config_entries = set(entries)
         return device
 
     def _registries(self, devices, entities_by_device):
-        dev_reg = MagicMock()
-        dev_reg.devices = {device.id: device for device in devices}
+        dev_reg = MagicMock(spec=["async_update_device"])
         helpers.dr.async_get.return_value = dev_reg
+        helpers.dr.async_entries_for_config_entry = MagicMock(
+            return_value=list(devices)
+        )
         helpers.er.async_get.return_value = MagicMock()
         helpers.er.async_entries_for_device = MagicMock(
             side_effect=lambda reg, device_id, include_disabled_entities=False:
@@ -271,7 +274,7 @@ class OrphanDeviceCleanupTestCase(unittest.TestCase):
         return dev_reg
 
     def test_a_device_of_ours_holding_nothing_is_detached(self):
-        dev_reg = self._registries([self._device("old", {"entry1"})], {})
+        dev_reg = self._registries([self._device("old")], {})
 
         helpers.cleanup_orphan_devices(MagicMock(), "entry1")
 
@@ -280,7 +283,7 @@ class OrphanDeviceCleanupTestCase(unittest.TestCase):
 
     def test_a_device_still_holding_our_entities_is_left_alone(self):
         dev_reg = self._registries(
-            [self._device("current", {"entry1"})],
+            [self._device("current")],
             {"current": [MagicMock(), MagicMock()]},
         )
 
@@ -288,21 +291,39 @@ class OrphanDeviceCleanupTestCase(unittest.TestCase):
 
         dev_reg.async_update_device.assert_not_called()
 
-    def test_an_empty_device_belonging_to_someone_else_is_left_alone(self):
-        """The sweep walks every device in the registry, so the config-entry
-        check is the only thing standing between it and another integration's
-        rows."""
-        dev_reg = self._registries([self._device("theirs", {"other_entry"})], {})
+    def test_the_lookup_asks_only_for_our_config_entry(self):
+        """HA filters the registry by config_entry_id for us via
+        `dr.async_entries_for_config_entry`, so we never touch another
+        integration's devices."""
+        dev_reg = self._registries([], {})
 
         helpers.cleanup_orphan_devices(MagicMock(), "entry1")
 
-        dev_reg.async_update_device.assert_not_called()
+        helpers.dr.async_entries_for_config_entry.assert_called_once_with(
+            dev_reg, "entry1")
+
+    def test_deprecated_device_registry_attributes_are_not_accessed(self):
+        """HA 2026.11 deprecated both `dev_reg.devices` as a mapping (removed in
+        2027.9) and `DeviceEntry.config_entries` (removed in 2027.10). Spec the
+        fakes so touching either raises AttributeError."""
+        device = self._device("old")
+        dev_reg = self._registries([device], {})
+
+        with self.assertRaises(AttributeError):
+            _ = dev_reg.devices
+        with self.assertRaises(AttributeError):
+            _ = device.config_entries
+
+        helpers.cleanup_orphan_devices(MagicMock(), "entry1")
+
+        dev_reg.async_update_device.assert_called_once_with(
+            "old", remove_config_entry_id="entry1")
 
     def test_a_device_whose_only_entity_is_disabled_is_left_alone(self):
         """A disabled entity still lives on that device. Sweeping it away would
         delete the row a user is about to re-enable an entity onto."""
         dev_reg = self._registries(
-            [self._device("current", {"entry1"})],
+            [self._device("current")],
             {"current": [MagicMock()]},
         )
 

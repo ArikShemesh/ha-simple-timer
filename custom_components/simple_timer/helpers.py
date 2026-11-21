@@ -117,9 +117,7 @@ def cleanup_orphan_devices(hass: HomeAssistant, entry_id: str) -> None:
     ent_reg = er.async_get(hass)
 
     # Snapshot: removing the last entry deletes the device mid-iteration.
-    for device in list(dev_reg.devices.values()):
-        if entry_id not in device.config_entries:
-            continue
+    for device in list(dr.async_entries_for_config_entry(dev_reg, entry_id)):
         if er.async_entries_for_device(ent_reg, device.id,
                                        include_disabled_entities=True):
             continue
